@@ -1,0 +1,38 @@
+% Multithreading models: mapping of user-level threads to kernel-level threads.
+% Usage: \input{figures/l03-mt-models}   (width ~118 mm)
+\begin{tikzpicture}[x=0.96mm, y=1mm, font=\footnotesize\sffamily,
+  ut/.style={draw, circle, fill=white, minimum size=4mm, inner sep=0pt},
+  kt/.style={draw, rectangle, fill=ln-box, minimum size=4mm, inner sep=0pt},
+  lib/.style={draw, rounded corners=1pt, fill=ln-box, minimum height=4mm,
+              inner sep=1pt, font=\scriptsize\sffamily},
+  ttl/.style={font=\footnotesize\sffamily\bfseries},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted}]
+  \draw[dashed, ln-rule] (0,10) -- (118,10);
+  \node[lab, anchor=south west] at (0,10.5) {\iflangja{ユーザ}{user}};
+  \node[lab, anchor=north west] at (0,9.5)  {\iflangja{カーネル}{kernel}};
+  % ---- one-to-one
+  \node[ttl] at (27,32) {\iflangja{一対一}{one-to-one}};
+  \foreach \x in {17,27,37} {
+    \node[ut] (u) at (\x,24) {};
+    \node[kt] (k) at (\x,3) {};
+    \draw (u) -- (k);
+  }
+  % ---- many-to-one
+  \node[ttl] at (65,32) {\iflangja{多対一}{many-to-one}};
+  \node[lib, minimum width=28mm] (l2) at (65,16) {\iflangja{スレッドライブラリ}{thread library}};
+  \foreach \x in {55,65,75} { \node[ut] (u) at (\x,24) {}; \draw (u) -- (\x,18); }
+  \node[kt] (k2) at (65,3) {};
+  \draw (l2) -- (k2);
+  % ---- many-to-many
+  \node[ttl] at (103,32) {\iflangja{多対多}{many-to-many}};
+  \node[lib, minimum width=24mm] (l3) at (99,16) {\iflangja{ライブラリ}{library}};
+  \foreach \x in {90,99,108} { \node[ut] (u) at (\x,24) {}; \draw (u) -- (\x,18); }
+  \node[kt] (k3a) at (93,3) {};
+  \node[kt] (k3b) at (105,3) {};
+  \draw (l3.south) ++(-6,0) -- (k3a);
+  \draw (l3.south) ++(6,0) -- (k3b);
+  \node[ut, thick, draw=ln-accent] (ub) at (116,24) {};
+  \node[kt, thick, draw=ln-accent] (kb) at (116,3) {};
+  \draw[very thick, ln-accent] (ub) -- (kb);
+  \node[lab, anchor=north, text=ln-accent] at (116,0.5) {\iflangja{バウンド}{bound}};
+\end{tikzpicture}

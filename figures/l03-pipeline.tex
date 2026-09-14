@@ -1,0 +1,27 @@
+% Pipeline pattern: stages connected by buffers; stage 2 is a thread pool.
+% Usage: \input{figures/l03-pipeline}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  box/.style={draw, rounded corners=2pt, fill=ln-box, align=center, inner sep=1pt},
+  th/.style={draw, circle, fill=white, minimum size=4mm, inner sep=0pt},
+  cell/.style={draw, fill=white, minimum width=3mm, minimum height=5mm, inner sep=0pt},
+  >={Stealth[length=1.6mm]},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted}]
+  \node[box, minimum width=14mm, minimum height=17mm] (s1) at (20,0) {};
+  \node[box, minimum width=14mm, minimum height=17mm] (s2) at (60,0) {};
+  \node[box, minimum width=14mm, minimum height=17mm] (s3) at (100,0) {};
+  \foreach \s/\n in {s1/1,s2/2,s3/3} {
+    \node[font=\scriptsize\sffamily, anchor=south] at (\s.north) {\iflangja{ステージ}{stage} \n};
+  }
+  \node[th] at (20,0) {};
+  \foreach \y in {5,0,-5} { \node[th] at (60,\y) {}; }
+  \node[th] at (100,0) {};
+  \draw[->] (0,0) -- (s1);
+  \foreach \i in {0,...,3} { \node[cell] at (35.5+3*\i,0) {}; }
+  \foreach \i in {0,...,3} { \node[cell] at (75.5+3*\i,0) {}; }
+  \draw[->] (s1) -- (34,0);  \draw[->] (45,0) -- (s2);
+  \draw[->] (s2) -- (74,0);  \draw[->] (85,0) -- (s3);
+  \draw[->] (s3) -- (116,0);
+  \node[lab, anchor=north] at (40,-3) {\iflangja{バッファ}{buffer}};
+  \node[lab, anchor=north] at (80,-3) {\iflangja{バッファ}{buffer}};
+  \node[lab, anchor=north] at (60,-9) {\iflangja{スレッドプール}{thread pool}};
+\end{tikzpicture}

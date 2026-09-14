@@ -1,0 +1,1059 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Threads and Concurrency}
+\lessoninfo{
+  video={P2L2},
+  textbook={OSTEP \cite{ostep} ch.~26--32; Silberschatz et al.\ \cite{silberschatz2018} ch.~4--5, 8},
+  keywords={thread, multithreading, concurrency, race condition, mutex, condition variable, readers-writers problem, spurious wake-up, deadlock, kernel-level thread, user-level thread, multithreading models, boss-workers pattern, pipeline pattern},
+}
+
+A process as described in Lesson~2 has a single execution context, so it
+can follow only one sequence of instructions at a time.  This lesson
+introduces threads, which give a process several execution contexts that
+share one address space, and the mechanisms---mutexes and condition
+variables---with which such threads coordinate their access to shared data.
+The presentation follows Birrell's tutorial on programming with threads
+\cite{birrell1989}; it then turns to deadlocks, to the relation between
+user-level and kernel-level threads, and to common patterns for structuring
+multithreaded applications.
+
+\section{Processes and threads}
+\label{sec:l03-threads}
+
+A process is represented by its address space---the code, data and heap,
+reached through the virtual-to-physical mappings kept in the page
+table---, by the resources the operating system keeps for it, such as open
+files, and by its execution context: the values of the CPU registers,
+including the program counter and the stack pointer, and the
+stack.\source{P2L2, process vs.\ thread; Birrell \cite{birrell1989}; OSTEP
+ch.~26.}  The operating system records all of this in the process control
+block.  A process of this kind is single-threaded.
+
+\begin{definition}[Thread]
+  A \term{thread}[スレッド] is one execution context within a process.  Every
+  thread has its own program counter, stack pointer, register values and
+  stack; all threads of a process share its address space (code, data,
+  heap) and its other resources, such as open files.
+\end{definition}
+
+Running several threads inside one process is called
+\term{multithreading}[マルチスレッド], and such a process is
+\emph{multithreaded}.  Since the threads share the virtual-to-physical
+mappings, all of them can access the same code and data.  At any moment,
+however, they may execute different instructions, work on different
+portions of the input and have different chains of procedure calls in
+progress.  The per-thread state in \cref{fig:l03-process-thread} captures
+exactly these differences: the program counter and the registers record
+where a thread is and what it is computing, and the private stack holds the
+local variables and return addresses of its active calls.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-process-thread}
+  \caption{A single-threaded and a multithreaded process.  The shaded state
+    (code, data and open files) is shared by all threads; every thread has
+    its own registers---including PC and SP---and its own stack.}
+  \label{fig:l03-process-thread}
+\end{figure}
+
+The operating system's representation of a multithreaded process is
+correspondingly richer than a PCB for a single-threaded one.  It holds the
+information shared by all threads once, and a separate data structure for
+each thread that records the thread's execution context.
+
+\section{Why threads are useful}
+\label{sec:l03-benefits}
+
+On a machine with several CPUs, threads can speed up an application in two
+ways.\source{P2L2, why are threads useful, benefits of multithreading on a
+single CPU, benefits to applications and OS code; OSTEP ch.~26.}
+
+\begin{description}
+  \item[Same code, different data] All threads execute the same code, each
+    on a different portion of the input.  In a matrix multiplication, for
+    example, each thread can compute a different subset of the rows of the
+    result, and the threads run in parallel on different CPUs.  Dividing the
+    work of one task in this way is called
+    \term{parallelization}[並列化].
+  \item[Different code] Different threads execute different parts of the
+    program: one thread may process input while another renders the
+    display, or threads may be dedicated to requests of different types.
+    Dedicating threads to particular tasks is called
+    \term{specialization}[特化].
+\end{description}
+
+Specialization has two further benefits.  The threads can be managed
+differently, for example by giving higher priority to the threads that
+handle more important tasks or customers.  And since performance depends on
+how much of a thread's state is present in the processor cache, a thread
+that repeatedly executes a small portion of the code works with a hot cache
+(Lesson~2) more often than a thread that executes everything.
+
+\subsection{Threads versus processes}
+
+The same parallelism could be obtained by running several single-threaded
+processes.  A multithreaded implementation is nevertheless more efficient in
+three respects:
+\begin{itemize}
+  \item \textbf{Memory.}  The threads share one address space, whereas every
+    process needs its own address space and its own copy of the state.  The
+    multithreaded application has lower memory requirements and is
+    therefore less likely to need swapping.
+  \item \textbf{Context switching.}  Switching between threads of the same
+    process does not switch the address space: the virtual-to-physical
+    mappings stay in place, so the costly part of a process context switch
+    is avoided.
+  \item \textbf{Communication.}  Threads exchange data through shared
+    variables.  Processes need inter-process communication (IPC): message
+    passing enters the kernel for every exchange, and shared memory must
+    first be set up by the operating system, so communication between
+    processes is more costly.
+\end{itemize}
+
+\begin{example}
+  Suppose an application holds \SI{400}{\mega\byte} of data that each
+  process would have to keep separately (code pages, which the operating
+  system can share between processes, are ignored here) and needs about
+  \SI{1}{\mega\byte} of stack and other per-context state.  Run as four
+  processes, each with its own copy of the data, it occupies about
+  $4\times 401 = \SI{1604}{\mega\byte}$; run as four threads of one
+  process it occupies about $400 + 4\times 1 = \SI{404}{\mega\byte}$.
+\end{example}
+
+\subsection{Threads on a single CPU}
+
+Threads are useful even when there are more threads than CPUs.  When a
+thread issues a request that blocks, such as a disk read, it has nothing to
+do until the request completes, and the CPU would sit idle for that time
+$t_{\mathrm{idle}}$.  The CPU can instead switch to another thread and
+switch back when the request completes (\cref{fig:l03-idle-time}).  The
+other thread then gains $t_{\mathrm{idle}} - t_{\mathrm{ctx}}$ of CPU time,
+while the blocked thread resumes $t_{\mathrm{ctx}}$ later than it would
+have; the two switches together cost $2\,t_{\mathrm{ctx}}$.  Switching pays
+off when the time gained exceeds the delay, that is, when
+\begin{equation}
+  t_{\mathrm{idle}} \;>\; 2\, t_{\mathrm{ctx}} .
+  \label{eq:l03-idle}
+\end{equation}
+Because a context switch between threads avoids the address-space switch,
+its $t_{\mathrm{ctx}}$ is smaller than that of a switch between processes,
+and \cref{eq:l03-idle} holds for shorter idle periods.  Multithreading
+therefore lets a program hide idle time even on one CPU.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-idle-time}
+  \caption{T1 blocks on I/O; instead of idling, the CPU switches to T2, and
+    the completion of the I/O triggers the switch back.  The switches pay
+    off when they cost less than the idle time (\cref{eq:l03-idle}).}
+  \label{fig:l03-idle-time}
+\end{figure}
+
+\begin{example}
+  Assume a thread context switch costs \SI{0.05}{\milli\second} and a
+  process context switch \SI{0.5}{\milli\second}.  With threads, every
+  blocking wait longer than \SI{0.1}{\milli\second} can be used by
+  another thread; with processes only waits longer than
+  \SI{1}{\milli\second}.  A wait of \SI{4}{\milli\second} gives another
+  thread $4 - 0.05 = \SI{3.95}{\milli\second}$ of CPU time and delays the
+  blocked thread by \SI{0.05}{\milli\second}; for another process the
+  figures are \SI{3.5}{\milli\second} and \SI{0.5}{\milli\second}.
+\end{example}
+
+\subsection{Multithreaded applications and kernels}
+
+Applications and operating systems both benefit.  A multithreaded
+application achieves parallel speedup on several CPUs and hides idle time on one.  A multithreaded
+operating system kernel runs some of its threads on behalf of applications
+and others to provide operating-system services such as daemons and device
+drivers; on a multiprocessor these kernel threads run concurrently on
+different CPUs.
+
+\begin{keypoint}
+  Threads share the address space of their process, which makes them
+  cheaper than processes in memory, context-switch time and communication.
+  The same sharing means that threads can interfere with one another, so
+  they need explicit mechanisms for coordination.
+\end{keypoint}
+
+\section{Basic thread mechanisms}
+\label{sec:l03-mechanisms}
+
+Supporting threads requires three things: a data structure that represents
+a thread, so that threads can be identified and their resource usage
+tracked; mechanisms to create and manage threads; and mechanisms that let
+threads running at the same time in the same address space coordinate
+safely.\source{P2L2, basic thread mechanisms, thread creation; Birrell
+\cite{birrell1989}; OSTEP ch.~26--27.}
+
+Two threads execute concurrently when their executions overlap in time,
+whether they are interleaved on one CPU or run simultaneously on different
+CPUs; the resulting \term{concurrency}[並行性] creates a problem that
+processes do not have.  The operating system gives different processes
+different mappings, so a process cannot touch the memory of another.
+Threads share their mappings, so any thread can legally read and write any
+data of its process.  If two threads update the same data at the same time,
+or one reads while another modifies it, the data can become inconsistent.
+
+\begin{definition}[Race condition]
+  A \term{race condition}[競合状態] exists when the result of a computation
+  depends on the relative timing of threads that access shared data, at
+  least one of them modifying it.  Two unsynchronized concurrent accesses to
+  the same data, at least one of them a write, form a \emph{data race};
+  data races are a common cause of race conditions.
+\end{definition}
+
+The mechanisms that threads use to coordinate their access to shared data
+and their progress relative to one another are called
+\term{synchronization}[同期] mechanisms.  Two basic mechanisms, both
+described by Birrell, are used throughout this lesson:
+\begin{itemize}
+  \item \textbf{mutual exclusion}: only one thread at a time may execute a
+    given operation; this is provided by a \emph{mutex}
+    (\cref{sec:l03-mutex});
+  \item \textbf{waiting}: a thread waits until another thread establishes a
+    specific condition, and is woken up by it; this is provided by a
+    \emph{condition variable} (\cref{sec:l03-condvar}).
+\end{itemize}
+
+\subsection{Thread creation}
+\label{sec:l03-creation}
+
+A thread is represented by a thread data structure that contains its
+identifier, its program counter, stack pointer and other register values,
+its stack, and attributes the thread library uses to manage
+it.  In Birrell's notation, \term{thread creation}[スレッド生成] is
+performed by the call \texttt{t1 = Fork(proc, args)}, which creates a new
+thread, stores its data structure in \texttt{t1}, and
+starts the new thread executing \texttt{proc(args)}.  The creating thread
+continues with the statement after \texttt{Fork}, so from this point on both
+threads run concurrently.  Despite its name, \texttt{Fork} creates a
+thread inside the same process; it is unrelated to the Unix \texttt{fork}
+of Lesson~2, which creates a new process.
+
+When the child thread finishes, its result must reach the parent.  Either the
+child stores it in a well-defined location of the shared address space, or
+the parent obtains it with the \term{join}[ジョイン] operation:
+\texttt{Join(t1)} blocks the calling thread until thread \texttt{t1} has
+completed and returns its result; at that point the resources allocated to
+the child are freed.  Apart from this, parent and child are equals: both can
+access all resources of the process, and they differ only in their
+execution contexts.
+
+\needspace{9\baselineskip}
+\begin{example}
+  A parent thread and a child thread both insert into a shared list:
+  \begin{lstlisting}[language=C, numbers=none]
+Thread t1;
+Shared_list list;
+
+t1 = Fork(safe_insert, 7);  // child inserts 7
+safe_insert(9);             // parent inserts 9
+Join(t1);                   // optional here
+\end{lstlisting}
+  Which insertion happens first depends on how the threads are scheduled,
+  so with insertion at the head the list ends up as either $7\to 9$ or
+  $9\to 7$.  The \texttt{Join} is not needed for correctness because the
+  parent does not use a result of the child.
+\end{example}
+
+The example hides a problem.  Inserting element $e$ at the head of a list
+takes three steps: create $e$; read the head pointer and store it in
+$e$\texttt{.next}; write the address of $e$ into the head pointer.  If two
+threads interleave these steps, one insertion can be lost, as the trace in
+\cref{tab:l03-race} shows.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Two unsynchronized insertions into a list that initially holds
+    one element, 3.  Both threads read the old head before either writes
+    it, so the write in step~6 overwrites that of step~5 and element~7 is
+    lost.}
+  \label{tab:l03-race}
+  \small
+  \begin{tabular}{@{}clll@{}}
+    \toprule
+    Step & Thread T1 (insert 7) & Thread T2 (insert 9) & List \\
+    \midrule
+    1 & create \texttt{e7}           &                           & $3$ \\
+    2 & \texttt{e7.next = head} ($\to 3$) &                      & $3$ \\
+    3 &                              & create \texttt{e9}        & $3$ \\
+    4 &                              & \texttt{e9.next = head} ($\to 3$) & $3$ \\
+    5 & \texttt{head = e7}           &                           & $7\to 3$ \\
+    6 &                              & \texttt{head = e9}        & $9\to 3$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Mutual exclusion}
+\label{sec:l03-mutex}
+
+The race in \cref{tab:l03-race} disappears if only one thread at a time can
+execute the three steps of an insertion.\source{P2L2, mutexes; Birrell
+\cite{birrell1989}; OSTEP ch.~28.}  With respect to the other threads, the
+three steps must then behave like one indivisible operation: no other
+thread can observe or modify the list between them.  This requirement is
+called \term{mutual exclusion}[相互排除], and the basic mechanism that
+enforces it is the mutex.
+
+\begin{definition}[Mutex]
+  A \term{mutex}[ミューテックス] (mutual exclusion lock) is a synchronization
+  construct with two operations, lock and unlock.  A thread that locks a
+  free mutex acquires it and becomes its owner; a thread that tries to lock
+  a mutex owned by another thread blocks until the mutex is released.
+\end{definition}
+
+A mutex is represented by a data structure that records at least whether it
+is locked, which thread owns it, and the list of threads blocked on it.  The
+code executed while a mutex is held is the \term{critical section}[クリティカルセクション]: the
+part of the program that performs an operation which only one thread at a
+time may perform, typically an update of shared state.
+
+\needspace{6\baselineskip}
+Birrell's notation makes the critical section a block:
+\begin{lstlisting}[language=C, numbers=none]
+Lock(m) {
+  // critical section
+} // unlock
+\end{lstlisting}
+The mutex is released implicitly when the block ends.  Most thread
+interfaces, including the POSIX threads of Lesson~4, instead have separate
+calls \texttt{lock(m)} and \texttt{unlock(m)} around the critical section,
+and the programmer must make sure that every path through the critical
+section ends with an unlock.
+
+\needspace{12\baselineskip}
+\begin{example}
+  With a mutex that protects the list, the insertion of
+  \cref{sec:l03-creation} becomes safe:
+  \begin{lstlisting}[language=C, numbers=none]
+list<int> my_list;
+Mutex m;
+
+void safe_insert(int i) {
+  Lock(m) {
+    my_list.insert(i);
+  } // unlock
+}
+\end{lstlisting}
+  If the parent locks \texttt{m} first, the child blocks in \texttt{Lock(m)}
+  until the parent's insertion is complete, and then performs its own.  In
+  the scenario of \cref{tab:l03-race} the list ends as $7\to 9\to 3$ or
+  $9\to 7\to 3$; an element is never lost.
+\end{example}
+
+When the owner releases a mutex on which several threads are blocked, only
+one of them acquires it; the others stay blocked.  The specification of a
+mutex does not say which one: threads are not guaranteed to acquire the
+mutex in the order in which they requested it, and a thread that calls
+\texttt{Lock} just as the mutex is released may acquire it ahead of threads
+that have been waiting for some time.  Program correctness must
+therefore not depend on the order in which waiting threads acquire a
+mutex.
+
+\section{Condition variables}
+\label{sec:l03-condvar}
+
+Mutual exclusion alone is not enough when a thread must wait for a
+condition that other threads establish.\source{P2L2, producer/consumer
+example, condition variable, condition variable API; Birrell
+\cite{birrell1989}; OSTEP ch.~30.}  A thread that holds a mutex cannot
+simply stop and wait for the condition, because while it holds the mutex
+no other thread can change the shared state.  The standard illustration is
+the
+\term{producer-consumer problem}[生産者・消費者問題]: several producer
+threads insert items into a shared list, and a consumer thread must print
+and remove all items once the list is full.
+
+With only a mutex, the consumer has to lock the mutex, check whether the
+list is full, and if it is not, release the mutex and try again later.  This
+repeated checking wastes CPU time, because most checks find the list not yet
+full.  It would be better if the consumer could sleep and be woken up by the
+producer whose insertion fills the list.
+
+\begin{definition}[Condition variable]
+  A \term{condition variable}[条件変数] is a synchronization construct,
+  used together with a mutex, on which threads wait until some condition on
+  the shared state holds, and through which other threads notify them when
+  it may hold.
+\end{definition}
+
+\needspace{8\baselineskip}
+With a condition variable \texttt{list\_full}, the two sides become:
+\begin{lstlisting}[language=C, numbers=none]
+// consumer: print_and_clear
+Lock(m) {
+  while (my_list.not_full())
+    Wait(m, list_full);
+  my_list.print_and_remove_all();
+} // unlock
+\end{lstlisting}
+\needspace{7\baselineskip}
+\begin{lstlisting}[language=C, numbers=none]
+// producers: safe_insert
+Lock(m) {
+  my_list.insert(my_thread_id);
+  if (my_list.full())
+    Signal(list_full);
+} // unlock
+\end{lstlisting}
+
+\subsection{The condition variable interface}
+
+Birrell's interface has three operations on a condition variable
+\texttt{cond}.
+\begin{description}
+  \item[\texttt{Wait(mutex, cond)}] The \term{wait operation}[wait操作] is
+    called with \texttt{mutex} held.  It releases the mutex and suspends the
+    thread on the wait queue of \texttt{cond}; when the thread is woken up,
+    the operation re-acquires the mutex before it returns.
+  \item[\texttt{Signal(cond)}] The \term{signal operation}[signal操作] wakes
+    up one thread waiting on \texttt{cond}, if there is one.
+  \item[\texttt{Broadcast(cond)}] The
+    \term{broadcast operation}[broadcast操作] wakes up all threads waiting
+    on \texttt{cond}.
+\end{description}
+
+\needspace{11\baselineskip}
+A condition variable is represented by a data structure that holds a
+reference to its mutex and the list of waiting threads.  The wait
+operation proceeds as follows:
+\begin{lstlisting}[language=C, numbers=none]
+Wait(mutex, cond) {
+  // atomically release mutex and place the
+  //   thread on the wait queue of cond
+  // ... wait ...
+  // remove the thread from the wait queue
+  // re-acquire mutex
+  // return
+}
+\end{lstlisting}
+Releasing the mutex while waiting is essential: otherwise no other thread
+could enter a critical section to change the state and signal.
+Re-acquiring it before returning guarantees that the waiting thread again
+holds the mutex when it re-examines the shared state.  As a consequence, a
+woken thread cannot continue until it holds the mutex again; if the mutex is
+still held, for instance by the signalling thread, the woken thread moves
+from the wait queue of the condition variable to that of the mutex
+(\cref{fig:l03-cv-queues}).  After a
+broadcast all woken threads compete for the mutex, so they leave the wait
+operation one at a time.\margin{The signal operation on a condition
+variable is unrelated to the Unix signals of Lesson~1.}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-cv-queues}
+  \caption{A thread waiting on condition \texttt{c} releases mutex
+    \texttt{m}.  When it is signalled it must first re-acquire \texttt{m};
+    if \texttt{m} is held, it moves to the wait queue of the mutex.}
+  \label{fig:l03-cv-queues}
+\end{figure}
+
+This is why the consumer tests the list in a \texttt{while} loop and not in
+an \texttt{if}.  Between the \texttt{Signal} and the moment the consumer
+re-acquires the mutex, other threads may acquire it first and change the
+list---for example a second consumer that empties it.  Signalling a
+condition variable only says that the condition may hold; the woken thread
+cannot be guaranteed access to the mutex immediately, and it must re-check
+the condition once it has.
+
+\needspace{7\baselineskip}
+\begin{keypoint}
+  Always call \texttt{Wait} with the mutex held, inside a \texttt{while}
+  loop that re-tests the condition.  Signal or broadcast after changing the
+  state that the condition depends on.
+\end{keypoint}
+
+\section{The readers-writers problem}
+\label{sec:l03-rw}
+
+In the \term{readers-writers problem}[リーダ・ライタ問題] some threads, the
+readers, only read a shared resource such as a file, and others, the
+writers, modify it.\source{P2L2, readers/writer problem and example,
+critical section structure (with proxy); OSTEP ch.~31.}  Any
+number of readers may access the resource at the same time, but a writer
+needs exclusive access: at most one writer, and no readers while it writes.
+
+Protecting the resource with a single mutex is correct but too restrictive,
+because it also excludes readers from each other.  The access rules depend
+on how many readers and writers are active:
+\begin{itemize}
+  \item no active readers and no writer: a reader or a writer may enter;
+  \item one or more active readers: another reader may enter, a writer
+    may not;
+  \item an active writer: neither readers nor writers may enter.
+\end{itemize}
+These rules can be expressed with a single counter: the resource is
+\emph{free} when \texttt{resource\_counter} $=0$, being \emph{read} by $n$
+readers when \texttt{resource\_counter} $=n>0$, and being \emph{written}
+when \texttt{resource\_counter} $=-1$ (\cref{fig:l03-rw-states}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-rw-states}
+  \caption{The states of the shared resource and the corresponding values
+    of the proxy variable; \texttt{counter} is short for
+    \texttt{resource\_counter}.}
+  \label{fig:l03-rw-states}
+\end{figure}
+
+The counter is an example of a \term{proxy variable}[代理変数]: a shared
+variable, protected by a mutex, that encodes the state of the resource.
+Threads hold the mutex only while they examine and update the proxy
+variable; the actual reading and writing happens outside the mutex, under
+the policy that the proxy variable enforces.  The solution uses one mutex
+and two condition variables:
+\begin{lstlisting}[language=C, numbers=none]
+Mutex counter_mutex;
+Condition read_phase, write_phase;
+int resource_counter = 0;
+
+// READERS
+Lock(counter_mutex) {
+  while (resource_counter == -1)
+    Wait(counter_mutex, read_phase);
+  resource_counter++;
+} // unlock
+// ... read data ...
+Lock(counter_mutex) {
+  resource_counter--;
+  if (resource_counter == 0)
+    Signal(write_phase);
+} // unlock
+\end{lstlisting}
+\needspace{14\baselineskip}
+\begin{lstlisting}[language=C, numbers=none]
+// WRITER
+Lock(counter_mutex) {
+  while (resource_counter != 0)
+    Wait(counter_mutex, write_phase);
+  resource_counter = -1;
+} // unlock
+// ... write data ...
+Lock(counter_mutex) {
+  resource_counter = 0;
+  Broadcast(read_phase);
+  Signal(write_phase);
+} // unlock
+\end{lstlisting}
+
+The choice of notification in the exit code follows from who can be waiting.
+\begin{itemize}
+  \item A \textbf{reader} that leaves while other readers remain changes
+    nothing that a waiting thread cares about.  When the last reader leaves,
+    only writers can be waiting---readers wait only while a writer is
+    active---and only one of them may enter, so a \texttt{Signal} on
+    \texttt{write\_phase} suffices.
+  \item A \textbf{writer} that leaves frees the resource for either kind of
+    thread.  All waiting readers may enter together, hence
+    \texttt{Broadcast(read\_phase)}; only one writer may enter, hence
+    \texttt{Signal(write\_phase)}.  Which thread actually gets in first
+    depends on which one acquires \texttt{counter\_mutex} first.  If a
+    reader gets in first, the other woken readers enter as well, and the
+    writer finds the counter $\neq 0$ in its \texttt{while} loop and waits
+    again; if the writer gets in first, the readers find the counter
+    $=-1$ and wait again.
+\end{itemize}
+
+\begin{example}
+  \Cref{tab:l03-rw-trace} traces two readers, a writer that arrives while
+  they are reading, and a third reader that arrives while the writer
+  writes.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{A trace of the readers-writers solution, with the value of the
+    proxy variable after each step.}
+  \label{tab:l03-rw-trace}
+  \small
+  \begin{tabular}{@{}clr@{}}
+    \toprule
+    Step & Event & Counter \\
+    \midrule
+    1 & R1 enters                                               & $1$ \\
+    2 & R2 enters                                               & $2$ \\
+    3 & W1 finds counter $\neq 0$, waits on \texttt{write\_phase} & $2$ \\
+    4 & R1 exits; counter $\neq 0$, no notification             & $1$ \\
+    5 & R2 exits; counter $=0$, signals \texttt{write\_phase}   & $0$ \\
+    6 & W1 re-acquires the mutex, re-tests, enters             & $-1$ \\
+    7 & R3 finds counter $=-1$, waits on \texttt{read\_phase}    & $-1$ \\
+    8 & W1 exits; broadcasts \texttt{read\_phase}, signals \texttt{write\_phase} & $0$ \\
+    9 & R3 re-acquires the mutex, re-tests, enters             & $1$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Structure of critical sections}
+
+The readers-writers solution shows the general shape of code that uses a
+mutex together with condition variables.  A critical section that may have to wait is written as
+\needspace{8\baselineskip}
+\begin{lstlisting}[language=C, numbers=none]
+Lock(mutex) {
+  while (!predicate_indicating_access_ok)
+    Wait(mutex, cond_var);
+  update state => update predicate;
+  Signal and/or Broadcast(
+      cond_var_with_correct_waiting_threads);
+} // unlock
+\end{lstlisting}
+\needspace{9\baselineskip}
+With a proxy variable, the operation on the resource is split out of the
+mutex into three parts:
+\begin{lstlisting}[language=C, numbers=none]
+// ENTER CRITICAL SECTION
+Lock(mutex) {
+  while (!predicate_for_access)
+    Wait(mutex, cond_var);
+  update predicate;
+} // unlock
+
+perform critical operation  // e.g. read/write shared file
+
+// EXIT CRITICAL SECTION
+Lock(mutex) {
+  update predicate;
+  Signal/Broadcast(cond_var);
+} // unlock
+\end{lstlisting}
+
+\needspace{6\baselineskip}
+\begin{keypoint}
+  A mutex by itself enforces one policy: one thread at a time.  Proxy
+  variables, updated in short critical sections, allow more complex access
+  policies---such as \enquote{any number of readers or one writer}---to be
+  built from the same mutex and condition variable primitives.
+\end{keypoint}
+
+\section{Common pitfalls and spurious wake-ups}
+\label{sec:l03-pitfalls}
+
+Several mistakes recur in programs that use mutexes and condition
+variables.\source{P2L2, common pitfalls, spurious wake-ups; Birrell
+\cite{birrell1989}.}
+\begin{itemize}
+  \item Losing track of which mutex and condition variables belong to which
+    resource.  Recording the association where the variables are declared,
+    e.g.\ \texttt{Mutex m1; // protects file1}, avoids this.
+  \item Forgetting to lock or to unlock, or locking and unlocking the wrong
+    mutex.  Some compilers and analysis tools can warn about such cases.
+  \item Using more than one mutex for the same resource.  If the readers of
+    a file lock \texttt{m1} and its writers lock \texttt{m2}, reads and
+    writes run concurrently.
+  \item Signalling the wrong condition variable.
+  \item Using \texttt{Signal} where \texttt{Broadcast} is needed.  Only one
+    thread is woken; the others may continue to wait indefinitely.
+  \item Assuming that notifications establish an execution order.  The
+    order in which signals are issued does not determine the order in
+    which the woken threads run; if priorities must be respected, another
+    mechanism is needed.
+\end{itemize}
+
+Two further problems deserve a closer look: spurious wake-ups, which cost
+performance, and deadlocks (\cref{sec:l03-deadlock}), which stop a program.
+
+\subsection{Spurious wake-ups}
+
+Some notifications wake threads that cannot use them.
+
+\begin{definition}[Spurious wake-up]
+  A \term{spurious wake-up}[スプリアスウェイクアップ] is a wake-up of a
+  thread that cannot make progress when it runs, so that the context switches
+  it causes are wasted.
+\end{definition}
+
+A common cause is signalling while the mutex is still held.  In the writer's exit code of \cref{sec:l03-rw} the
+broadcast is issued inside the critical section.  The woken readers leave the
+wait queue of \texttt{read\_phase}, but they cannot return from
+\texttt{Wait} before re-acquiring \texttt{counter\_mutex}, which the writer
+still holds; they are simply moved to the wait queue of the mutex
+(\cref{fig:l03-cv-queues}).\margin{POSIX also calls a return from wait
+without any signal a spurious wake-up; the \texttt{while} loop handles
+both.}
+
+\needspace{9\baselineskip}
+When the notifications do not depend on the shared state, the fix is to
+move them after the unlock:
+\begin{lstlisting}[language=C, numbers=none]
+// writer exit, notifications outside the mutex
+Lock(counter_mutex) {
+  resource_counter = 0;
+} // unlock
+Broadcast(read_phase);
+Signal(write_phase);
+\end{lstlisting}
+
+This is not always possible.  In the reader's exit code the decision whether
+to signal depends on \texttt{resource\_counter}, which may only be read while
+holding the mutex, so the \texttt{Signal} cannot simply be moved after the
+unlock; it can be moved only by recording the decision in a local variable
+inside the critical section and signalling afterwards.  Spurious wake-ups
+never affect correctness---the \texttt{while} loop sends a thread that cannot
+proceed back to waiting---only performance.
+
+\section{Deadlocks}
+\label{sec:l03-deadlock}
+
+Threads that hold some mutexes while requesting others can block each other
+permanently.\source{P2L2, deadlocks; OSTEP ch.~32; Silberschatz et al.\
+ch.~8.}
+
+\begin{definition}[Deadlock]
+  A \term{deadlock}[デッドロック] is a situation in which two or more
+  competing threads each wait for another to complete, but none of them
+  ever does.
+\end{definition}
+
+\needspace{10\baselineskip}
+The simplest case involves two threads and two mutexes.  Both threads need resources A and B to execute
+\texttt{foo(A, B)}, but they lock the protecting mutexes in opposite
+order:
+\begin{lstlisting}[language=C, numbers=none]
+// thread T1              // thread T2
+Lock(m_A) {               Lock(m_B) {
+  Lock(m_B) {               Lock(m_A) {
+    foo(A, B);                foo(A, B);
+  }                         }
+}                         }
+\end{lstlisting}
+If T1 acquires \texttt{m\_A} and T2 acquires \texttt{m\_B} before either
+reaches its second \texttt{Lock}, T1 blocks waiting for \texttt{m\_B} and T2
+blocks waiting for \texttt{m\_A}.  Neither can proceed, and neither will ever
+release the mutex the other needs.
+
+The situation is described by a \term{wait graph}[待ちグラフ], which has an
+edge from a thread waiting for a resource to the thread that owns the
+resource.  \Cref{fig:l03-wait-graph} shows the example with the mutexes drawn
+explicitly.  A deadlock corresponds to a cycle in the wait graph: for locks,
+which have a single owner, a cycle is both necessary and sufficient for a
+deadlock.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-wait-graph}
+  \caption{Wait graph of the deadlock: following the edges from T1 leads
+    through \texttt{m\_B}, T2 and \texttt{m\_A} back to T1.}
+  \label{fig:l03-wait-graph}
+\end{figure}
+
+\subsection{Avoiding the example deadlock}
+
+There are three ways to remove the deadlock from the example.
+\begin{enumerate}
+  \item \textbf{Unlock A before locking B.}  Holding only one mutex at a
+    time (fine-grained locking) makes a cycle impossible, but it does not
+    work here: the threads need both resources at once.
+  \item \textbf{Acquire all locks up front.}  A thread that obtains every
+    lock it needs at once before it starts---atomically, all or none,
+    releasing any it holds if one is unavailable---and releases them all at
+    the end cannot deadlock; the extreme case is a single \enquote{mega
+    lock} for all resources.  For many applications this is too restrictive, because it
+    limits parallelism.
+  \item \textbf{Maintain a lock order.}  If every thread acquires the
+    mutexes in the same order, first \texttt{m\_A} and then \texttt{m\_B},
+    the deadlock cannot occur.
+\end{enumerate}
+
+The third approach, \term{lock ordering}[ロック順序], works in general.
+Number the mutexes and require every thread to acquire them in increasing
+order.  Suppose threads $T_1,\dots,T_k$ formed a cycle in which each $T_j$
+waits for a mutex $M_j$ owned by the next thread, $T_{j+1}$ (with
+$T_{k+1}=T_1$).  Thread $T_{j+1}$ holds $M_j$ and requests $M_{j+1}$, so
+$M_{j+1}>M_j$.  The numbers would then increase strictly all the way
+around the cycle and yet return to $M_1$, which is impossible.  The
+difficulty is practical: in a large program with many mutexes it is hard to
+ensure that every code path respects the order, and tools that check lock
+acquisition orders help.
+
+\subsection{Handling deadlocks in general}
+
+Operating systems and applications can deal with deadlocks in three
+ways.
+\begin{description}
+  \item[Prevention] With \term{deadlock prevention}[デッドロック防止] a cycle
+    is never allowed to form.  Either the code is changed so that cycles are
+    impossible---a thread releases the locks it holds before it requests
+    another, or all threads follow a lock order---or every lock request is
+    checked at run time and delayed if granting it could later lead to a
+    cycle.  The run-time check is expensive, and it requires knowing in
+    advance which locks each thread may request; textbooks call this variant
+    \emph{deadlock avoidance} and reserve \emph{prevention} for the
+    structural rules.
+  \item[Detection and recovery] With
+    \term{deadlock detection and recovery}[デッドロックの検出と回復] the
+    system periodically analyses the wait graph for cycles and, when it
+    finds one, rolls back the execution of some of the threads involved.
+    Rollback requires enough saved state to restore an earlier point, and
+    it is impossible when the threads have already consumed external input
+    or produced external output.
+  \item[Doing nothing] The \term{ostrich algorithm}[ダチョウアルゴリズム]
+    ignores deadlocks altogether, on the grounds that they are rare and the
+    other approaches are expensive.  If a deadlock does occur, the system is
+    rebooted.
+\end{description}
+
+\begin{keypoint}
+  A deadlock is a cycle in the wait graph.  Acquiring all mutexes in one
+  global order prevents such cycles at no run-time cost; checking every
+  lock request at run time and recovery by rollback are general but
+  expensive.
+\end{keypoint}
+
+\section{Kernel-level and user-level threads}
+\label{sec:l03-klt-ult}
+
+Threads exist at two levels of the system.\source{P2L2, kernel vs.\
+user-level threads, multithreading models, scope of multithreading;
+Silberschatz et al.\ ch.~4--5.}  The operating system kernel can itself be
+multithreaded, and applications can create threads within their processes;
+the question is how the two kinds of threads relate to each other.
+\begin{definition}[Kernel-level and user-level threads]
+  A \term{kernel-level thread}[カーネルレベルスレッド] is a thread that is
+  visible to the kernel and managed by kernel components such as the CPU
+  scheduler.  A \term{user-level thread}[ユーザレベルスレッド] is a thread
+  as the application sees it, created through a user-level thread library;
+  depending on the multithreading model, the library manages it itself or
+  passes the operations to the kernel.
+\end{definition}
+
+Some kernel-level threads exist to support the user-level threads of
+applications; others run operating-system services such as daemons.  The
+CPU scheduler decides which kernel-level threads run on which CPUs.  A
+user-level thread, in turn, can execute only when it is associated with a
+kernel-level thread and the scheduler runs that kernel-level thread on a CPU.
+
+\subsection{Multithreading models}
+
+How user-level threads are associated with kernel-level threads is
+described by three multithreading models (\cref{fig:l03-mt-models}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-mt-models}
+  \caption{Multithreading models.  Circles are user-level threads, squares
+    kernel-level threads.  In the many-to-many model a bound thread keeps a
+    kernel-level thread of its own.}
+  \label{fig:l03-mt-models}
+\end{figure}
+
+\begin{description}
+  \item[One-to-one] In the \term{one-to-one model}[一対一モデル] every
+    user-level thread has its own kernel-level thread.  The kernel sees and
+    understands the threads, their synchronization and their blocking, and
+    can schedule them on several CPUs.  On the other hand every thread
+    operation goes through the kernel with a system call, which is
+    expensive; the application is limited by the policies and the maximum
+    number of threads that the kernel supports; and it is portable only to
+    kernels that provide this support.
+  \item[Many-to-one] In the \term{many-to-one model}[多対一モデル] all
+    user-level threads of a process are mapped onto a single kernel-level
+    thread, and a user-level thread library decides which user-level thread
+    runs on it at any time.  Thread management needs no system calls and
+    does not depend on kernel limits or policies, so it is fully portable.
+    But the kernel has no insight into the application's needs, and when
+    one user-level thread blocks on I/O, the kernel-level thread blocks, and
+    with it the whole process.
+  \item[Many-to-many] In the \term{many-to-many model}[多対多モデル] some
+    user-level threads are multiplexed onto a set of kernel-level threads
+    while others have a kernel-level thread to themselves.  A user-level
+    thread that is permanently associated with a kernel-level thread is a
+    \term{bound thread}[バウンドスレッド]; it can, for example, be given a
+    higher priority or better responsiveness.  Because the process has
+    several kernel-level threads, a user-level thread that blocks on I/O
+    blocks only its kernel-level thread; the other user-level threads
+    continue on the remaining ones.  The model combines the
+    advantages of the other two, at the price of coordination between the
+    user-level and the kernel-level thread managers.
+\end{description}
+
+
+\subsection{Scope of multithreading}
+
+Thread management happens at two levels, and the level determines the unit
+among which resources are shared.
+With \term{process scope}[プロセススコープ] the user-level thread library
+manages the threads within a single process and competes for resources only
+with the other threads of that process; the kernel does not see them
+individually.  With \term{system scope}[システムスコープ] threads are
+managed system-wide by the operating system's thread managers, in
+particular the CPU scheduler, and compete with all threads in the system.
+
+\begin{example}
+  Process P runs 6 user-level threads and process Q runs 2.  With process
+  scope the kernel sees only the two processes and, if it gives each an
+  equal share of the CPU, each thread of P receives
+  $\frac{1}{2}\cdot\frac{1}{6} = \frac{1}{12}$ of the CPU while each thread
+  of Q receives $\frac{1}{4}$.  With system scope the kernel sees all 8
+  threads; dividing the CPU equally among them gives every thread
+  $\frac{1}{8}$, so that P as a whole receives $\frac{3}{4}$.
+\end{example}
+
+\section{Multithreading patterns}
+\label{sec:l03-patterns}
+
+Multithreaded applications are commonly organized according to one of three
+patterns: boss-workers, pipeline and layered.\source{P2L2, multithreading
+patterns; thread pools: Silberschatz et al.\ ch.~4.}
+
+\subsection{Boss-workers}
+
+In the \term{boss-workers pattern}[ボス・ワーカーパターン] one boss thread
+accepts requests and assigns them to worker threads, and each worker
+performs an entire task.  Every request passes through the boss, so the
+throughput of the system is limited by the boss: if the boss spends time
+$t_{\mathrm{boss}}$ on each request, the system can accept at most
+$1/t_{\mathrm{boss}}$ requests per unit time, however many workers there
+are.  The boss must therefore do as little per request as possible.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-boss-workers}
+  \caption{Boss-workers with a work queue: the boss only enqueues requests;
+    every worker takes a request from the queue and performs the entire
+    task.}
+  \label{fig:l03-boss-workers}
+\end{figure}
+
+The boss can pass work to workers in two ways
+(\cref{fig:l03-boss-workers} shows the second).
+\begin{itemize}
+  \item \textbf{Directly signalling a specific worker.}  The workers need
+    no synchronization among themselves, but the boss must keep track of
+    what each worker is doing and which one is free.  This increases
+    $t_{\mathrm{boss}}$ and lowers throughput.
+  \item \textbf{Placing work in a queue,} from which the workers take it,
+    in a producer-consumer arrangement.  The boss need not know anything about
+    the workers, but the workers (and the boss) must synchronize their
+    access to the shared queue.  Because it keeps the boss's work small,
+    this option usually gives the better throughput.
+\end{itemize}
+
+Workers can be created on demand, when a request arrives, but creating a
+thread for every request adds latency.  More commonly the application uses
+a \term{thread pool}[スレッドプール], a set of workers created in advance.
+The pool can be static, or dynamic, growing---typically by several threads
+at a time rather than one---when the queue gets long and shrinking when
+workers are idle.
+
+The pattern is simple, but it requires thread pool management, and it
+ignores locality: the boss does not know which worker has just performed a
+similar task and would perform the next one with a hot cache.  A variant
+therefore specializes the workers for particular types of requests instead
+of making all workers equal.  Specialized workers have better locality, and
+the application can provide different quality of service by assigning more
+threads to more important request types; the cost is load balancing---it is
+harder to decide how many threads each type should receive.
+
+\subsection{Pipeline}
+
+In the \term{pipeline pattern}[パイプラインパターン] the task is divided
+into a sequence of subtasks, each performed by a thread (or a group of
+threads) dedicated to it.  Stages communicate through shared buffers, so
+several requests are processed concurrently, each in a different stage
+(\cref{fig:l03-pipeline}).  The
+throughput is determined by the weakest link, the slowest stage.  The
+remedy is to make each stage a thread pool and give slow stages more
+threads.  If stage $i$ takes time $t_i$ per request and has $p_i$ threads,
+the throughput is
+\begin{equation}
+  X \;=\; \min_i \frac{p_i}{t_i} .
+  \label{eq:l03-pipeline-throughput}
+\end{equation}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-pipeline}
+  \caption{A three-stage pipeline.  Stages exchange requests through
+    buffers; the slow second stage is a pool of three threads.}
+  \label{fig:l03-pipeline}
+\end{figure}
+The pipeline offers specialization and locality, since every thread
+repeatedly performs the same subtask; its costs are the effort of keeping
+the stages balanced and the synchronization overhead of the buffers.
+
+\begin{example}
+  A three-stage pipeline has stage times \SI{10}{\milli\second},
+  \SI{40}{\milli\second} and \SI{20}{\milli\second}.  With one thread per
+  stage, \cref{eq:l03-pipeline-throughput} gives
+  $\min(100, 25, 50) = 25$ requests per second, limited by stage~2.  With
+  four threads in stage~2 the throughput becomes $\min(100, 100, 50) = 50$
+  requests per second, and stage~3 is now the bottleneck.
+\end{example}
+
+\subsection{Layered}
+
+In the \term{layered pattern}[階層化パターン] related subtasks are grouped
+into layers, each served by its own threads, and every request passes down
+through all the layers and back up (\cref{fig:l03-layered}).  Like the
+pipeline it provides
+specialization, while being less fine-grained.  It is not suitable for all
+applications, and it requires synchronization between each layer and the
+layers above and below it.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l03-layered}
+  \caption{The layered pattern: each layer groups related subtasks and has
+    its own threads; a request passes down through the layers and back
+    up.}
+  \label{fig:l03-layered}
+\end{figure}
+
+\subsection{Comparing boss-workers and pipeline}
+
+Which pattern completes a batch of requests faster depends on the number of
+requests.  Consider $n$ requests, each needing the same total processing
+time.  A boss-workers design with $w$ workers and a negligible boss time
+$t_{\mathrm{boss}}$ completes requests in groups of $w$, each group taking
+the full task time $t$; a pipeline of $k$ equal stages of time $s$ completes
+the first request after $k$ stage times and then one request per stage time:
+\begin{equation}
+  T_{\mathrm{bw}}(n) = \Bigl\lceil \frac{n}{w} \Bigr\rceil\, t ,
+  \qquad
+  T_{\mathrm{pl}}(n) = (k + n - 1)\, s .
+  \label{eq:l03-batch-time}
+\end{equation}
+
+\begin{example}
+  Both designs use four threads, and a request needs
+  \SI{100}{\milli\second} of work.  The boss-workers design has one boss and
+  $w=3$ workers with $t=\SI{100}{\milli\second}$; the pipeline has $k=4$
+  stages of $s=\SI{25}{\milli\second}$.  Boss-workers completes 3 requests
+  per \SI{100}{\milli\second} and the full pipeline 4, so boss-workers can
+  lead only in small batches, where the pipeline's start-up time $k\,s$
+  still counts.  Even there the outcome depends on $n$, because
+  $T_{\mathrm{bw}}$ of \cref{eq:l03-batch-time} grows in steps: boss-workers
+  is faster for $n = 2$, 3 and 6, the pipeline for $n = 4$, 7 and 8, the
+  two tie for $n = 1$, 5 and 9, and for every $n \geq 10$ the pipeline
+  wins:
+  \begin{center}
+    \small
+    \begin{tabular}{@{}rrr@{}}
+      \toprule
+      $n$ & Boss-workers (\si{\milli\second}) & Pipeline (\si{\milli\second}) \\
+      \midrule
+       3 & 100 & 150 \\
+       4 & 200 & 175 \\
+       6 & 200 & 225 \\
+      12 & 400 & 375 \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+\end{example}
+
+\begin{keypoint}[Lesson summary]
+  A thread is an execution context that shares its process's address space;
+  threads provide parallelism, specialization and the use of idle time
+  (\cref{eq:l03-idle}) more cheaply than processes.  Shared data must be
+  protected with mutexes, and threads wait for conditions with condition
+  variables, always re-testing the condition in a \texttt{while} loop.
+  Proxy variables build richer policies such as readers-writers; signalling
+  outside the mutex avoids spurious wake-ups; a consistent lock order avoids
+  deadlocks.  User-level threads run on kernel-level threads according to
+  the one-to-one, many-to-one or many-to-many model, and applications are
+  structured as boss-workers, pipelines or layers.
+\end{keypoint}
+
+\end{document}

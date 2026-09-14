@@ -1,0 +1,20 @@
+% Boss-workers pattern with a shared work queue.
+% Usage: \input{figures/l03-boss-workers}   (width ~106 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  box/.style={draw, rounded corners=2pt, fill=ln-box, align=center, inner sep=1pt},
+  cell/.style={draw, fill=white, minimum width=3mm, minimum height=5mm, inner sep=0pt},
+  >={Stealth[length=1.6mm]},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted}]
+  \node[lab, anchor=south west] at (0,0.5) {\iflangja{要求}{requests}};
+  \node[box, minimum width=14mm, minimum height=7mm] (boss) at (26,0) {\iflangja{ボス}{boss}};
+  \draw[->] (0,0) -- (boss);
+  \foreach \i in {0,...,3} { \node[cell] at (46+3*\i,0) {}; }
+  \node[lab, anchor=north] at (50.5,-3) {\iflangja{キュー}{queue}};
+  \draw[->] (boss) -- (44.5,0);
+  \foreach \y/\n in {8/1,0/2,-8/3} {
+    \node[box, minimum width=18mm, minimum height=6mm] (w\n) at (82,\y) {\iflangja{ワーカー}{worker} \n};
+    \draw[->] (56.5,0) -- (w\n.west);
+    \draw[->] (w\n.east) -- ++(12,0);
+  }
+  \node[lab, anchor=south west] at (93,8.5) {\iflangja{応答}{responses}};
+\end{tikzpicture}

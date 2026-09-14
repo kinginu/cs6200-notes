@@ -1,0 +1,25 @@
+% Life of a thread around a mutex m and a condition variable c.
+% Usage: \input{figures/l03-cv-queues}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  st/.style={draw, rounded corners=2pt, fill=ln-box, align=center,
+             minimum height=11mm, inner sep=2pt},
+  >={Stealth[length=1.8mm]}, lab/.style={font=\scriptsize\sffamily, align=center}]
+  \node[st, minimum width=26mm, text width=24mm] (mq) at (13,0)
+    {\iflangja{m の待ちキュー}{wait queue of mutex m}};
+  \node[st, minimum width=28mm, text width=26mm, fill=white, thick] (cs) at (58,0)
+    {\iflangja{クリティカルセクション\\（m を保持）}{critical section\\(owns m)}};
+  \node[st, minimum width=26mm, text width=24mm] (cq) at (103,0)
+    {\iflangja{c の待ちキュー}{wait queue of condition c}};
+  \node[font=\footnotesize\ttfamily, anchor=south] (lk) at (35,21) {Lock(m)};
+  \draw (lk.south) -- (35,16);
+  \draw[->] (35,16) -| node[lab, pos=0.4, above] {\iflangja{m は使用中}{m held}} (mq.north);
+  \draw[->] (35,16) -| node[lab, pos=0.5, above] {\iflangja{m は空き}{m free}} (cs.north);
+  \draw[->] (mq) -- node[lab, above] {\iflangja{m を獲得}{acquire m}} (cs);
+  \draw[->] (cs) -- node[lab, above] {\texttt{Wait(m,c)}}
+                    node[lab, below] {\iflangja{m を解放}{releases m}} (cq);
+  \draw[->] ([xshift=8mm]cs.north) |- node[lab, pos=0.75, above] {\texttt{Unlock(m)}} (94,16);
+  % signalled: re-acquire m directly if it is free, otherwise queue on m
+  \draw (cq.south) -- node[lab, left, pos=0.55] {\texttt{Signal(c)} / \texttt{Broadcast(c)}} (103,-15);
+  \draw[->] (103,-15) -| node[lab, pos=0.75, left] {\iflangja{m は空き}{m free}} ([xshift=8mm]cs.south);
+  \draw[->] (103,-15) -- (103,-21) -| node[lab, pos=0.25, below] {\iflangja{m は使用中}{m held}} (mq.south);
+\end{tikzpicture}

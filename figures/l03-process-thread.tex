@@ -1,0 +1,31 @@
+% Single-threaded vs. multithreaded process: shared and per-thread state.
+% Usage: \input{figures/l03-process-thread}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  sh/.style={draw, fill=ln-box, minimum height=6mm, inner sep=0pt, anchor=south west},
+  pt/.style={draw, fill=white, minimum height=6mm, minimum width=18mm,
+             inner sep=0pt, anchor=south west},
+  run/.style={-{Stealth[length=2mm]}, very thick, ln-accent},
+  frame/.style={draw=ln-rule, rounded corners=2pt},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=south}]
+  % ---- single-threaded process
+  \draw[frame] (-2,-12) rectangle (44,22);
+  \node[ttl] at (21,23) {\iflangja{シングルスレッドプロセス}{single-threaded process}};
+  \node[sh, minimum width=14mm] at (0,14)  {\iflangja{コード}{code}};
+  \node[sh, minimum width=14mm] at (14,14) {\iflangja{データ}{data}};
+  \node[sh, minimum width=14mm] at (28,14) {\iflangja{ファイル}{files}};
+  \node[pt] at (12,7) {\iflangja{レジスタ}{registers}};
+  \node[pt] at (12,0) {\iflangja{スタック}{stack}};
+  \draw[run] (21,-1.5) -- (21,-10);
+  \node[anchor=west, text=ln-accent] at (22.5,-6) {\iflangja{スレッド}{thread}};
+  % ---- multithreaded process
+  \draw[frame] (52,-12) rectangle (116,22);
+  \node[ttl] at (84,23) {\iflangja{マルチスレッドプロセス}{multithreaded process}};
+  \node[sh, minimum width=20mm] at (54,14) {\iflangja{コード}{code}};
+  \node[sh, minimum width=20mm] at (74,14) {\iflangja{データ}{data}};
+  \node[sh, minimum width=20mm] at (94,14) {\iflangja{ファイル}{files}};
+  \foreach \x in {54,75,96} {
+    \node[pt] at (\x,7) {\iflangja{レジスタ}{registers}};
+    \node[pt] at (\x,0) {\iflangja{スタック}{stack}};
+    \draw[run] (\x+9,-1.5) -- (\x+9,-10);
+  }
+\end{tikzpicture}

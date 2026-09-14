@@ -1,0 +1,17 @@
+% Layered pattern: a request passes down through the layers and back up.
+% Usage: \input{figures/l03-layered}   (width ~84 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  box/.style={draw, rounded corners=2pt, fill=ln-box, align=center, inner sep=1pt},
+  th/.style={draw, circle, fill=white, minimum size=4mm, inner sep=0pt},
+  >={Stealth[length=1.6mm]},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted}]
+  \foreach \y/\n in {0/1,-8/2,-16/3} {
+    \node[box, minimum width=52mm, minimum height=6.5mm] at (42,\y) {};
+    \node[font=\scriptsize\sffamily, anchor=west] at (18,\y) {\iflangja{層}{layer} \n};
+    \foreach \x in {44,54,64} { \node[th] at (\x,\y) {}; }
+  }
+  \draw[->] (12,5) -- (12,-23);
+  \draw[->] (12,-23) -- (72,-23) -- (72,5);
+  \node[lab, anchor=east] at (11,-8) {\iflangja{要求}{request}};
+  \node[lab, anchor=west] at (73,-8) {\iflangja{応答}{response}};
+\end{tikzpicture}

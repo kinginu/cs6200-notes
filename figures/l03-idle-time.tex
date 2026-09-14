@@ -1,0 +1,23 @@
+% Hiding I/O idle time on a single CPU by switching to another thread.
+% Usage: \input{figures/l03-idle-time}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  ev/.style={-{Stealth[length=1.6mm]}},
+  dim/.style={{Bar[width=2mm]}-{Bar[width=2mm]}, thin},
+  cs/.style={draw, fill=ln-accent!55}]
+  \node[anchor=east] at (-1,3) {CPU};
+  \draw[fill=ln-box] (0,0) rectangle (28,6);   \node at (14,3) {T1};
+  \draw[cs]          (28,0) rectangle (33,6);
+  \draw[fill=white]  (33,0) rectangle (83,6);  \node at (58,3) {T2};
+  \draw[cs]          (83,0) rectangle (88,6);
+  \draw[fill=ln-box] (88,0) rectangle (110,6); \node at (99,3) {T1};
+  % events
+  \draw[ev] (28,13) node[above] {\iflangja{T1 が I/O でブロック}{T1 blocks on I/O}} -- (28,7);
+  \draw[ev] (83,13) node[above] {\iflangja{I/O 完了}{I/O completes}} -- (83,7);
+  % dimensions
+  \draw[dim] (28,-3) -- (33,-3);
+  \draw[dim] (83,-3) -- (88,-3);
+  \node[below] at (30.5,-3.5) {$t_{\mathrm{ctx}}$};
+  \node[below] at (85.5,-3.5) {$t_{\mathrm{ctx}}$};
+  \draw[dim] (28,-11) -- (83,-11);
+  \node[below] at (55.5,-11.5) {$t_{\mathrm{idle}}$};
+\end{tikzpicture}

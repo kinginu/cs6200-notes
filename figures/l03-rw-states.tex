@@ -1,0 +1,20 @@
+% States of the shared resource in the readers-writers solution.
+% Usage: \input{figures/l03-rw-states}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  st/.style={draw, rounded corners=5pt, fill=ln-box, align=center,
+             minimum width=26mm, minimum height=11mm, inner sep=2pt},
+  >={Stealth[length=1.8mm]}, lab/.style={font=\scriptsize\sffamily, align=center}]
+  \node[st] (wr) at (13,0)  {\iflangja{書き込み中}{writing}\\ \texttt{counter} $=-1$};
+  \node[st, fill=white] (fr) at (58,0)  {\iflangja{空き}{free}\\ \texttt{counter} $=0$};
+  \node[st] (rd) at (103,0) {\iflangja{読み出し中}{reading}\\ \texttt{counter} $=n>0$};
+  \draw[->] (fr.north west) to[bend right=30]
+    node[lab, above] {\iflangja{ライタが入る}{writer enters}} (wr.north east);
+  \draw[->] (wr.south east) to[bend right=30]
+    node[lab, below] {\iflangja{ライタが出る}{writer exits}} (fr.south west);
+  \draw[->] (fr.north east) to[bend left=30]
+    node[lab, above] {\iflangja{リーダが入る}{reader enters}} (rd.north west);
+  \draw[->] (rd.south west) to[bend left=30]
+    node[lab, below] {\iflangja{最後のリーダが出る}{last reader exits}} (fr.south east);
+  \path[->] (rd) edge[loop above, min distance=7mm, in=60, out=120]
+    node[lab, above] {\iflangja{他のリーダが入る/出る}{another reader enters or exits}} (rd);
+\end{tikzpicture}

@@ -1,0 +1,16 @@
+% Wait graph of the two-thread, two-lock deadlock.
+% Usage: \input{figures/l03-wait-graph}   (width ~80 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  th/.style={draw, circle, fill=ln-box, minimum size=9mm, inner sep=0pt},
+  lk/.style={draw, rectangle, fill=white, thick, minimum size=7mm, inner sep=0pt},
+  >={Stealth[length=1.8mm]}, lab/.style={font=\scriptsize\sffamily},
+  holds/.style={->, thick}, waits/.style={->, thick, dashed, ln-caution}]
+  \node[th] (t1) at (0,0)   {T1};
+  \node[th] (t2) at (60,0)  {T2};
+  \node[lk] (a)  at (30,14) {\texttt{m\_A}};
+  \node[lk] (b)  at (30,-14) {\texttt{m\_B}};
+  \draw[holds] (a) -- node[lab, above left]  {\iflangja{T1 が保持}{held by T1}} (t1);
+  \draw[waits] (t1) -- node[lab, below left] {\iflangja{T1 が待つ}{T1 waits for}} (b);
+  \draw[holds] (b) -- node[lab, below right] {\iflangja{T2 が保持}{held by T2}} (t2);
+  \draw[waits] (t2) -- node[lab, above right] {\iflangja{T2 が待つ}{T2 waits for}} (a);
+\end{tikzpicture}
