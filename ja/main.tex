@@ -3,12 +3,28 @@
 \documentclass[ja]{lnotes}
 
 \addbibresource{\subfix{../references.bib}}
+\addbibresource{\subfix{../bib/01-introduction-to-operating-systems.bib}}
+\addbibresource{\subfix{../bib/02-processes-and-process-management.bib}}
+\addbibresource{\subfix{../bib/03-threads-and-concurrency.bib}}
+\addbibresource{\subfix{../bib/04-pthreads.bib}}
+\addbibresource{\subfix{../bib/05-thread-design-considerations.bib}}
+\addbibresource{\subfix{../bib/06-thread-performance-considerations.bib}}
+\addbibresource{\subfix{../bib/07-scheduling.bib}}
+\addbibresource{\subfix{../bib/08-memory-management.bib}}
+\addbibresource{\subfix{../bib/09-inter-process-communication.bib}}
+\addbibresource{\subfix{../bib/10-synchronization-constructs.bib}}
+\addbibresource{\subfix{../bib/11-io-management.bib}}
+\addbibresource{\subfix{../bib/12-virtualization.bib}}
+\addbibresource{\subfix{../bib/13-remote-procedure-calls.bib}}
+\addbibresource{\subfix{../bib/14-distributed-file-systems.bib}}
+\addbibresource{\subfix{../bib/15-distributed-shared-memory.bib}}
+\addbibresource{\subfix{../bib/16-datacenter-technologies.bib}}
 
-\title{講義名}
+\title{Graduate Introduction to Operating Systems}
 \subtitle{講義ノート}
-\author{氏名}
-\date{\today}
-\subject{COURSE-0000 --- 所属}
+\author{kinginu}
+\date{2026 年秋学期}
+\subject{CS 6200 --- Georgia Tech OMSCS}
 
 \begin{document}
 \frontmatter
@@ -16,8 +32,26 @@
 \tableofcontents
 
 \mainmatter
-\subfile{lessons/01-using-this-template}
-\subfile{lessons/02-lesson-skeleton}
+\part{導入}
+\subfile{lessons/01-introduction-to-operating-systems}
+\part{プロセスとスレッド}
+\subfile{lessons/02-processes-and-process-management}
+\subfile{lessons/03-threads-and-concurrency}
+\subfile{lessons/04-pthreads}
+\subfile{lessons/05-thread-design-considerations}
+\subfile{lessons/06-thread-performance-considerations}
+\part{資源管理と同期}
+\subfile{lessons/07-scheduling}
+\subfile{lessons/08-memory-management}
+\subfile{lessons/09-inter-process-communication}
+\subfile{lessons/10-synchronization-constructs}
+\subfile{lessons/11-io-management}
+\subfile{lessons/12-virtualization}
+\part{分散システム}
+\subfile{lessons/13-remote-procedure-calls}
+\subfile{lessons/14-distributed-file-systems}
+\subfile{lessons/15-distributed-shared-memory}
+\subfile{lessons/16-datacenter-technologies}
 
 \backmatter
 \printbibliography

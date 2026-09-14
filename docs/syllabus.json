@@ -1,0 +1,124 @@
+{
+ "course": "CS 6200 Graduate Introduction to Operating Systems",
+ "source": "Lesson structure of the Georgia Tech / Udacity course (ud923, P1L2-P4L4). Video-level titles are not recorded here; P1L1 (course overview) is logistics and has no chapter.",
+ "parts": [
+  {
+   "part": 1,
+   "title": "Introduction",
+   "first": 1
+  },
+  {
+   "part": 2,
+   "title": "Processes and Threads",
+   "first": 2
+  },
+  {
+   "part": 3,
+   "title": "Resource Management and Synchronization",
+   "first": 7
+  },
+  {
+   "part": 4,
+   "title": "Distributed Systems",
+   "first": 13
+  }
+ ],
+ "lessons": [
+  {
+   "number": 1,
+   "slug": "01-introduction-to-operating-systems",
+   "title": "Introduction to Operating Systems",
+   "lecture": "P1L2"
+  },
+  {
+   "number": 2,
+   "slug": "02-processes-and-process-management",
+   "title": "Processes and Process Management",
+   "lecture": "P2L1"
+  },
+  {
+   "number": 3,
+   "slug": "03-threads-and-concurrency",
+   "title": "Threads and Concurrency",
+   "lecture": "P2L2"
+  },
+  {
+   "number": 4,
+   "slug": "04-pthreads",
+   "title": "Threads Case Study: PThreads",
+   "lecture": "P2L3"
+  },
+  {
+   "number": 5,
+   "slug": "05-thread-design-considerations",
+   "title": "Thread Design Considerations",
+   "lecture": "P2L4"
+  },
+  {
+   "number": 6,
+   "slug": "06-thread-performance-considerations",
+   "title": "Thread Performance Considerations",
+   "lecture": "P2L5"
+  },
+  {
+   "number": 7,
+   "slug": "07-scheduling",
+   "title": "Scheduling",
+   "lecture": "P3L1"
+  },
+  {
+   "number": 8,
+   "slug": "08-memory-management",
+   "title": "Memory Management",
+   "lecture": "P3L2"
+  },
+  {
+   "number": 9,
+   "slug": "09-inter-process-communication",
+   "title": "Inter-Process Communication",
+   "lecture": "P3L3"
+  },
+  {
+   "number": 10,
+   "slug": "10-synchronization-constructs",
+   "title": "Synchronization Constructs",
+   "lecture": "P3L4"
+  },
+  {
+   "number": 11,
+   "slug": "11-io-management",
+   "title": "I/O Management",
+   "lecture": "P3L5"
+  },
+  {
+   "number": 12,
+   "slug": "12-virtualization",
+   "title": "Virtualization",
+   "lecture": "P3L6"
+  },
+  {
+   "number": 13,
+   "slug": "13-remote-procedure-calls",
+   "title": "Remote Procedure Calls",
+   "lecture": "P4L1"
+  },
+  {
+   "number": 14,
+   "slug": "14-distributed-file-systems",
+   "title": "Distributed File Systems",
+   "lecture": "P4L2"
+  },
+  {
+   "number": 15,
+   "slug": "15-distributed-shared-memory",
+   "title": "Distributed Shared Memory",
+   "lecture": "P4L3"
+  },
+  {
+   "number": 16,
+   "slug": "16-datacenter-technologies",
+   "title": "Datacenter Technologies",
+   "lecture": "P4L4"
+  }
+ ]
+}
