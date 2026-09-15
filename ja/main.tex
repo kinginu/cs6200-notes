@@ -32,26 +32,28 @@
 \tableofcontents
 
 \mainmatter
+% Chapters are included only once they exist, so the book builds while
+% lessons are still being written.
 \part{導入}
-\subfile{lessons/01-introduction-to-operating-systems}
+\IfFileExists{lessons/01-introduction-to-operating-systems.tex}{\subfile{lessons/01-introduction-to-operating-systems}}{}
 \part{プロセスとスレッド}
-\subfile{lessons/02-processes-and-process-management}
-\subfile{lessons/03-threads-and-concurrency}
-\subfile{lessons/04-pthreads}
-\subfile{lessons/05-thread-design-considerations}
-\subfile{lessons/06-thread-performance-considerations}
+\IfFileExists{lessons/02-processes-and-process-management.tex}{\subfile{lessons/02-processes-and-process-management}}{}
+\IfFileExists{lessons/03-threads-and-concurrency.tex}{\subfile{lessons/03-threads-and-concurrency}}{}
+\IfFileExists{lessons/04-pthreads.tex}{\subfile{lessons/04-pthreads}}{}
+\IfFileExists{lessons/05-thread-design-considerations.tex}{\subfile{lessons/05-thread-design-considerations}}{}
+\IfFileExists{lessons/06-thread-performance-considerations.tex}{\subfile{lessons/06-thread-performance-considerations}}{}
 \part{資源管理と同期}
-\subfile{lessons/07-scheduling}
-\subfile{lessons/08-memory-management}
-\subfile{lessons/09-inter-process-communication}
-\subfile{lessons/10-synchronization-constructs}
-\subfile{lessons/11-io-management}
-\subfile{lessons/12-virtualization}
+\IfFileExists{lessons/07-scheduling.tex}{\subfile{lessons/07-scheduling}}{}
+\IfFileExists{lessons/08-memory-management.tex}{\subfile{lessons/08-memory-management}}{}
+\IfFileExists{lessons/09-inter-process-communication.tex}{\subfile{lessons/09-inter-process-communication}}{}
+\IfFileExists{lessons/10-synchronization-constructs.tex}{\subfile{lessons/10-synchronization-constructs}}{}
+\IfFileExists{lessons/11-io-management.tex}{\subfile{lessons/11-io-management}}{}
+\IfFileExists{lessons/12-virtualization.tex}{\subfile{lessons/12-virtualization}}{}
 \part{分散システム}
-\subfile{lessons/13-remote-procedure-calls}
-\subfile{lessons/14-distributed-file-systems}
-\subfile{lessons/15-distributed-shared-memory}
-\subfile{lessons/16-datacenter-technologies}
+\IfFileExists{lessons/13-remote-procedure-calls.tex}{\subfile{lessons/13-remote-procedure-calls}}{}
+\IfFileExists{lessons/14-distributed-file-systems.tex}{\subfile{lessons/14-distributed-file-systems}}{}
+\IfFileExists{lessons/15-distributed-shared-memory.tex}{\subfile{lessons/15-distributed-shared-memory}}{}
+\IfFileExists{lessons/16-datacenter-technologies.tex}{\subfile{lessons/16-datacenter-technologies}}{}
 
 \backmatter
 \printbibliography
