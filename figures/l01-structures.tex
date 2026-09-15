@@ -1,0 +1,66 @@
+% Monolithic, modular and microkernel organization of an operating system.
+% Usage: \input{figures/l01-structures}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  app/.style={draw, rounded corners=1pt, fill=white, minimum height=5mm,
+              minimum width=10mm, inner sep=0.5pt},
+  row/.style={draw, fill=white, minimum height=4.6mm, minimum width=32mm,
+              inner sep=0.5pt},
+  mod/.style={draw, fill=white, minimum height=8mm, minimum width=10mm,
+              inner sep=0.5pt, align=center},
+  srv/.style={draw, rounded corners=1pt, fill=white, minimum height=8mm,
+              minimum width=10.6mm, inner sep=0.5pt, align=center},
+  kern/.style={draw=ln-accent, thick, fill=ln-box, rounded corners=2pt},
+  hw/.style={draw, fill=white, minimum height=5mm, minimum width=36mm,
+             inner sep=0.5pt},
+  bnd/.style={dashed, ln-rule, thick},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=south},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  >={Stealth[length=1.4mm]}]
+  % ================= monolithic
+  \node[ttl] at (18,52) {\iflangja{モノリシック}{monolithic}};
+  \foreach \x in {6,18,30} \node[app] at (\x,45) {app};
+  \draw[bnd] (0,39.5) -- (36,39.5);
+  \draw[kern] (0,7) rectangle (36,38);
+  \foreach \y/\t in {35.25/{\iflangja{プロセス・スレッド}{processes, threads}},
+                     30.15/{\iflangja{スケジューリング}{scheduling}},
+                     25.05/{\iflangja{メモリ管理}{memory management}},
+                     19.95/{\iflangja{デバイスドライバ}{device drivers}},
+                     14.85/{\iflangja{FS（逐次アクセス用）}{file system (sequential)}},
+                     9.75/{\iflangja{FS（ランダムアクセス用）}{file system (random)}}} {
+    \node[row] at (18,\y) {\t};
+  }
+  \node[hw] at (18,2.5) {\iflangja{ハードウェア}{hardware}};
+  % ================= modular
+  \begin{scope}[xshift=40mm]
+  \node[ttl] at (18,52) {\iflangja{モジュール型}{modular}};
+  \foreach \x in {6,18,30} \node[app] at (\x,45) {app};
+  \draw[bnd] (0,39.5) -- (36,39.5);
+  \draw[kern] (0,7) rectangle (36,38);
+  \node[row, minimum height=9mm, align=center] at (18,31.5)
+    {\iflangja{基本サービス\\と API}{basic services\\and APIs}};
+  \draw[very thick] (1.5,25.5) -- (34.5,25.5);
+  \foreach \x/\t in {7/{FS},
+                     18/{\iflangja{スケ\\ジューラ}{sched-\\uler}},
+                     29/{\iflangja{ドラ\\イバ}{driver}}} {
+    \node[mod] at (\x,19) {\t};
+    \draw[very thick] (\x,23) -- (\x,25.5);
+  }
+  \node[lab, align=center] at (18,10.5)
+    {\iflangja{モジュールを動的に追加}{modules loaded\\dynamically}};
+  \node[hw] at (18,2.5) {\iflangja{ハードウェア}{hardware}};
+  \end{scope}
+  % ================= microkernel
+  \begin{scope}[xshift=80mm]
+  \node[ttl] at (18,52) {\iflangja{マイクロカーネル}{microkernel}};
+  \foreach \x in {6,18,30} \node[app] at (\x,45) {app};
+  \node[srv] (fs) at (6,33)  {\iflangja{ファイル\\システム}{file\\system}};
+  \node[srv] (dd) at (18,33) {\iflangja{デバイス\\ドライバ}{device\\driver}};
+  \node[srv] (db) at (30,33) {\iflangja{データ\\ベース}{data-\\base}};
+  \draw[bnd] (0,19.5) -- (36,19.5);
+  \draw[kern] (0,7) rectangle (36,18);
+  \node[align=center] at (18,12.5)
+    {\iflangja{アドレス空間，\\スレッド，IPC}{address spaces,\\threads, IPC}};
+  \foreach \n in {fs,dd,db} \draw[<->, ln-accent] (\n.south) -- ++(0,-10);
+  \node[hw] at (18,2.5) {\iflangja{ハードウェア}{hardware}};
+  \end{scope}
+\end{tikzpicture}

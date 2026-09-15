@@ -1,0 +1,938 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Thread Design Considerations}
+\lessoninfo{
+  video={P2L4},
+  textbook={OSTEP \cite{ostep} ch.~6, 26--28; Silberschatz et al.\ \cite{silberschatz2018} ch.~4; Kerrisk \cite{kerrisk2010} ch.~20--22},
+  keywords={hard process state, light process state, lightweight process, red zone, adaptive mutex, reaper thread, interrupt handler, signal handler, signal mask, top half, bottom half, real-time signal, task, NPTL},
+}
+
+Lesson~3 introduced kernel-level and user-level threads and the models that
+map one kind onto the other, and Lesson~4 the POSIX threads interface
+through which applications use them.  This lesson looks inside the
+implementation: which data structures the kernel and a user-level thread
+library keep, how the two levels coordinate their decisions, and how
+interrupts and signals interact with multithreading.  The presentation
+follows two papers on the multithreaded kernel of SunOS~5.0
+\cite{eykholt1992} and its user-level thread library \cite{stein1992}, and
+closes with the way Linux represents threads.
+
+\section{Thread data structures}
+\label{sec:l05-structures}
+
+Supporting threads requires data structures at two levels: in the kernel
+for kernel-level threads, and in the user-level library for user-level
+threads.\source{P2L4, thread data structures: single CPU, at scale; hard
+and light process state; rationale for data structures; Eykholt et al.\
+\cite{eykholt1992}; OSTEP ch.~26.}  Consider first a process whose
+user-level threads all run on a single kernel-level thread (the many-to-one
+model of Lesson~3).  The kernel describes the process by its PCB, which
+holds the virtual address mappings together with the execution context of
+the kernel-level thread: its registers, stack pointer and stack.  The
+user-level library keeps a data structure for each user-level thread, with
+the thread's identifier, its saved registers and its stack.  By loading one
+of these contexts onto the kernel-level thread, the library decides which
+user-level thread runs.
+
+When a process has several kernel-level threads, one PCB can no longer
+hold everything, because every kernel-level thread needs its own execution
+context.  Replicating the complete PCB for each of them would also
+replicate the virtual address mappings, which are the same for all threads
+of the process.  The kernel therefore keeps a separate kernel-level thread
+data structure with the registers, stack pointer and stack of each
+kernel-level thread, and the PCB keeps the information that is common to
+the process.
+
+With many processes, many threads and several CPUs, the relationships
+among these structures must be recorded as well
+(\cref{fig:l05-structures}):
+\begin{itemize}
+  \item the user-level library tracks all user-level threads of its process
+    and the kernel-level threads on which it can run them;
+  \item the PCB tracks the kernel-level threads that execute on behalf of
+    the process;
+  \item each kernel-level thread points to the PCB of its process, so that
+    the kernel finds the address space when it runs the thread;
+  \item a data structure for each CPU records, among other things, the
+    thread that currently runs on it, and a running kernel-level thread
+    points to its CPU.
+\end{itemize}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l05-structures}
+  \caption{Thread data structures at scale.  The PCB of a process keeps the
+    state shared by all its threads and a list of its kernel-level threads
+    (KLTs); each KLT keeps its own state and, while it runs, is linked to a
+    CPU.  Dashed lines show which user-level threads (ULTs) the library has
+    currently placed on which KLTs.  Back pointers from KLTs to PCBs are
+    omitted.}
+  \label{fig:l05-structures}
+\end{figure}
+
+\subsection{Hard and light process state}
+
+When the kernel switches between two kernel-level threads of the same
+process, the virtual address mappings remain valid, and only the state
+that belongs to the individual thread has to be saved and restored.  Some
+of that state concerns the user-level threads: which signals are masked
+and the arguments of a system call in progress belong to the user-level
+thread that currently runs on a kernel-level thread, not to the whole
+process.  The state of a process thus divides into two parts.
+
+\begin{definition}[Hard and light process state]
+  The \term{hard process state}[ハードプロセス状態] is the part of the
+  state of a process that is relevant to all user-level threads executing
+  within it, such as the virtual address mappings.  The
+  \term{light process state}[ライトプロセス状態] is the part that is
+  relevant only to the subset of user-level threads currently associated
+  with a particular kernel-level thread, such as the signal mask and the
+  system call arguments.
+\end{definition}
+
+\subsection{Why several data structures}
+
+A single PCB and a set of smaller linked structures lead to different
+costs (\cref{tab:l05-rationale}).  The single PCB is a large contiguous
+structure, private to every execution context even where its contents are
+shared; it is saved and restored in full on every context switch, and any
+change of state updates it.  Smaller structures that refer to one another
+through pointers keep shared state once, let a context switch save and
+restore only what changes, and let the user-level library update the part
+of the state it manages without involving the kernel.  The split improves
+scalability, overhead, performance and flexibility at once.
+
+\begin{table}[htbp]
+  \centering
+  \caption{A single PCB compared with several smaller data structures.}
+  \label{tab:l05-rationale}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.19\linewidth}>{\raggedright\arraybackslash}p{0.37\linewidth}>{\raggedright\arraybackslash}p{0.37\linewidth}@{}}
+    \toprule
+    & Single PCB & Several data structures \\
+    \midrule
+    Structure      & one large, contiguous structure
+                   & small structures linked by pointers \\
+    Sharing        & private to each execution context
+                   & shared state kept once \\
+    Context switch & saved and restored in full
+                   & only the part that changes \\
+    Updates        & every change modifies the PCB
+                   & the library updates only its part \\
+    \midrule
+    Consequences   & poor scalability, high overhead, lower performance,
+                     little flexibility
+                   & better scalability, lower overhead, higher
+                     performance, more flexibility \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Threads in SunOS~5.0}
+\label{sec:l05-solaris}
+
+SunOS~5.0, the kernel of Solaris~2, was designed for shared-memory
+multiprocessors, and the kernel itself is multithreaded.\source{P2L4,
+SunOS~5.0 threading model, user-level thread data structures, kernel-level
+data structures; Eykholt et al.\ \cite{eykholt1992}; Stein and Shah
+\cite{stein1992}.}  Its threading model (\cref{fig:l05-sunos}) has the
+following elements:
+\begin{itemize}
+  \item processes may be single-threaded or multithreaded; the user-level
+    library supports both the many-to-many and the one-to-one model,
+    including bound threads;
+  \item every kernel-level thread that executes user-level threads is
+    associated with a lightweight process;
+  \item other kernel-level threads have no lightweight process; they
+    perform work of the kernel itself;
+  \item the kernel-level scheduler schedules the kernel-level threads onto
+    the CPUs.
+\end{itemize}
+
+\begin{definition}[Lightweight process]
+  In SunOS~5.0 a \term{lightweight process}[軽量プロセス]%
+  \index{LWP|see{lightweight process}} (LWP) is the kernel data structure
+  associated with a kernel-level thread that executes user-level threads;
+  it holds the light process state of that execution context.  To the
+  user-level library an LWP represents a virtual CPU onto which it
+  schedules user-level threads.
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l05-sunos}
+  \caption{The SunOS~5.0 threading model.  Each kernel-level thread that
+    runs user-level threads has an LWP; the two kernel-level threads on the
+    right perform kernel work and have none.  The kernel-level scheduler
+    places kernel-level threads on CPUs.}
+  \label{fig:l05-sunos}
+\end{figure}
+
+\subsection{User-level thread data structures}
+
+When the library of Stein and Shah creates a thread, it returns a thread
+identifier.  The identifier is not a pointer to the thread data structure
+but an index into a table of pointers to the structures.  The indirection
+protects against stale identifiers: if a thread has exited and the memory
+of its structure has been reused, a direct pointer would silently refer to
+unrelated data, whereas the table entry can record the state of the thread
+so that the library returns a meaningful error.
+
+The thread data structure contains the execution context (the registers,
+including the stack pointer), the signal mask, the priority, the
+\emph{thread-local storage}, and the stack.  Thread-local storage holds the
+variables that the thread functions declare as private to each thread;
+they are known at compile time, so the compiler can reserve space for them
+in every thread.  The stack size is set by a library default or by the
+application.  Since the size of all parts is known when the thread is
+created, the library can allocate the structures of successive threads
+next to one another in contiguous memory, which gives good locality.
+
+Contiguous allocation has a danger.  The library does not control how far
+a stack grows, and the operating system does not know about user-level
+threads at all.  A thread whose stack overflows therefore writes into the
+data structure of the neighbouring thread, and the damage shows only when
+that other thread runs and fails---far from the cause.
+
+\begin{definition}[Red zone]
+  A \term{red zone}[レッドゾーン] is a region of virtual address space
+  between a thread's stack and the neighbouring thread's data structure
+  that is not mapped to memory, so that any access to it causes a fault.
+\end{definition}
+
+A stack that grows into its red zone causes a fault at once, in the thread
+whose stack overflowed, which makes the error easy to diagnose
+(\cref{fig:l05-ult-layout}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l05-ult-layout}
+  \caption{User-level thread data structures allocated contiguously.  The
+    thread identifier indexes a table of pointers to the structures.  An
+    overflow of the stack of T2 runs into the red zone before it can reach
+    the structure of T1.}
+  \label{fig:l05-ult-layout}
+\end{figure}
+
+\begin{example}
+  A library gives each thread a block of \SI{64}{\kibi\byte}: a
+  \SI{4}{\kibi\byte} red zone at the bottom, a \SI{56}{\kibi\byte} stack,
+  and \SI{4}{\kibi\byte} at the top for the thread structure and its
+  thread-local storage.  Measured in \si{\kibi\byte} from the start of the
+  region, block $k$ occupies $[64k, 64k+64)$.  Thread~3 thus has its red
+  zone at $[192, 196)$, its stack at $[196, 252)$ and its structure at
+  $[252, 256)$, while the structure of thread~2 lies at $[188, 192)$.  If
+  thread~3 needs more than \SI{56}{\kibi\byte} of stack, its next push
+  lands in $[192, 196)$ and faults; without the red zone it would overwrite
+  the structure of thread~2.  For 1024 threads the region spans
+  \SI{64}{\mebi\byte} of virtual address space, of which the
+  \SI{4}{\mebi\byte} of red zones use no physical memory.
+\end{example}
+
+\subsection{Kernel-level data structures}
+
+The kernel of SunOS~5.0 keeps four kinds of structures for processes and
+threads (\cref{tab:l05-kernel-structs}).  The LWP resembles the data
+structure of a user-level thread, but it is visible to the kernel.  Its
+contents are needed only while the process runs, so the LWP can be swapped
+out together with the process.  The kernel-level thread structure holds
+information that the kernel needs even when the process is not running,
+such as scheduling information, and it is never swapped out.  The CPU
+structure identifies the thread currently running on each
+CPU.\margin{On SPARC processors, which have spare registers, SunOS keeps
+the pointer to the current thread in a dedicated register.}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Kernel data structures for processes and threads in SunOS~5.0.}
+  \label{tab:l05-kernel-structs}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.22\linewidth}>{\raggedright\arraybackslash}p{0.71\linewidth}@{}}
+    \toprule
+    Structure & Contents \\
+    \midrule
+    Process & list of kernel-level threads, virtual address space, user
+      credentials, signal handlers \\
+    LWP & user-level registers, system call arguments, resource usage
+      information, signal mask; swappable \\
+    Kernel-level thread & kernel-level registers, stack pointer,
+      scheduling information, pointers to the associated LWP, process and
+      CPU; not swappable \\
+    CPU & current thread, list of kernel-level threads, dispatching and
+      interrupt-handling information \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Interaction between the library and the kernel}
+\label{sec:l05-interaction}
+
+The user-level library does not know what happens in the kernel, and the
+kernel does not know what happens in the library.\source{P2L4, basic
+thread management interactions, thread management visibility and design;
+Stein and Shah \cite{stein1992}; Silberschatz et al.\ ch.~4.}  System
+calls and special signals let the two levels coordinate.  The library can
+tell the kernel how many kernel-level threads its process wants---its
+\emph{concurrency level}---and can request more; the kernel can notify the
+library of events that affect its threads, such as kernel-level threads
+blocking.
+
+\begin{example}
+  A process has six user-level threads, of which at most three need to run
+  at the same time.  \Cref{tab:l05-interaction} traces how the library and
+  the kernel adjust the number of kernel-level threads.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Coordination between a user-level library and the kernel for a
+    process with six user-level threads (U1--U6).}
+  \label{tab:l05-interaction}
+  \small
+  \begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.66\linewidth}>{\raggedright\arraybackslash}p{0.18\linewidth}@{}}
+    \toprule
+    Step & Event & KLTs \\
+    \midrule
+    1 & The library asks the kernel for three kernel-level threads; the
+        kernel creates K1--K3. & K1--K3 \\
+    2 & U1--U3 run on K1--K3; U4--U6 wait on a user-level condition. &
+        3 running \\
+    3 & U1 and U2 issue blocking I/O requests, and K1 and K2 block in
+        the kernel.  Meanwhile U4 becomes ready. & 2 blocked, 1 running \\
+    4 & U3 also issues a blocking request.  If K3 blocked as well, no
+        kernel-level thread would be left to run U4 and the whole process
+        would be blocked.  Before blocking K3, the kernel therefore
+        notifies the library; the library requests another kernel-level
+        thread, the kernel creates K4, and U4 runs on it. & 3 blocked,
+        1 running \\
+    5 & The I/O completes and U1--U3 continue.  K4 later stays idle for a
+        long time; the kernel informs the library that K4 is no longer
+        available. & K1--K3 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Visibility of thread management}
+
+Each level sees only part of the picture.
+\begin{description}
+  \item[The kernel] sees the kernel-level threads, the CPUs and the
+    decisions of the kernel-level scheduler.
+  \item[The user-level library] sees the user-level threads and the
+    kernel-level threads assigned to its process.
+\end{description}
+The library may bind a user-level thread to a kernel-level thread, as for
+the bound threads of Lesson~3, and the kernel may pin a kernel-level
+thread to a CPU; neither decision is visible at the other level.
+
+The lack of visibility causes problems.  Suppose a user-level thread
+acquires a mutex implemented by the library, and the kernel then preempts
+the kernel-level thread on which it runs, for instance because its
+timeslice has expired.  The other user-level threads that need the mutex
+cannot proceed, even when the kernel runs the kernel-level threads on which
+they are scheduled: nothing can change until the kernel runs the preempted
+kernel-level thread again, and the kernel, which does not see the mutex,
+has no reason to do so soon.  In the many-to-many model, user-level
+scheduling decisions and changes to the mapping of user-level threads onto
+kernel-level threads are visible only to the library.  The one-to-one model
+avoids many of these problems, because the kernel sees every thread.
+
+Being ordinary code in the address space of the process, the library's
+scheduler runs only when execution enters the library:
+\begin{itemize}
+  \item a user-level thread explicitly yields;
+  \item a timer set by the library expires;
+  \item a user-level thread calls a library function, such as locking or
+    unlocking a mutex, that can change which threads are runnable;
+  \item a blocked user-level thread becomes runnable;
+  \item a signal arrives from the kernel, for example on behalf of a timer.
+\end{itemize}
+
+\section{Implementation issues}
+\label{sec:l05-issues}
+
+Multiprocessors raise further problems for the library, and the cost of
+creating threads suggests reusing them.\source{P2L4, issues on multiple
+CPUs, synchronization-related issues, destroying threads; Eykholt et al.\
+\cite{eykholt1992}; OSTEP ch.~28.}
+
+\subsection{User-level threads on multiple CPUs}
+
+On a multiprocessor the library runs on several kernel-level threads at
+the same time, and a decision taken on one CPU can require an action on
+another.  Consider user-level threads T1, T2 and T3 with priorities
+$\text{T3} > \text{T2} > \text{T1}$, which the library runs on two
+kernel-level threads, K1 and K2, on two CPUs (\cref{fig:l05-multi-cpu}).
+T2 holds mutex \texttt{m} on CPU~1.  T3 runs on CPU~2 and tries to lock
+\texttt{m}; it blocks, and the library schedules T1 on K2.  When T2
+unlocks \texttt{m}, the library, executing on CPU~1, finds that T3 is
+runnable again and has a higher priority than T1, which is running.  T1
+must be preempted, but the library code on CPU~1 cannot modify the
+registers of CPU~2.  It sends a signal to K2; the signal makes K2 execute
+the library on CPU~2, which preempts T1 and schedules T3.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l05-multi-cpu}
+  \caption{User-level threads with priorities
+    $\text{T3} > \text{T2} > \text{T1}$ on two CPUs.  When T2 unlocks
+    \texttt{m}, the library on CPU~1 signals K2 so that the library on
+    CPU~2 preempts T1 in favour of T3.}
+  \label{fig:l05-multi-cpu}
+\end{figure}
+
+\subsection{Adaptive mutexes}
+
+A multiprocessor also changes the best way to wait for a mutex.  Suppose
+one thread holds a mutex on CPU~1 when another thread, running on CPU~2,
+tries to lock it.  Normally the second thread is placed on the wait queue
+of the mutex and blocks, which costs a context switch now and another one
+when it is woken up.  If the
+critical section is short and its owner is running on another CPU, the
+owner is likely to release the mutex before these context switches would
+complete, and it is cheaper for the second thread to \emph{spin}: to stay
+on its CPU and repeatedly check whether the mutex is free.  If the owner is not running,
+spinning is useless, since the mutex cannot be released before the owner
+is scheduled again.
+
+\begin{definition}[Adaptive mutex]
+  An \term{adaptive mutex}[適応型ミューテックス] is a mutex whose lock
+  operation spins while the owner of the mutex is running on another CPU,
+  and blocks the calling thread otherwise.
+\end{definition}
+
+Adaptive mutexes make sense only on multiprocessors---on a single CPU the
+owner cannot be running while another thread spins---and only for short
+critical sections; long critical sections are better served by blocking.
+To decide between spinning and blocking, the lock operation must find out
+whether the owner is running, so the mutex data structure records its
+owner.  Lesson~10 returns to spinning as the basis of the
+spinlock.\margin{OSTEP calls a lock that first spins for a while and then
+sleeps a \emph{two-phase lock}.}
+
+\subsection{Destroying threads}
+
+Creating a thread allocates and initializes its data structures and its
+stack, and destroying it frees them.  Because applications create and
+destroy threads frequently, reusing these structures pays off.  When a
+thread exits, its structures are not freed immediately; the thread is
+placed on a list called the \emph{death row}.  A \term{reaper thread}%
+[リーパスレッド] runs periodically, destroys the threads on the death row
+and frees their data structures.  If a request to create a thread arrives
+before the reaper has run, the structure and stack of a thread on the
+death row are reused, which saves the cost of allocating and initializing
+them.  Independently of reuse, kernels bound the total number of threads,
+because every thread occupies kernel memory; Linux derives its limit from
+the size of physical memory.
+
+\begin{keypoint}
+  The kernel and the user-level library each see only their own threads.
+  System calls and signals let them coordinate, but decisions such as
+  preempting a lock owner or preempting a thread on another CPU need
+  explicit notification across the levels.
+\end{keypoint}
+
+\section{Interrupts and signals}
+\label{sec:l05-int-sig}
+
+Two kinds of events can divert a thread from its normal execution:
+interrupts and signals.\source{P2L4, interrupts and signals intro; OSTEP
+ch.~6; Kerrisk \cite{kerrisk2010} ch.~20.}  Signals were introduced in
+Lesson~1 as notifications that the operating system passes to an
+application.  Interrupts are the corresponding notifications that the
+hardware delivers to the CPU.
+
+\begin{definition}[Interrupt]
+  An \term{interrupt}[割り込み] is an event generated externally to the
+  CPU, by a component such as an I/O device, a timer or another CPU, that
+  notifies the CPU that some condition requires attention.
+\end{definition}
+
+Which interrupts can occur is determined by the physical platform, and
+interrupts appear asynchronously, independently of what the CPU is
+executing.  Signals, in contrast, are events triggered by the
+CPU and the software running on it; which signals exist is determined by
+the operating system, and they can appear synchronously or asynchronously.
+The two mechanisms nevertheless have much in common
+(\cref{tab:l05-int-vs-sig}): both have a unique identifier, defined by the
+hardware or by the operating system; both can be masked, that is, disabled
+or suppressed; and when enabled, both trigger a handler.  Interrupt
+handlers are set by the operating system for the entire system, signal
+handlers by each process for itself.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Interrupts and signals.}
+  \label{tab:l05-int-vs-sig}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.22\linewidth}>{\raggedright\arraybackslash}p{0.345\linewidth}>{\raggedright\arraybackslash}p{0.345\linewidth}@{}}
+    \toprule
+    & Interrupt & Signal \\
+    \midrule
+    Generated by & devices, timers, other CPUs & the CPU and the software
+      running on it \\
+    Defined by   & the hardware platform & the operating system \\
+    Occurrence   & asynchronous & synchronous or asynchronous \\
+    Masked       & per CPU & per execution context \\
+    Handler set  & by the operating system, system-wide & by each process
+      \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Handling interrupts and signals}
+\label{sec:l05-handling}
+
+When a device needs attention, it sends an interrupt to the CPU over the
+interconnect that links them, such as PCI Express.\source{P2L4, interrupt
+handling, signal handling; OSTEP ch.~6, 36; Kerrisk ch.~20--21.}  Early
+systems used a dedicated physical line for every interrupt; modern devices
+send the interrupt as a message over the interconnect itself, and the
+content of the message identifies the interrupt and thereby the device.
+An interrupt raised by sending such a message instead of asserting a
+dedicated line is a
+\term{message signaled interrupt}[メッセージシグナル割り込み]%
+\index{MSI|see{message signaled interrupt}} (MSI).
+
+\begin{definition}[Interrupt handler]
+  An \term{interrupt handler}[割り込みハンドラ] is the routine that the
+  operating system executes in response to a particular interrupt.  The
+  \term{interrupt handler table}[割り込みハンドラテーブル] maps each
+  interrupt number to the start address of its handler.
+\end{definition}
+
+The CPU uses the interrupt number to look up the interrupt handler table,
+sets its program counter to the start address found there, and executes
+the handler (\cref{fig:l05-int-sig}a).  Which interrupts occur is specific
+to the hardware; how they are handled is specific to the operating
+system.\margin{The table is also called the interrupt vector table; on x86
+it is the interrupt descriptor table.}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l05-int-sig}
+  \caption{(a) An interrupt raised by a device selects a handler from the
+    system-wide interrupt handler table.  (b) An illegal memory access
+    makes the kernel raise \texttt{SIGSEGV}, which selects a handler from
+    the signal handler table of the process.}
+  \label{fig:l05-int-sig}
+\end{figure}
+
+Signals are generated by the operating system.  When a thread accesses
+memory that is not allocated to its process, for example, the operating
+system raises \texttt{SIGSEGV} (signal~11 on Linux).  For each process it
+keeps a \emph{signal handler table} that maps every signal number to the
+action to be taken (\cref{fig:l05-int-sig}b).  The set of signals is
+operating-system specific; POSIX defines a standard set.  Every signal has
+a default action, which is one of the following: terminate the process,
+ignore the signal, terminate the process and dump core, stop the process,
+or continue a stopped process.
+
+\begin{definition}[Signal handler]
+  A \term{signal handler}[シグナルハンドラ] is a function that a process
+  installs to be executed, in the context of the receiving thread, when a
+  particular signal is delivered.
+\end{definition}
+
+A process installs handlers with \texttt{signal} or, more portably, with
+\texttt{sigaction}.  Most signals can be caught in this way; a few cannot,
+notably \texttt{SIGKILL} and \texttt{SIGSTOP}, whose default actions always
+apply.
+
+\begin{example}
+  A program, using the headers \texttt{signal.h} and \texttt{unistd.h},
+  that stops its work loop when a timer expires:
+  \begin{lstlisting}[language=C, numbers=none]
+static volatile sig_atomic_t expired = 0;
+
+static void on_alarm(int signo) {
+    (void)signo;
+    expired = 1;            /* keep handlers minimal */
+}
+
+int main(void) {
+    struct sigaction sa;
+    sa.sa_handler = on_alarm;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGALRM, &sa, NULL);
+    alarm(2);               /* SIGALRM after 2 s */
+    while (!expired)
+        do_work();
+    return 0;
+}
+  \end{lstlisting}
+\end{example}
+
+Signals are classified by how they relate to the thread that receives
+them.
+
+\begin{definition}[Synchronous and asynchronous signals]
+  A \term{synchronous signal}[同期シグナル] occurs in response to an
+  action of a specific thread and is delivered to that thread, for example
+  \texttt{SIGSEGV} on an access to protected memory or \texttt{SIGFPE} on a
+  division by zero.  An
+  \term{asynchronous signal}[非同期シグナル] occurs independently of what
+  the receiving thread executes, for example \texttt{SIGKILL} sent by
+  another process with \texttt{kill}, or \texttt{SIGALRM} on the
+  expiration of a timer.
+\end{definition}
+
+A signal can also be sent explicitly to one thread, for example with
+\texttt{pthread\_kill}; like a synchronous signal, it is then delivered to
+that thread only.
+
+\section{Disabling interrupts and signals}
+\label{sec:l05-masks}
+
+Interrupt and signal handlers execute in the context of the thread that
+was interrupted: the thread's program counter is set to the handler, and
+the handler runs on the thread's stack.\source{P2L4, why disable
+interrupts or signals, more on signal masks, interrupts on multicore
+systems, types of signals; Kerrisk ch.~20--22.}  This creates a problem
+when the handler accesses shared state.  If the interrupted thread holds a
+mutex \texttt{m} and the handler tries to lock \texttt{m}, the handler
+blocks.  The owner of \texttt{m} is the interrupted thread itself, which
+cannot continue until the handler returns: the thread deadlocks with its
+own handler.
+
+There are two ways to avoid this.  Handler code can be kept simple, never
+locking a mutex; this is often too restrictive.  Or the code can control
+when handlers may run, by disabling particular interrupts or signals while
+it holds mutexes that their handlers need.
+
+\begin{definition}[Interrupt mask and signal mask]
+  An \term{interrupt mask}[割り込みマスク] or a
+  \term{signal mask}[シグナルマスク] is a sequence of bits with one bit per
+  interrupt or signal; the value of the bit indicates whether the interrupt
+  or signal is enabled (1) or disabled (0).
+\end{definition}
+
+\needspace{7\baselineskip}
+A thread that disables a signal around a critical section follows this
+pattern:
+\begin{lstlisting}[language=C, numbers=none]
+clear_field_in_mask(mask);  // disable
+lock(mutex) {
+  ...                       // handler cannot run here
+} // unlock
+reset_field_in_mask(mask);  // enable
+\end{lstlisting}
+An interrupt or signal that occurs while it is disabled is not lost: it
+remains \emph{pending}, and its handler runs as soon as the mask enables it
+again.  If the same signal occurs several times while it is disabled, the
+handler normally runs only once; generating a signal several times does
+not guarantee that the handler runs several times (\cref{sec:l05-types}).
+\caution{POSIX signal sets list the \emph{blocked} signals: a signal that is
+a member of the set is disabled, the opposite of the bit convention
+above.}
+
+\subsection{Setting the masks}
+
+Interrupt masks are kept per CPU.  If the mask of a CPU disables an
+interrupt, the hardware interrupt-routing mechanism does not deliver that
+interrupt to the CPU.  The kernel sets the mask by writing to the
+hardware.  Signal masks are kept per execution context, that is, per
+user-level thread running on a kernel-level thread.  If the mask disables a
+signal, the kernel does not interrupt that thread to deliver it.  A
+process changes its signal mask with \texttt{sigprocmask}
+for a single-threaded process and \texttt{pthread\_sigmask} for a thread,
+each taking one of the operations \texttt{SIG\_BLOCK},
+\texttt{SIG\_UNBLOCK} or \texttt{SIG\_SETMASK}.
+
+\needspace{11\baselineskip}
+\begin{example}
+  The pattern above written with POSIX calls, for a handler of
+  \texttt{SIGALRM} that locks the same mutex:
+  \begin{lstlisting}[language=C, numbers=none]
+sigset_t set, old;
+sigemptyset(&set);
+sigaddset(&set, SIGALRM);
+pthread_sigmask(SIG_BLOCK, &set, &old);    // disable
+pthread_mutex_lock(&m);
+/* ... critical section ... */
+pthread_mutex_unlock(&m);
+pthread_sigmask(SIG_SETMASK, &old, NULL);  // restore
+  \end{lstlisting}
+\end{example}
+
+On a multicore system an interrupt can be directed to any CPU that has it
+enabled.  Enabling a given interrupt on a single core only, so that only
+that core handles it, avoids the overhead and the perturbation that
+handling it would cause on all the other cores.
+
+\needspace{5\baselineskip}
+\begin{keypoint}
+  Handlers run in the context of the interrupted thread.  Code that holds
+  a mutex needed by a handler must disable the corresponding interrupt or
+  signal while it holds the mutex; an event that occurs meanwhile stays
+  pending until it is enabled again.
+\end{keypoint}
+
+\subsection{Types of signals}
+\label{sec:l05-types}
+
+Signals differ in what happens when several instances arrive before the
+handler has run.
+\begin{description}
+  \item[One-shot signals] With a \term{one-shot signal}[ワンショットシグナル],
+    $n$ pending instances are equivalent to one: the handler is guaranteed
+    to run at least once, but not $n$ times.  On some systems the handler
+    is also reset to the default action after it has run, so the process
+    must re-install it explicitly to catch the signal again.
+  \item[Real-time signals] With a
+    \term{real-time signal}[リアルタイムシグナル], instances are queued:
+    if the signal is raised $n$ times, the handler is called $n$ times.
+    POSIX reserves the range \texttt{SIGRTMIN} to \texttt{SIGRTMAX} for
+    them.
+\end{description}
+
+\begin{example}
+  A thread blocks both \texttt{SIGUSR1}, a standard signal, and the
+  real-time signal \texttt{SIGRTMIN}.  While they are blocked, each signal
+  is raised four times; then the thread unblocks them.  The handler of
+  \texttt{SIGUSR1} runs once, because the four instances collapse into one
+  pending signal; the handler of \texttt{SIGRTMIN} runs four times.
+\end{example}
+
+\section{Interrupts as threads}
+\label{sec:l05-int-threads}
+
+SunOS~5.0 avoids the deadlock between a thread and its handler in a
+different way: it handles interrupts as threads.\source{P2L4, interrupts
+as threads, performance of threads as interrupts; Eykholt et al.\
+\cite{eykholt1992}.}  If an interrupt handler runs as a thread of its own,
+it can block on a mutex like any other thread; it waits until the owner,
+possibly the interrupted thread, releases the mutex, and the scheduler
+runs it afterwards.  Creating a new thread for every interrupt would be
+too expensive, so the decision is made dynamically: a handler that does not
+lock a mutex executes on the stack of the interrupted thread, and only a
+handler that can block is turned into a real thread.  The thread
+structures used for interrupts are created and initialized in advance.
+
+The same idea underlies a common way of dividing the work of interrupt
+handling (\cref{fig:l05-top-bottom}).
+
+\begin{definition}[Top half and bottom half]
+  The \term{top half}[トップハーフ] of interrupt handling runs immediately
+  when the interrupt occurs; it does a minimal amount of processing and
+  must be fast and non-blocking.  The \term{bottom half}[ボトムハーフ] is
+  the deferred part; it can be of arbitrary complexity and, executed like a
+  thread, it is scheduled and may block.
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l05-top-bottom}
+  \caption{Interrupt handling divided into a top half, which interrupts
+    thread T, and a bottom half, which the scheduler runs later.}
+  \label{fig:l05-top-bottom}
+\end{figure}
+
+Handling interrupts as threads is not free.\margin{Linux uses the terms
+top half and bottom half in this sense.  In BSD terminology, the top half
+of the kernel is the part entered through system calls and the bottom half
+the part that handles interrupts.}  In SunOS~5.0 it adds about 40 SPARC instructions to
+every interrupt.  It also saves work elsewhere: since a handler that needs
+a mutex can now block, the mutex operations no longer have to change the
+interrupt mask to keep handlers from running while a mutex is held, which
+saves about 12 instructions for each mutex operation.  With $c$
+instructions added per interrupt and $s$ saved per mutex operation, the
+scheme pays off when
+\begin{equation}
+  c\, N_{\mathrm{int}} \;<\; s\, N_{\mathrm{mutex}}
+  \quad\Longleftrightarrow\quad
+  \frac{N_{\mathrm{int}}}{N_{\mathrm{mutex}}} \;<\; \frac{s}{c},
+  \label{eq:l05-break-even}
+\end{equation}
+where $N_{\mathrm{int}}$ and $N_{\mathrm{mutex}}$ are the numbers of
+interrupts and of mutex operations.  Mutexes are locked and unlocked far
+more often than interrupts occur, so the balance is positive.
+
+\begin{example}
+  A system handles 2\,000 interrupts and performs 150\,000 mutex operations
+  per second.  With $c = 40$ and $s = 12$, interrupt threads cost
+  $40 \times 2\,000 = 80\,000$ instructions per second and save
+  $12 \times 150\,000 = 1\,800\,000$, a net saving of $1\,720\,000$
+  instructions per second.  By \cref{eq:l05-break-even} the scheme would
+  lose only with more than $12/40 = 0.3$ interrupts per mutex operation,
+  that is, more than 45\,000 interrupts per second at this mutex rate.
+\end{example}
+
+\begin{keypoint}
+  Optimize for the common case.  Interrupts as threads make the rare event,
+  an interrupt, slightly more expensive, in exchange for making the
+  frequent event, a mutex operation, cheaper.
+\end{keypoint}
+
+\section{Threads and signal handling}
+\label{sec:l05-thread-signals}
+
+In a many-to-many implementation, signal masks exist at two
+levels.\source{P2L4, threads and signal handling, cases~1--4; Stein and
+Shah \cite{stein1992}.}  The user-level library keeps a mask for each
+user-level thread in its thread data structure, and the kernel keeps a
+mask for each kernel-level thread, in its LWP.  A user-level thread changes
+its own mask through the library, without a system call; the kernel sees
+only the masks of the kernel-level threads.  When a signal arrives, the
+kernel interrupts a kernel-level thread whose mask enables it, whatever the
+mask of the user-level thread currently running on it.
+
+The SunOS library resolves the mismatch by installing its own routine as
+the handler of the signals in the signal handler table of the process.
+This routine runs first, examines the user-level masks, and invokes the
+application's handler in a suitable user-level thread.  Four cases arise
+(\cref{fig:l05-signal-cases}).
+\begin{description}
+  \item[Case 1] The signal is enabled both in the kernel-level thread and
+    in the user-level thread running on it.  The kernel interrupts the
+    kernel-level thread; the library routine finds the signal enabled in
+    the current user-level thread and runs the handler there.
+  \item[Case 2] The running user-level thread has the signal disabled, but
+    another user-level thread, runnable but not running, has it enabled.
+    The kernel interrupts the kernel-level thread, whose mask enables the
+    signal.  The library routine sees that the current thread has the
+    signal masked, schedules the runnable thread on this kernel-level
+    thread, and the handler runs in it.
+  \item[Case 3] The user-level thread with the signal enabled is running
+    on a different kernel-level thread.  The library routine on the
+    interrupted kernel-level thread knows where that thread runs and makes a
+    system call that sends a \emph{directed} signal to the other
+    kernel-level thread.  The kernel interrupts it, and the library routine
+    there finds the signal enabled and runs the handler.
+  \item[Case 4] No user-level thread has the signal enabled, but the masks
+    of the kernel-level threads still enable it.  The library routine on
+    the interrupted kernel-level thread makes a system call that disables
+    the signal in the mask of that kernel-level thread, and re-raises the
+    signal for the process.  The kernel delivers it to another
+    kernel-level thread that still has it enabled, where the same steps
+    follow, until the signal is disabled in all kernel-level threads and
+    remains pending.  When a user-level thread later enables the signal,
+    the library makes a system call to enable it in a kernel-level thread
+    again, and the pending signal is delivered.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l05-signal-cases}
+  \caption{The four cases of signal handling with user-level threads (U)
+    and kernel-level threads (K).  The digit beside each thread is its mask
+    bit for the signal: 1 enabled, 0 disabled.}
+  \label{fig:l05-signal-cases}
+\end{figure}
+
+The design follows the same principle as interrupts as threads.  Signals
+occur far less often than threads change their signal masks, typically
+around every critical section.  Changing a user-level mask is a cheap
+library operation, whereas keeping the kernel-level mask in step would
+require a system call on every change.  In return, delivering a signal
+becomes more expensive---the library routine runs first and may have to
+redirect the signal or make system calls---but this happens rarely.
+
+\section{Tasks in Linux}
+\label{sec:l05-linux}
+
+The Linux kernel does not distinguish between processes and
+threads.\source{P2L4, tasks in Linux; Silberschatz et al.\ ch.~4; Kerrisk
+ch.~28.}  Both are built from a single kind of execution context, and a
+multithreaded process is a group of such contexts that share their
+resources.
+
+\begin{definition}[Task]
+  In the Linux kernel a \term{task}[タスク] is the basic execution
+  context, a kernel-level thread represented by a
+  \texttt{struct task\_struct}.  A single-threaded process consists of one
+  task, a multithreaded process of several tasks.
+\end{definition}
+
+\needspace{16\baselineskip}
+The main fields of the structure are:
+\begin{lstlisting}[language=C, numbers=none]
+struct task_struct {       // abridged, Linux 3.x
+    // ...
+    pid_t pid;             // task identifier
+    pid_t tgid;            // task group identifier
+    int prio;
+    volatile long state;
+    struct mm_struct *mm;         // address space
+    struct files_struct *files;   // open files
+    struct list_head tasks;
+    int on_cpu;
+    cpumask_t cpus_allowed;
+    // ...
+};
+\end{lstlisting}
+Every task has its own identifier, \texttt{pid}.  The tasks of one process
+form a task group whose identifier, \texttt{tgid}, is the \texttt{pid} of
+the first task of the group; this is the process identifier that
+\texttt{getpid} returns.  The task structure does not contain the
+process's resources: \texttt{mm} and \texttt{files} point to separately
+allocated structures for the address space and the open files.  As in
+\cref{sec:l05-structures}, the state is split into structures that several
+tasks can share.
+
+A task is created with the \term{clone}[clone] system call:
+\begin{lstlisting}[language=C, numbers=none]
+clone(function, stack_ptr, sharing_flags, args);
+\end{lstlisting}
+The new task executes \texttt{function(args)} on the stack
+\texttt{stack\_ptr}; each bit of \texttt{sharing\_flags} selects whether a
+part of the state is shared with the creating task or copied
+(\cref{tab:l05-clone}).  With all these flags set, the new task is a thread
+of the creating process; with all of them cleared, it is a new process, and
+\texttt{fork} is implemented in this way.\margin{A thread library also
+passes \texttt{CLONE\_THREAD}, which places the new task in the task group
+of its creator.}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Sharing flags of \texttt{clone}.}
+  \label{tab:l05-clone}
+  \small
+  \begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.33\linewidth}>{\raggedright\arraybackslash}p{0.33\linewidth}@{}}
+    \toprule
+    Flag & When set & When cleared \\
+    \midrule
+    \texttt{CLONE\_FILES}   & share the file descriptor table
+                            & copy the file descriptor table \\
+    \texttt{CLONE\_FS}      & share file system information
+                            & copy file system information \\
+    \texttt{CLONE\_SIGHAND} & share the signal handler table
+                            & copy the signal handler table \\
+    \texttt{CLONE\_VM}      & share the address space
+                            & new address space (copy) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+POSIX threads in current Linux systems are implemented by the
+\term{Native POSIX Thread Library}[NPTL]\index{NPTL|see{Native POSIX
+Thread Library}} (NPTL), which uses the one-to-one model: every user-level
+thread is a task.  The kernel therefore sees every thread with its
+information, such as its signal mask, and the coordination problems of
+\cref{sec:l05-interaction,sec:l05-thread-signals} do not arise.  The
+drawbacks that once argued against the one-to-one model have faded: traps
+into the kernel have become much cheaper, and memory and the range of
+thread identifiers are large enough for many kernel-level threads.  NPTL
+replaced LinuxThreads, an earlier library that also created one task per
+thread but did not conform to POSIX in areas such as signal handling; a
+many-to-many implementation developed at the same time was abandoned in
+its favour.
+
+\begin{keypoint}[Lesson summary]
+  The kernel and the user-level library split thread state into several
+  structures: hard process state shared by all threads, light process state
+  per kernel-level thread, and user-level thread structures, allocated
+  contiguously with red zones.  SunOS~5.0 links them through LWPs, lets the
+  library and the kernel coordinate through system calls and signals, uses
+  adaptive mutexes on multiprocessors and reuses exited threads through a
+  reaper.  Interrupts and signals run handlers in the interrupted thread's
+  context; masks prevent a handler from deadlocking with its thread, and
+  interrupts as threads, top and bottom halves, and the library's handling
+  of user-level signal masks all optimize the common case.  Linux represents
+  every thread as a task created with \texttt{clone}, and NPTL maps
+  user-level threads one-to-one onto tasks.
+\end{keypoint}
+
+\end{document}

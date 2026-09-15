@@ -1,0 +1,42 @@
+% Passing &i (one variable shared by all threads) versus &t_num[k]
+% (one element per thread) as the argument of pthread_create.
+% Usage: \input{figures/l04-args}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  th/.style={draw, circle, fill=white, minimum size=7mm, inner sep=0pt},
+  cell/.style={draw, fill=ln-box, minimum width=10mm, minimum height=6mm,
+               inner sep=0pt, font=\footnotesize\ttfamily},
+  ptr/.style={-{Stealth[length=1.6mm]}, thick, ln-accent},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=base},
+  frame/.style={draw=ln-rule, rounded corners=2pt}]
+  % ------------------------------------------------------------ shared &i
+  \draw[frame] (0,-9) rectangle (55,29);
+  \node[ttl] at (27.5,30.8)
+    {\texttt{\&i}: \iflangja{全スレッドで共有}{shared by all threads}};
+  \node[th] (a0) at (12,21)   {T0};
+  \node[th] (a1) at (27.5,21) {T1};
+  \node[th] (a2) at (43,21)   {T2};
+  \node[cell] (i) at (27.5,3) {?};
+  \node[font=\footnotesize\ttfamily, anchor=east] at (i.west) {i\,};
+  \foreach \t in {a0,a1,a2} { \draw[ptr] (\t) -- (i); }
+  \node[lab, anchor=north] at (27.5,-0.5)
+    {\iflangja{main が変更し続ける}{main keeps modifying it}};
+  % ------------------------------------------------------ private &t_num[k]
+  \draw[frame] (61,-9) rectangle (116,29);
+  \node[ttl] at (88.5,30.8)
+    {\texttt{\&t\_num[k]}: \iflangja{スレッドごとに別}{one per thread}};
+  \node[th] (b0) at (72,21)   {T0};
+  \node[th] (b1) at (88.5,21) {T1};
+  \node[th] (b2) at (105,21)  {T2};
+  \foreach \k in {0,1,2} {
+    \node[cell] (c\k) at (78.5+10*\k,3) {\k};
+    \node[font=\scriptsize\ttfamily, text=ln-muted, anchor=north]
+      at (78.5+10*\k,-0.3) {[\k]};
+  }
+  \node[font=\footnotesize\ttfamily, anchor=east] at (c0.west) {t\_num\,};
+  \draw[ptr] (b0) -- (c0);
+  \draw[ptr] (b1) -- (c1);
+  \draw[ptr] (b2) -- (c2);
+  \node[lab, anchor=north] at (88.5,-4)
+    {\iflangja{作成後は変更されない}{not modified after creation}};
+\end{tikzpicture}

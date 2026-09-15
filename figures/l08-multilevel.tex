@@ -1,0 +1,47 @@
+% Two-level page table: p1 indexes the page directory, whose entry points
+% to an inner page table; p2 indexes that table, whose entry gives the page
+% frame; the offset d selects the byte within the frame.  Directory entries
+% without an inner table are left white.
+% Usage: \input{figures/l08-multilevel}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  cell/.style={draw, minimum height=6mm, inner sep=0pt, anchor=south west},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  idx/.style={font=\scriptsize\sffamily, text=ln-muted},
+  hd/.style={font=\scriptsize\sffamily\bfseries, anchor=south, align=center}]
+  % page table base register
+  \node[cell, minimum width=22mm, minimum height=7mm, fill=ln-source!14, align=center]
+    at (0,38) {\iflangja{ページテーブル\\ベースレジスタ}{page table\\base register}};
+  \draw[->] (22,41.5) -| (39,36);
+  % page directory: rows top to bottom, centres 33, 27, 21, 15, 9
+  \node[hd] at (39,44) {\iflangja{ページ\\ディレクトリ}{page\\directory}};
+  \foreach \r/\f in {0/ln-accent!10, 1/ln-accent!30, 2/ln-accent!10, 3/white, 4/white} {
+    \draw[fill=\f] (30,30-6*\r) rectangle ++(18,6);
+  }
+  \node[lab] at (39,27) {\iflangja{内部表へ}{$\to$ inner}};
+  % inner page table
+  \node[hd] at (73,44) {\iflangja{内部\\ページテーブル}{inner\\page table}};
+  \foreach \r/\f in {0/ln-accent!10, 1/white, 2/ln-accent!10, 3/ln-accent!30, 4/white} {
+    \draw[fill=\f] (64,30-6*\r) rectangle ++(18,6);
+  }
+  \node[lab] at (73,15) {PFN};
+  % page frame
+  \node[hd] at (107,44) {\iflangja{ページ\\フレーム}{page\\frame}};
+  \draw[fill=ln-box] (98,6) rectangle (116,36);
+  \draw[fill=ln-accent!30] (98,17) rectangle (116,20);
+  % pointers along the top
+  \draw[->] (48,27) -- (56,27) |- (73,40.5) -- (73,36);
+  \draw[->] (82,15) -- (90,15) |- (107,40.5) -- (107,36);
+  % virtual address
+  \node[cell, minimum width=16mm, fill=ln-accent!22] (p1) at (31,-16) {$p_1$};
+  \node[cell, minimum width=16mm, fill=ln-accent!22] (p2) at (47,-16) {$p_2$};
+  \node[cell, minimum width=16mm, fill=ln-box] (d) at (63,-16) {$d$};
+  \node[lab, anchor=east] at (30.5,-13) {\iflangja{仮想アドレス}{virtual\\address}};
+  % indices from below
+  \draw[->] (39,-10) -- (39,6);
+  \draw[->] (55,-10) |- (73,-2) -- (73,6);
+  \draw[->] (71,-10) |- (107,-6) -- (107,17);
+  \node[idx, anchor=west] at (39.5,1) {\iflangja{索引}{index}};
+  \node[idx, anchor=west] at (73.5,2) {\iflangja{索引}{index}};
+  \node[idx, anchor=west] at (107.5,2) {\iflangja{オフセット}{offset}};
+\end{tikzpicture}

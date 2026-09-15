@@ -1,0 +1,74 @@
+% The SunOS 5.0 threading model: user-level threads, lightweight processes,
+% kernel-level threads, the kernel-level scheduler and the CPUs.
+% Usage: \input{figures/l05-sunos}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  ut/.style={draw, circle, fill=white, minimum size=3.6mm, inner sep=0pt},
+  lwp/.style={draw, rounded corners=1pt, fill=ln-accent!15, minimum width=6.5mm,
+              minimum height=3.6mm, inner sep=0pt, font=\tiny\sffamily},
+  kt/.style={draw, rectangle, fill=ln-box, minimum size=3.6mm, inner sep=0pt},
+  cpu/.style={draw, fill=ln-accent!22, minimum width=12mm, minimum height=4.5mm,
+              inner sep=0pt},
+  proc/.style={draw, dashed, rounded corners=2pt, ln-muted},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  ttl/.style={font=\scriptsize\sffamily\bfseries, anchor=base}]
+  % user/kernel boundary runs through the LWPs
+  \draw[dashed, ln-rule] (0,22) -- (118,22);
+  \node[lab, anchor=south west] at (0,22.5) {\iflangja{ユーザ}{user}};
+  \node[lab, anchor=north west] at (0,21.5) {\iflangja{カーネル}{kernel}};
+  % ---- P1: many-to-one
+  \draw[proc] (12,17) rectangle (36,39);
+  \node[ttl] at (24,40.5) {\iflangja{P1：多対一}{P1: many-to-one}};
+  \node[lwp] (l1) at (24,22) {LWP};
+  \foreach \x in {17,24,31} { \node[ut] (u) at (\x,33) {}; \draw (u) -- (l1.north); }
+  \node[kt] (k1) at (24,12) {};
+  \draw (l1) -- (k1);
+  % ---- P2: many-to-many with a bound thread
+  \draw[proc] (40,17) rectangle (82,39);
+  \node[ttl] at (61,40.5) {\iflangja{P2：多対多}{P2: many-to-many}};
+  \node[lwp] (l2a) at (49,22) {LWP};
+  \node[lwp] (l2b) at (60,22) {LWP};
+  \node[ut] (u2a) at (45,33) {};
+  \node[ut] (u2b) at (54.5,33) {};
+  \node[ut] (u2c) at (64,33) {};
+  \draw (u2a) -- (l2a.north);
+  \draw (u2b) -- (l2a.north);
+  \draw (u2b) -- (l2b.north);
+  \draw (u2c) -- (l2b.north);
+  \node[kt] (k2a) at (49,12) {};
+  \node[kt] (k2b) at (60,12) {};
+  \draw (l2a) -- (k2a);
+  \draw (l2b) -- (k2b);
+  \node[ut, thick, draw=ln-accent] (ub) at (75,33) {};
+  \node[lwp, thick, draw=ln-accent] (lb) at (75,22) {LWP};
+  \node[kt, thick, draw=ln-accent] (kb) at (75,12) {};
+  \draw[very thick, ln-accent] (ub) -- (lb) -- (kb);
+  \node[lab, text=ln-accent, anchor=south] at (75,35) {\iflangja{バウンド}{bound}};
+  % ---- P3: one-to-one
+  \draw[proc] (86,17) rectangle (106,39);
+  \node[ttl] at (96,40.5) {\iflangja{P3：一対一}{P3: one-to-one}};
+  \foreach \x/\n in {91/a, 101/b} {
+    \node[ut] (u) at (\x,33) {};
+    \node[lwp] (l) at (\x,22) {LWP};
+    \node[kt] (k3\n) at (\x,12) {};
+    \draw (u) -- (l) -- (k3\n);
+  }
+  % ---- kernel threads without LWP
+  \node[kt] (kk1) at (111,12) {};
+  \node[kt] (kk2) at (116,12) {};
+  % ---- scheduler and CPUs
+  \draw[rounded corners=1pt, fill=ln-box] (12,2) rectangle (118,7);
+  \node at (65,4.5) {\iflangja{カーネルレベルスケジューラ}{kernel-level scheduler}};
+  \foreach \k in {k1, k2a, k2b, kb, k3a, k3b, kk1, kk2}
+    \draw (\k.south) -- (\k.south |- 0,7);
+  \foreach \x/\n in {35/0, 65/1, 95/2} {
+    \node[cpu] (c) at (\x,-6) {CPU\,\n};
+    \draw (c.north) -- (\x,2);
+  }
+  % ---- legend
+  \node[ut] at (14,-15) {};
+  \node[lab, anchor=west] at (16.5,-15) {\iflangja{ユーザレベルスレッド}{user-level thread}};
+  \node[lwp] at (48,-15) {LWP};
+  \node[lab, anchor=west] at (52,-15) {\iflangja{軽量プロセス}{lightweight process}};
+  \node[kt] at (84,-15) {};
+  \node[lab, anchor=west] at (86.5,-15) {\iflangja{カーネルレベルスレッド}{kernel-level thread}};
+\end{tikzpicture}

@@ -1,0 +1,25 @@
+% The virtual file system layer between the file system interface and the
+% concrete local and remote file systems.
+% Usage: \input{figures/l11-vfs}   (width ~114 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  bar/.style={draw, fill=ln-box, minimum width=108mm, minimum height=6.5mm, inner sep=1pt},
+  fs/.style={draw, fill=white, minimum width=34mm, minimum height=9mm, inner sep=1pt, align=center},
+  dev/.style={draw, fill=ln-accent!22, minimum width=22mm, minimum height=6mm, inner sep=1pt}]
+  \node[draw, fill=white, minimum width=60mm, minimum height=6.5mm] (app) at (57,36)
+    {\iflangja{ユーザプロセス}{user processes}};
+  \node[bar] (fsi) at (57,25) {\iflangja{ファイルシステムインタフェース（POSIX API）}{file system interface (POSIX API)}};
+  \node[bar, fill=ln-accent!10] (vfs) at (57,14) {\iflangja{仮想ファイルシステム（VFS）}{virtual file system (VFS)}};
+  \node[fs] (f1) at (19,0) {\iflangja{ローカル FS\\（例：ext2）}{local file system\\(e.g.\ ext2)}};
+  \node[fs] (f2) at (57,0) {\iflangja{ローカル FS\\（別の種類）}{local file system\\(another type)}};
+  \node[fs] (f3) at (95,0) {\iflangja{リモート FS\\（例：NFS）}{remote file system\\(e.g.\ NFS)}};
+  \node[dev] (d1) at (19,-14) {\iflangja{ディスク}{disk}};
+  \node[dev] (d2) at (57,-14) {\iflangja{ディスク}{disk}};
+  \node[dev] (d3) at (95,-14) {\iflangja{ネットワーク}{network}};
+  \draw[<->, thick] (app) -- (fsi);
+  \draw[<->, thick] (fsi) -- (vfs);
+  \foreach \x/\f/\d in {19/f1/d1, 57/f2/d2, 95/f3/d3} {
+    \draw[<->, thick] (\x,10.75) -- (\f.north);
+    \draw[<->, thick] (\f.south) -- (\d.north);
+  }
+\end{tikzpicture}

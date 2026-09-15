@@ -1,0 +1,41 @@
+% User-level thread data structures allocated contiguously, with a red zone
+% below each stack, and the table of pointers indexed by thread identifier.
+% Usage: \input{figures/l05-ult-layout}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center},
+  cell/.style={draw, fill=white, minimum width=8mm, minimum height=5mm,
+               inner sep=0pt}]
+  \node[lab] at (3,4.5) {\ldots};
+  \foreach \o/\t in {8/1, 60/2} {
+    \draw[fill=ln-caution!25] (\o,0) rectangle ++(5,9);
+    \draw[fill=white] (\o+5,0) rectangle ++(30,9);
+    \node at (\o+20,6.2) {\iflangja{T\t のスタック}{stack of T\t}};
+    \draw[->, ln-accent, thick] (\o+29,2.5) -- (\o+11,2.5);
+    \draw[fill=ln-box] (\o+35,0) rectangle ++(6,9);
+    \node at (\o+38,4.5) {TLS};
+    \draw[fill=ln-accent!22] (\o+41,0) rectangle ++(11,9);
+    \node[align=center] at (\o+46.5,4.5) {T\t\\\iflangja{構造体}{struct}};
+    \node[lab, text=ln-caution, anchor=north] at (\o+2.5,-0.8)
+      {\iflangja{レッドゾーン}{red zone}};
+  }
+  \node[lab] at (115,4.5) {\ldots};
+  % address axis
+  \draw[->, ln-muted] (8,-7.5) -- (112,-7.5);
+  \node[lab, anchor=north west] at (8,-8) {\iflangja{下位アドレス}{lower addresses}};
+  \node[lab, anchor=north east] at (112,-8) {\iflangja{上位アドレス}{higher addresses}};
+  \node[lab, anchor=north] at (60,-8)
+    {\iflangja{スタックは下位アドレスへ伸びる}{stacks grow toward lower addresses}};
+  % table of pointers indexed by thread id
+  \node[lab, anchor=east] at (33,24) {\iflangja{ポインタの表}{table of pointers}};
+  \foreach \i/\x in {1/38, 2/46, 3/54} {
+    \node[cell] (t\i) at (\x,24) {};
+    \node[lab, anchor=south] at (\x,26.5) {\i};
+  }
+  \node[cell] at (62,24) {\ldots};
+  \node[lab, anchor=west] at (67,24) {\iflangja{（添字 = スレッド ID）}{(index = thread ID)}};
+  \fill (t1) circle (0.6);
+  \fill (t2) circle (0.6);
+  \draw[->] (t1.center) -- (54.5,9);
+  \draw[->] (t2.center) .. controls (46,15) and (100,16) .. (106.5,9);
+\end{tikzpicture}

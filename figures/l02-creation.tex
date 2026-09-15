@@ -1,0 +1,33 @@
+% Left: a process tree.  Right: fork followed by exec.
+% Usage: \input{figures/l02-creation}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  pr/.style={draw, rounded corners=2pt, fill=ln-box, minimum width=13mm,
+             minimum height=6mm, inner sep=1pt},
+  bx/.style={draw, rounded corners=2pt, fill=white, text width=25mm, align=center,
+             minimum height=9mm, inner sep=1.5pt, font=\scriptsize\sffamily},
+  >={Stealth[length=1.6mm]},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  ttl/.style={font=\footnotesize\sffamily\itshape}]
+  % ---- (a) process tree
+  \node[pr, fill=ln-accent!22] (init) at (24,36) {\texttt{init}};
+  \node[pr] (sh)  at (12,22) {\iflangja{シェル}{shell}};
+  \node[pr] (d)   at (36,22) {\iflangja{デーモン}{daemon}};
+  \node[pr] (ls)  at (7,8)   {\texttt{ls}};
+  \node[pr] (em)  at (22,8)  {\texttt{emacs}};
+  \draw[->] (init) -- (sh);
+  \draw[->] (init) -- (d);
+  \draw[->] (sh) -- (ls);
+  \draw[->] (sh) -- (em);
+  \node[ttl] at (21,-3) {\iflangja{(a) プロセスの木}{(a) process tree}};
+  % ---- (b) fork, then exec in the child
+  \node[bx] (par) at (66,34)
+    {\iflangja{親：プログラム A\\PC = fork の直後}{parent: program A\\PC = after \texttt{fork}}};
+  \node[bx] (ch)  at (66,9)
+    {\iflangja{子：A の複製\\PC = fork の直後}{child: copy of A\\PC = after \texttt{fork}}};
+  \node[bx] (ch2) at (103,9)
+    {\iflangja{子：プログラム B\\PC = B の先頭命令}{child: program B\\PC = first instr.\ of B}};
+  \draw[->, thick] (par) -- node[lab, right] {\texttt{fork}} (ch);
+  \draw[->, thick] (ch) -- node[lab, above] {\texttt{exec}} (ch2);
+  \draw[->, thick] (par.east) -- node[lab, above] {\iflangja{親は実行を続ける}{parent continues}} (117,34);
+  \node[ttl] at (84,-3) {\iflangja{(b) 新しいプログラムの起動}{(b) starting a new program}};
+\end{tikzpicture}

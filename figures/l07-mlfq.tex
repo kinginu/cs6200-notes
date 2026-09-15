@@ -1,0 +1,36 @@
+% Multi-level feedback queue with three levels.
+% Usage: \input{figures/l07-mlfq}   (width ~104 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  desc/.style={anchor=east, align=right, font=\scriptsize\sffamily},
+  q/.style={draw, fill=ln-box},
+  tk/.style={draw, circle, fill=white, minimum size=3.2mm, inner sep=0pt}]
+  \foreach \y in {28,14,0} {
+    \draw[q] (0,\y-3) rectangle (36,\y+3);
+    \foreach \i in {1,...,4} \draw (36-5*\i,\y-3) -- ++(0,6);
+    \draw[->] (36,\y) -- (44,\y);
+  }
+  \node[tk] at (33.5,28) {}; \node[tk] at (28.5,28) {}; \node[tk] at (23.5,28) {};
+  \node[tk] at (33.5,14) {}; \node[tk] at (28.5,14) {};
+  \node[tk] at (33.5,0) {};
+  \node[anchor=west] at (44.5,28) {CPU};
+  \node[anchor=west] at (44.5,14) {CPU};
+  \node[anchor=west] at (44.5,0) {CPU};
+  \node[desc] at (-3,28) {\iflangja{タイムスライス 8\,ms\\最も I/O 集約的\\最高優先度}{timeslice 8\,ms\\most I/O-intensive\\highest priority}};
+  \node[desc] at (-3,14) {\iflangja{タイムスライス 16\,ms\\I/O と CPU の混合}{timeslice 16\,ms\\mix of I/O and CPU}};
+  \node[desc] at (-3,0)  {\iflangja{タイムスライス $\infty$（FCFS）\\CPU 集約的\\最低優先度}{timeslice $\infty$ (FCFS)\\CPU-intensive\\lowest priority}};
+  % new tasks enter the top level
+  \draw[->] (2,40) node[above, font=\scriptsize\sffamily] {\iflangja{新しいタスク}{new task}} -- (2,31.5);
+  % feedback
+  \draw[->, thick] (56,27) to[bend left=40] (56,15);
+  \draw[->, thick] (56,13) to[bend left=40] (56,1);
+  \draw[->, thick, densely dashed] (66,1) to[bend right=40] (66,13);
+  \draw[->, thick, densely dashed] (66,15) to[bend right=40] (66,27);
+  % legend
+  \begin{scope}[yshift=-12mm, font=\scriptsize\sffamily]
+    \draw[->, thick] (0,0) -- (7,0);
+    \node[anchor=west] at (8,0) {\iflangja{タイムスライスを使い切る：下の段へ}{uses its whole timeslice: moves down}};
+    \draw[->, thick, densely dashed] (0,-5) -- (7,-5);
+    \node[anchor=west] at (8,-5) {\iflangja{I/O のため早く CPU を手放す：上の段へ}{releases the CPU early for I/O: moves up}};
+  \end{scope}
+\end{tikzpicture}

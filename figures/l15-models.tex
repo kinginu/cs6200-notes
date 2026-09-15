@@ -1,0 +1,36 @@
+% Operations for the consistency-model example: P1 and P2 write m1 and m2,
+% P3 and P4 read both locations in opposite orders, a synchronization point
+% follows at t5, and P4 reads m1 again at t6.  P2's read of m1 (grey) is
+% present only in the variant with a causal dependency.
+% Usage: \input{figures/l15-models}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  lab/.style={font=\scriptsize, inner sep=0.8pt},
+  ev/.style={circle, fill=black, inner sep=0pt, minimum size=1.3mm}]
+  % t_i -> x = 8 + 16 i (mm); rows: P1 27, P2 18, P3 9, P4 0
+  \foreach \pn/\py in {1/27,2/18,3/9,4/0} {
+    \node[row] at (14,\py) {P\pn};
+    \draw[ln-rule] (16,\py) -- (112,\py);
+  }
+  % synchronization point
+  \draw[densely dashed, ln-accent, thick] (88,-3) -- (88,31);
+  \node[lab, anchor=south, text=ln-accent, font=\scriptsize\sffamily] at (88,31) {sync};
+  % P1, P2 writes
+  \node[ev] at (24,27) {};  \node[lab, anchor=south] at (24,28) {$W_{m_1}(1)$};
+  \node[ev] at (40,18) {};  \node[lab, anchor=south] at (40,19) {$W_{m_2}(2)$};
+  \node[ev, fill=ln-muted] at (31,18) {};
+  \node[lab, anchor=north, text=ln-muted] at (29,17) {($R_{m_1}(1)$)};
+  % P3 reads
+  \node[ev] at (56,9) {};  \node[lab, anchor=south] at (56,10) {$R_{m_1}(?)$};
+  \node[ev] at (72,9) {};  \node[lab, anchor=south] at (72,10) {$R_{m_2}(?)$};
+  % P4 reads
+  \node[ev] at (56,0) {};  \node[lab, anchor=south] at (56,1) {$R_{m_2}(?)$};
+  \node[ev] at (72,0) {};  \node[lab, anchor=south] at (72,1) {$R_{m_1}(?)$};
+  \node[ev] at (104,0) {}; \node[lab, anchor=south] at (104,1) {$R_{m_1}(?)$};
+  % time axis
+  \draw[->] (16,-6) -- (113,-6);
+  \foreach \ti in {1,...,6} {
+    \draw ({8+16*\ti},-5.2) -- ({8+16*\ti},-6.8);
+    \node[lab, anchor=north] at ({8+16*\ti},-7) {$t_{\ti}$};
+  }
+\end{tikzpicture}

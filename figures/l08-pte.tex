@@ -1,0 +1,32 @@
+% Layout of a 32-bit x86 page table entry (4 KiB page, no PAE).
+% Usage: \input{figures/l08-pte}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  num/.style={font=\tiny\sffamily, text=ln-muted, anchor=south},
+  grp/.style={font=\scriptsize\sffamily, anchor=north, align=center}]
+  % field boundaries: PFN 0..34, unused 34..46, then 9 single bits of 7.8 mm
+  \draw[fill=ln-accent!22] (0,0) rectangle (34,7) node[midway] {\iflangja{物理フレーム番号}{physical frame number}};
+  \draw[fill=white] (34,0) rectangle (46,7) node[midway] {\iflangja{未使用}{unused}};
+  \foreach \k/\n/\f in {0/G/white, 1/PAT/white, 2/D/ln-accent!22, 3/A/ln-accent!22,
+                        4/PCD/ln-box, 5/PWT/ln-box, 6/{U/S}/ln-source!16,
+                        7/{R/W}/ln-source!16, 8/P/ln-accent!22} {
+    \draw[fill=\f] (46+7.8*\k,0) rectangle ++(7.8,7);
+    \node at (49.9+7.8*\k,3.5) {\n};
+  }
+  % bit numbers
+  \node[num] at (1.5,7.2) {31};
+  \node[num] at (32.5,7.2) {12};
+  \node[num] at (35.5,7.2) {11};
+  \node[num] at (44.5,7.2) {9};
+  \foreach \k/\b in {0/8, 1/7, 2/6, 3/5, 4/4, 5/3, 6/2, 7/1, 8/0} {
+    \node[num] at (49.9+7.8*\k,7.2) {\b};
+  }
+  % groups
+  \draw[ln-muted] (62.2,-1) -- (62.2,-2) -- (76.6,-2) -- (76.6,-1);
+  \node[grp] at (69.4,-2.5) {\iflangja{ダーティ，\\アクセス}{dirty,\\accessed}};
+  \draw[ln-muted] (77.8,-1) -- (77.8,-2) -- (92.2,-2) -- (92.2,-1);
+  \node[grp] at (85,-2.5) {\iflangja{キャッシュ\\関連}{caching}};
+  \draw[ln-muted] (93.4,-1) -- (93.4,-2) -- (107.8,-2) -- (107.8,-1);
+  \node[grp] at (100.6,-2.5) {\iflangja{保護}{protection}};
+  \draw[ln-muted] (112.3,-1) -- (112.3,-2);
+  \node[grp] at (112.3,-2.5) {\iflangja{存在}{present}};
+\end{tikzpicture}

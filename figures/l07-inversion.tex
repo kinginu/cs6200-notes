@@ -1,0 +1,65 @@
+% Priority inversion and priority inheritance.  T1 (high) arrives at 3,
+% T2 (medium) at 2, T3 (low) at 0; T1 and T3 share mutex m.
+% Usage: \input{figures/l07-inversion}   (width ~112 mm)
+\begin{tikzpicture}[x=9mm, y=1mm, font=\footnotesize\sffamily,
+  run/.style={draw, fill=ln-box},
+  cs/.style={draw, fill=ln-accent!40},
+  boost/.style={draw=ln-caution, line width=1.2pt, fill=ln-accent!40},
+  blk/.style={densely dashed, thick, ln-caution},
+  lab/.style={anchor=east},
+  ttl/.style={anchor=south west, font=\footnotesize\sffamily\bfseries, inner sep=1pt}]
+  % ---------- (a) without priority inheritance
+  \node[ttl] at (0,54) {\iflangja{(a) 優先度継承なし}{(a) without priority inheritance}};
+  \node[lab] at (-0.1,50.5) {\iflangja{T1（高）}{T1 (high)}};
+  \node[lab] at (-0.1,42.5) {\iflangja{T2（中）}{T2 (medium)}};
+  \node[lab] at (-0.1,34.5) {\iflangja{T3（低）}{T3 (low)}};
+  \draw[run] (3,48) rectangle (4,53);
+  \draw[blk] (4,50.5) -- (7,50.5);
+  \draw[cs]  (7,48) rectangle (8,53);
+  \draw[run] (8,48) rectangle (9,53);
+  \draw[run] (2,40) rectangle (3,45);
+  \draw[run] (4,40) rectangle (6,45);
+  \draw[run] (0,32) rectangle (1,37);
+  \draw[cs]  (1,32) rectangle (2,37);
+  \draw[cs]  (6,32) rectangle (7,37);
+  \draw[run] (9,32) rectangle (10,37);
+  \draw (0,29) -- (10.3,29);
+  \foreach \x in {0,...,10} {
+    \draw (\x,29) -- (\x,28);
+    \node[below, font=\scriptsize\sffamily, inner sep=1pt] at (\x,28) {\x};
+  }
+  % ---------- (b) with priority inheritance
+  \node[ttl] at (0,19) {\iflangja{(b) 優先度継承あり}{(b) with priority inheritance}};
+  \node[lab] at (-0.1,15.5) {\iflangja{T1（高）}{T1 (high)}};
+  \node[lab] at (-0.1,7.5)  {\iflangja{T2（中）}{T2 (medium)}};
+  \node[lab] at (-0.1,-0.5) {\iflangja{T3（低）}{T3 (low)}};
+  \draw[run] (3,13) rectangle (4,18);
+  \draw[blk] (4,15.5) -- (5,15.5);
+  \draw[cs]  (5,13) rectangle (6,18);
+  \draw[run] (6,13) rectangle (7,18);
+  \draw[run] (2,5) rectangle (3,10);
+  \draw[run] (7,5) rectangle (9,10);
+  \draw[run] (0,-3) rectangle (1,2);
+  \draw[cs]  (1,-3) rectangle (2,2);
+  \draw[boost] (4,-3) rectangle (5,2);
+  \node[anchor=west, font=\scriptsize\sffamily, text=ln-caution] at (5.1,-0.5)
+    {\iflangja{優先度を「高」に引き上げ}{priority raised to high}};
+  \draw[run] (9,-3) rectangle (10,2);
+  \draw (0,-6) -- (10.3,-6);
+  \foreach \x in {0,...,10} {
+    \draw (\x,-6) -- (\x,-7);
+    \node[below, font=\scriptsize\sffamily, inner sep=1pt] at (\x,-7) {\x};
+  }
+  \node[anchor=west, font=\scriptsize\sffamily] at (10.3,-6) {$t$};
+  % ---------- legend
+  \begin{scope}[yshift=-17mm, font=\scriptsize\sffamily]
+    \draw[run] (0,-1.5) rectangle (0.5,1.5);
+    \node[anchor=west] at (0.55,0) {\iflangja{実行}{runs}};
+    \draw[cs] (2,-1.5) rectangle (2.5,1.5);
+    \node[anchor=west] at (2.55,0) {\iflangja{m を保持して実行}{runs holding m}};
+    \draw[blk] (5.3,0) -- (6,0);
+    \node[anchor=west] at (6.05,0) {\iflangja{m 待ちでブロック}{blocked on m}};
+    \draw[boost] (8.2,-1.5) rectangle (8.7,1.5);
+    \node[anchor=west] at (8.75,0) {\iflangja{継承した優先度}{inherited priority}};
+  \end{scope}
+\end{tikzpicture}

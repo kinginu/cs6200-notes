@@ -1,0 +1,648 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Processes and Process Management}
+\lessoninfo{
+  video={P2L1},
+  textbook={OSTEP \cite{ostep} ch.~4--7, 13; Silberschatz et al.\ \cite{silberschatz2018} ch.~3},
+  keywords={process, address space, virtual address, page table, process control block, context switch, hot cache, process state, fork, exec, CPU scheduler, timeslice, inter-process communication, shared memory},
+}
+
+Lesson~1 described the operating system as the layer that abstracts and
+arbitrates the hardware on behalf of applications.  Its most fundamental
+abstraction is the process, the representation of an application while it
+executes.  This lesson describes what a process is and what state it
+comprises, how the operating system represents that state, and how it
+manages many processes at once: it switches the CPU between them, creates
+them, schedules them, and lets them communicate with one another.
+
+\section{Programs and processes}
+\label{sec:l02-process}
+
+An application stored on disk or in flash memory is a
+\emph{program}: a static entity, a file of instructions and initial data
+that does nothing by itself.\source{P2L1, what is a process; OSTEP
+\cite{ostep} ch.~4; Silberschatz et al.\ \cite{silberschatz2018} ch.~3.}
+When the program is launched, the operating system loads it into memory and
+starts executing it, and it becomes an active entity.
+
+\begin{definition}[Process]
+  \label{def:l02-process}
+  A \term{process}[プロセス] is an instance of an executing program: the
+  state of a program while it executes, loaded in memory.  A process is also
+  called a \emph{task}.
+\end{definition}
+
+Launching the same program twice creates two processes.  They execute the
+same code but each has its own state, for instance different input data or
+a different position in the program.  A process represents the execution
+state of an \emph{active} application; this does not mean that the process
+is using the CPU at every moment.  It may be waiting for user input, or
+another process may be running on the CPU while it waits for its turn.
+
+\section{The address space of a process}
+\label{sec:l02-address-space}
+
+A process encapsulates all the state of the running application: its code,
+its data, and all the variables that the application creates as it
+executes.\source{P2L1, what does a process look like, process address
+space; OSTEP ch.~4, 13.}  Every element of this state must be uniquely
+identified by its address.
+
+\begin{definition}[Address space]
+  The \term{address space}[アドレス空間] of a process is the abstraction
+  the operating system uses to encapsulate the state of the process: a range
+  of addresses from $V_0$ to $V_{\max}$, together with the state stored at
+  those addresses.  It is the in-memory representation of the process.
+\end{definition}
+
+The state in the address space is of several types, laid out as in
+\cref{fig:l02-address-space}:
+\begin{description}
+  \item[Text and data] The \term{text segment}[テキストセグメント] holds the
+    code of the program, the instructions produced by the compiler.  The
+    \term{data segment}[データセグメント] holds its static data, such as
+    global variables initialized when the program is loaded.  Both are
+    static state: they are present from the moment the process is first
+    loaded.
+  \item[Heap] The \term{heap}[ヒープ] holds state that the process creates
+    dynamically during its execution, for example memory allocated with
+    \texttt{malloc}.  It grows toward higher addresses.
+  \item[Stack] The \term{stack}[スタック] is a dynamic part of the address
+    space that grows and shrinks during execution in last-in first-out
+    order.  When the process calls a procedure, the state that must be
+    restored on return---the return address, saved register values and the
+    local variables of the call---is pushed onto the stack; when the
+    procedure returns, it is popped.  The stack starts at the high end of
+    the address space and grows toward lower addresses.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-address-space}
+  \caption{Address space of a process.  The heap and the stack grow toward
+    each other; the addresses between them are not allocated.}
+  \label{fig:l02-address-space}
+\end{figure}
+
+\subsection{Virtual and physical addresses}
+
+The addresses $V_0$ to $V_{\max}$ that a process uses need not correspond to
+actual locations in the physical memory of the machine.\source{P2L1,
+process address space; OSTEP ch.~13.}
+
+\begin{definition}[Virtual and physical address]
+  A \term{virtual address}[仮想アドレス] is an address in the address space
+  of a process, as used by the process itself.  A
+  \term{physical address}[物理アドレス] is the address of a location in the
+  physical memory (DRAM) of the machine.
+\end{definition}
+
+The memory-management hardware and the operating system translate every
+virtual address that the process uses into a physical address.  The mapping
+between the two is recorded in a \term{page table}[ページテーブル], which
+the operating system maintains for every process.  Decoupling the two kinds
+of address frees the layout of the address space from the layout of
+physical memory.
+
+\begin{example}
+  A process stores a variable \texttt{x} at the virtual address
+  \texttt{0x00402A10}.  Its page table maps this address to the physical
+  address \texttt{0x1F3A0A10}.  Whenever the process reads or writes
+  \texttt{x}, it uses \texttt{0x00402A10}; the translation to
+  \texttt{0x1F3A0A10} happens without its involvement.
+\end{example}
+
+\subsection{Address space and memory management}
+
+The mapping gives the operating system freedom in how it uses physical
+memory, which it needs for two reasons.\source{P2L1, address space and
+memory management.}  First, a process rarely uses its whole address space;
+large portions, such as the region between the heap and the stack, are
+never allocated.  Second, there may not be enough physical memory for all
+the state that is allocated.  With 32-bit virtual addresses a single process
+can address $2^{32}$ bytes, that is \SI{4}{\gibi\byte}, and several processes
+together easily need more memory than the machine has.
+
+The operating system therefore decides dynamically which portions of which
+address spaces reside where in physical memory.  Some portions may
+temporarily be moved out to disk and brought back into memory when the
+process needs them (swapping; Lesson~8).  For every process, the operating
+system must know where each part of its address space currently is, in
+memory or on disk; this is the information held in the page tables.  The
+same information lets it validate memory accesses, that is, check that the
+process is actually allowed to access the address it uses.
+
+Every process has its own address space, and the address spaces of
+different processes span the same range of virtual addresses.  Two processes
+running at the same time can therefore use the very same virtual address,
+and their page tables map it to different physical locations
+(\cref{fig:l02-address-mapping}).  A virtual address identifies a location
+only together with the process that uses it.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-address-mapping}
+  \caption{Two processes with the same range of virtual addresses.  Their
+    page tables map the allocated regions to different physical frames; the
+    text of P2 is currently on disk, and the unallocated regions are not
+    mapped at all.}
+  \label{fig:l02-address-mapping}
+\end{figure}
+
+\section{Execution state and the process control block}
+\label{sec:l02-pcb}
+
+When the operating system stops a process, it must record what the process
+was doing so that it can later resume the process from exactly the same
+point.\source{P2L1, process execution state, what is a process control
+block; OSTEP ch.~4.}  A program is compiled into a binary, a sequence of
+instructions that are not executed strictly in order: jumps, loops and
+interrupts change the sequence.  At every moment the CPU must know where in
+this sequence the process is.
+
+The \term{program counter}[プログラムカウンタ]\index{PC|see{program counter}}
+(PC) holds the address of the next instruction to execute; while the
+process runs, it is kept in a register of the CPU.  Other CPU registers hold
+data values, addresses, and status information that affects the sequence of
+execution.  The \term{stack pointer}[スタックポインタ] (SP) holds the
+address of the top of the stack.  Together these values form the execution
+state of the process.
+
+\begin{definition}[Process control block]
+  A \term{process control block}[プロセス制御ブロック]\index{PCB|see{process control block}}
+  (PCB) is a data structure that the operating system maintains for every
+  process.  It contains the process state, the process number, the program
+  counter and the other CPU registers, the memory limits and the
+  virtual-to-physical mappings, the list of open files, the priority, the
+  signal mask, and CPU scheduling information.
+\end{definition}
+
+The fields of the PCB (\cref{fig:l02-pcb}) are maintained at different
+times:
+\begin{itemize}
+  \item The PCB is created and initialized when the process is created; for
+    example, the program counter is set to the first instruction of the
+    program.
+  \item Some fields are updated when the corresponding state changes.  When
+    the process requests more memory, the operating system allocates it and
+    updates the memory limits and mappings.
+  \item Other fields change far too often to be kept current in the PCB.
+    The program counter changes with every instruction, so the CPU maintains
+    it in its own register.  The operating system collects the values that
+    the CPU keeps for a process and saves them in the PCB whenever the
+    process stops running on the CPU.
+\end{itemize}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-pcb}
+  \caption{Process control blocks of P1 and P2.  The shaded fields hold
+    values that the CPU maintains in its registers while the process runs;
+    they are saved into the PCB when the process stops running and restored
+    from it when the process runs again.}
+  \label{fig:l02-pcb}
+\end{figure}
+
+\section{Context switch}
+\label{sec:l02-context-switch}
+
+Consider two processes, P1 and P2, whose PCBs are stored in the memory of
+the operating system.\source{P2L1, how is a PCB used, context switch; OSTEP
+ch.~6.}  While P1 runs, the CPU registers hold its execution state.  When
+the operating system interrupts P1, it saves the contents of the registers
+into the PCB of P1 and restores the state of P2 from the PCB of P2 into the
+registers; P2 then runs, and P1 is idle.  When the operating system later
+interrupts P2, it saves P2's state into its PCB and restores P1's state.
+P1 resumes from exactly the point at which it was stopped
+(\cref{fig:l02-context-switch}).
+
+\begin{definition}[Context switch]
+  A \term{context switch}[コンテキストスイッチ] is the mechanism used by
+  the operating system to switch the CPU from the context of one process to
+  the context of another.
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-context-switch}
+  \caption{Two context switches between P1 and P2.  Each process is idle
+    (dashed) while the other runs, and its state waits in its PCB.}
+  \label{fig:l02-context-switch}
+\end{figure}
+
+Context switches are expensive, for two reasons:
+\begin{description}
+  \item[Direct cost] the CPU cycles spent executing the load and store
+    instructions that save the state of one process and restore the state
+    of the other.
+  \item[Indirect cost] the effect on the processor cache.  A cache access
+    takes on the order of a few cycles, whereas an access to main memory
+    takes on the order of hundreds of cycles.
+\end{description}
+
+While a process runs, much of the data it uses is present in the processor
+cache.  Such a cache is a \term{hot cache}[ホットキャッシュ]: most accesses
+are served from the cache, and the process performs at its best.  After a
+context switch, the next process replaces much of this data with its own.
+When the first process resumes, it finds a
+\term{cold cache}[コールドキャッシュ]: its data is no longer in the cache,
+and its accesses are cache misses that must be served from main memory until
+the cache has been refilled.  The operating system should therefore limit
+how frequently it switches contexts.
+
+\begin{example}
+  Suppose that saving and restoring the registers takes 1\,000 cycles, and
+  that an access costs 4 cycles when the data is in the cache and 200 cycles
+  when it must be read from main memory.  If P1 accesses 5\,000 data items
+  after it resumes that were evicted from the cache while P2 ran, the first
+  access to each costs $200 - 4 = 196$ extra cycles, in total
+  $5\,000\times 196 = 980\,000$ cycles.  The indirect cost is almost a
+  thousand times the direct cost of the switch.
+\end{example}
+
+\begin{note}
+  A hot cache does not mean that the process may keep the CPU.  A context
+  switch is still necessary when, for example, a process of higher priority
+  becomes ready or when the running process has used up the time it was
+  allotted (\cref{sec:l02-scheduler}).  The cost of the switch is the price
+  of sharing the CPU.
+\end{note}
+
+\begin{keypoint}
+  The PCB holds everything the operating system needs to stop a process and
+  resume it later.  A context switch saves the CPU state of one process into
+  its PCB and restores another from its PCB; its hidden cost, the cold cache
+  it leaves behind, can far exceed the cost of the save and restore.
+\end{keypoint}
+
+\section{Process life cycle}
+\label{sec:l02-states}
+
+Seen from the CPU, a process alternates between running and not
+running.\source{P2L1, process life cycle, process life cycle: states; OSTEP
+ch.~4.}  A running process that is interrupted and switched out becomes
+idle; it is still ready to execute, and it runs again when the scheduler
+dispatches it to the CPU.  A process can be idle for other reasons as well,
+and the operating system distinguishes these situations by the
+\term{process state}[プロセス状態], which it records in the PCB.  A process
+is in one of the following states (\cref{fig:l02-states}):
+
+\begin{description}
+  \item[New] A process that is being created is in the
+    \term{new state}[新規状態].  The operating system performs
+    \emph{admission control}, deciding whether the process can be accepted;
+    if so, it allocates and initializes the PCB and some initial
+    resources, and the process is \emph{admitted}.
+  \item[Ready] A process in the \term{ready state}[実行可能状態] has
+    everything it needs to execute except the CPU.  It could run as soon as
+    the scheduler selects it; until then it waits for its turn.
+  \item[Running] A process in the \term{running state}[実行状態] is
+    executing on the CPU; after the \emph{scheduler dispatch} it continues
+    from the point stored in its PCB.  A running process leaves this state
+    in one of three ways: it is interrupted, for instance because its time
+    on the CPU has expired, and returns to the ready state after a context
+    switch; it initiates a long operation, such as reading from disk or
+    waiting for a keyboard or timer event, and enters the waiting state; or
+    it finishes, or encounters an error, and exits.
+  \item[Waiting] A process in the \term{waiting state}[待ち状態] cannot
+    proceed until some event occurs, such as the completion of an I/O
+    operation.  When the event occurs, the process becomes ready again.
+  \item[Terminated] A process that has finished all its operations, or has
+    encountered an error, calls \emph{exit} and enters the
+    \term{terminated state}[終了状態].
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-states}
+  \caption{Process states and the transitions between them.}
+  \label{fig:l02-states}
+\end{figure}
+
+\caution{A waiting process whose event completes does not resume running
+immediately: it moves to the ready state and must be dispatched again.}
+\Cref{tab:l02-trace} traces one process through its life cycle.  Note that
+only one transition, the dispatch, gives the process the CPU; every other
+transition takes it away or leaves the process without it.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \caption{State trace of a process that runs, is preempted once, reads a
+    file, and exits.}
+  \label{tab:l02-trace}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    Event & Transition & State after & Where it is \\
+    \midrule
+    process is being created     & ---                     & new        & --- \\
+    PCB initialized, accepted    & admitted                & ready      & ready queue \\
+    scheduler selects it         & scheduler dispatch      & running    & CPU \\
+    its time on the CPU expires  & interrupt               & ready      & ready queue \\
+    scheduler selects it         & scheduler dispatch      & running    & CPU \\
+    it issues a disk read        & I/O or event wait       & waiting    & disk I/O queue \\
+    the disk read completes      & I/O or event completion & ready      & ready queue \\
+    scheduler selects it         & scheduler dispatch      & running    & CPU \\
+    it calls exit                & exit                    & terminated & --- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Process creation}
+\label{sec:l02-creation}
+
+Processes are created by other processes.\source{P2L1, process life cycle:
+creation; OSTEP ch.~5; Silberschatz et al.\ ch.~3.}  When the system boots
+and the operating system has been loaded, it creates a few initial
+processes, some of them with privileged access.  When a user logs in, a
+shell process is created for the user, and every command typed into the
+shell, for instance \texttt{ls} or \texttt{emacs}, runs as a new process
+created by the shell.  A process that creates another process is its
+\term{parent process}[親プロセス], and the process it creates is its
+\term{child process}[子プロセス].  Since every process except the first
+has a parent, the processes of a system form a tree rooted in a single
+process (\cref{fig:l02-creation}\,(a)).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-creation}
+  \caption{(a) Processes form a tree rooted in the initial process.  (b) A
+    child created by \texttt{fork} is a copy of its parent; \texttt{exec}
+    replaces its program with a new one.}
+  \label{fig:l02-creation}
+\end{figure}
+
+Most operating systems provide two mechanisms for creating processes, in
+Unix called \texttt{fork} and \texttt{exec}:
+\begin{description}
+  \item[\texttt{fork}] With the \term[fork]{\texttt{fork}}[fork] system
+    call the operating system creates a new PCB for the child, copies the
+    PCB of the parent into it, and gives the child a copy of the parent's
+    address space.  The child is a duplicate of the parent, with the same
+    program and the same program counter, so after the call both parent and
+    child continue at the instruction that follows \texttt{fork}.
+  \item[\texttt{exec}] With the \term[exec]{\texttt{exec}}[exec] system
+    call a process replaces its own image with a new program.  The
+    operating system loads the new program into the address space of the
+    process and reinitializes its PCB; the program counter now points to
+    the first instruction of the new program.
+\end{description}
+
+To create a process that runs a \emph{different} program, a parent calls
+\texttt{fork}, and the child then calls \texttt{exec}
+(\cref{fig:l02-creation}\,(b)).  Since parent and child return from the
+same \texttt{fork} to the same place, they tell each other apart by its
+return value: \texttt{fork} returns 0 in the child and the child's process
+identifier in the parent, or $-1$ in the parent if no child could be
+created.
+
+Every process tree has a root.  On Unix-based systems it is
+\term[init]{\texttt{init}}[init], the first user process that the kernel
+starts after booting, and every other process descends from it.  (On many
+current Linux distributions the program that runs as this first process is
+\texttt{systemd}.)  Android uses the same mechanism to start applications
+quickly.  Its application processes descend from
+\term{Zygote}[Zygote], a daemon started during boot whose sole purpose is to
+launch applications; it loads the runtime and commonly used libraries once.
+To launch an application, Zygote forks, and the child, which already
+contains everything Zygote has loaded, becomes the process of the
+application.
+
+\needspace{18\baselineskip}
+\begin{example}
+  A program that creates a child process with \texttt{fork}, runs
+  \texttt{ls -l} in it with \texttt{exec}, and waits until the child has
+  finished:
+  \begin{lstlisting}[language=C, numbers=none]
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+int main(void) {
+    pid_t pid = fork();
+    if (pid == 0) {              /* child */
+        execlp("ls", "ls", "-l", (char *)NULL);
+        _exit(127);              /* only if exec failed */
+    } else if (pid > 0) {        /* parent */
+        waitpid(pid, NULL, 0);   /* wait for the child */
+    }
+    return 0;
+}
+  \end{lstlisting}
+  After a successful \texttt{execlp} the child executes the code of
+  \texttt{ls}; the call never returns.
+\end{example}
+
+\section{The CPU scheduler}
+\label{sec:l02-scheduler}
+
+For the CPU to start executing a process, the process must be ready, and at
+any time several processes may be ready.\source{P2L1, role of the CPU
+scheduler; OSTEP ch.~6--7.}  The operating system must decide which of them
+runs next, and for how long.
+
+\begin{definition}[CPU scheduler]
+  The \term{CPU scheduler}[CPUスケジューラ] is the component of the
+  operating system that manages how processes use the CPU.  It decides which
+  of the ready processes is dispatched to the CPU and how long it may run.
+\end{definition}
+
+The processes that are ready wait for the CPU in the
+\term{ready queue}[レディキュー].  To give the CPU to one of them, the
+operating system performs three operations:
+\begin{description}
+  \item[Preempt] the running process is interrupted and its context is
+    saved in its PCB; this is called \term{preemption}[プリエンプション];
+  \item[Schedule] the scheduler runs its algorithm to choose the next
+    process from the ready queue;
+  \item[Dispatch] the operating system switches into the context of the
+    chosen process and lets it run on the CPU; this is the
+    \term{dispatch}[ディスパッチ] of the process.
+\end{description}
+
+The CPU is the resource that the processes need, so it should spend as much
+of its time as possible running them rather than running the operating
+system.  The scheduler therefore needs efficient algorithms, efficient
+implementations of them, and efficient data structures to represent the
+waiting processes and their scheduling information, the ready queue in
+particular.
+
+\subsection{How often to run the scheduler}
+
+The more often the scheduler runs, the more CPU time it takes away from the
+processes.\source{P2L1, length of process; OSTEP ch.~7.}  Suppose each
+process runs for a time $T_p$ before the scheduler, which takes
+$t_{\mathrm{sched}}$, chooses the next one (\cref{fig:l02-timeslice}).  Over
+$n$ such rounds the fraction of the CPU time spent on useful work is
+\begin{equation}
+  \text{useful CPU work}
+  \;=\; \frac{\text{total processing time}}{\text{total time}}
+  \;=\; \frac{n\,T_p}{n\,T_p + n\,t_{\mathrm{sched}}}
+  \;=\; \frac{T_p}{T_p + t_{\mathrm{sched}}} .
+  \label{eq:l02-useful}
+\end{equation}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-timeslice}
+  \caption{Processes run for $T_p$ each; the scheduler (S) runs for
+    $t_{\mathrm{sched}}$ between them.}
+  \label{fig:l02-timeslice}
+\end{figure}
+
+The time $T_p$ that a process is allocated on the CPU is its
+\term{timeslice}[タイムスライス].  The longer the timeslice relative to
+$t_{\mathrm{sched}}$, the larger the useful fraction.  If the timeslice is
+only as long as a run of the scheduler, half of the CPU time is lost; with a
+timeslice ten times as long, the useful fraction is $10/11 \approx
+\SI{91}{\percent}$.
+
+\needspace{8\baselineskip}
+\begin{example}
+  Let $t_{\mathrm{sched}} = \SI{0.5}{\milli\second}$.  With a timeslice of
+  \SI{2}{\milli\second}, \cref{eq:l02-useful} gives $2/2.5 =
+  \SI{80}{\percent}$ useful work; with a timeslice of
+  \SI{20}{\milli\second}, $20/20.5 \approx \SI{97.6}{\percent}$.  The longer
+  timeslice has a price.  With ten ready processes, a process that has just
+  used up its timeslice waits for the timeslices of the nine others and for
+  ten runs of the scheduler, $9\times 20 + 10\times 0.5 =
+  \SI{185}{\milli\second}$, before it runs again; with the
+  \SI{2}{\milli\second} timeslice it would wait only
+  $9\times 2 + 10\times 0.5 = \SI{23}{\milli\second}$.
+\end{example}
+
+Choosing a scheduler thus requires design decisions: what timeslice values
+are appropriate, and which metrics decide the process to run next.  Lesson~7
+examines these questions.
+
+\subsection{Processes and I/O}
+
+A running process may issue an I/O request, for example to read from
+disk.\source{P2L1, what about I/O; Silberschatz et al.\ ch.~3.}  The
+operating system delivers the request to the device and places the process
+on the \emph{I/O queue} associated with that device.  The process remains
+waiting there until the device completes the operation and responds to the
+request.  The process is then ready again: depending on the load of the
+system it is placed on the ready queue, or, if no other process is waiting,
+it may be dispatched to the CPU right away.
+
+\Cref{fig:l02-queues} shows all the ways in which a process that has left
+the CPU finds its way back to the ready queue:
+\begin{itemize}
+  \item its I/O request has been served by the device;
+  \item its timeslice has expired;
+  \item it is a new process, created by a \texttt{fork};
+  \item it was waiting for an interrupt, and the interrupt has occurred.
+\end{itemize}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-queues}
+  \caption{Paths of a process between the ready queue, the CPU and the
+    places where it waits.  Every path returns to the ready queue.}
+  \label{fig:l02-queues}
+\end{figure}
+
+The responsibilities are divided accordingly.  The scheduler manages the
+ready queue, and it decides when to switch contexts and to which process.
+It does not manage the I/O queues, which belong to the handling of the
+devices, and it does not produce the events that waiting processes wait for:
+those come from devices, timers or other processes.  The scheduler takes
+over only once a process is on the ready queue again.
+
+\begin{keypoint}
+  The scheduler preempts, schedules and dispatches processes that are in the
+  ready queue.  Because it runs on the same CPU, its own time is overhead
+  (\cref{eq:l02-useful}); the timeslice trades this overhead against how long
+  ready processes wait.
+\end{keypoint}
+
+\section{Inter-process communication}
+\label{sec:l02-ipc}
+
+Many applications are structured as several processes that must interact.
+A web application, for example, may consist of a web server process that
+handles the requests of clients and a database process that stores the
+data.\source{P2L1, can processes interact; Silberschatz et al.\ ch.~3.}
+The operating system, however, isolates processes from one another (Lesson~1):
+each has its own address space, and no process can access the memory of
+another.
+
+\begin{definition}[Inter-process communication]
+  The mechanisms that the operating system provides for processes to
+  interact are called
+  \term{inter-process communication}[プロセス間通信]\index{IPC|see{inter-process communication}}
+  (IPC).  IPC mechanisms transfer data and information
+  between address spaces, maintain the protection and isolation of the
+  processes, and give applications flexibility and good performance.
+\end{definition}
+
+There are two basic kinds of IPC (\cref{fig:l02-ipc}):
+\begin{description}
+  \item[Message passing] In \term{message passing}[メッセージパッシング]
+    the operating system establishes a communication channel, such as a
+    shared buffer in kernel memory.  Processes send messages by writing into
+    the channel and receive messages by reading from it, using system calls.
+    The operating system manages the channel and offers the same
+    well-defined interface, such as \texttt{send} and \texttt{recv}, to all
+    applications.  The price is overhead: every piece of information is
+    copied from the address space of the sender into the channel in the
+    kernel, and from there into the address space of the receiver, with a
+    crossing into the kernel on each side.
+  \item[Shared memory] With \term{shared memory}[共有メモリ] the operating
+    system establishes a region of physical memory and maps it into the
+    address spaces of both processes.  The processes then read and write
+    this memory directly, as they would their own, and the operating system
+    is out of the way.  The price is that the operating system no longer
+    defines how the memory is used.  There is no fixed, well-defined
+    interface: the processes must agree on the format of the data and
+    coordinate their accesses themselves, developers may have to
+    re-implement this code for every application, and it is more
+    error-prone.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l02-ipc}
+  \caption{(a) Message passing copies every message into a channel in the
+    kernel and out again.  (b) With shared memory, the same physical pages
+    are mapped into both address spaces.}
+  \label{fig:l02-ipc}
+\end{figure}
+
+Whether shared memory performs better than message passing depends on the
+communication pattern.  An individual exchange through shared memory is
+cheap, because nothing is copied through the kernel.  Establishing the
+shared mapping, however, is itself an expensive operation, and it pays off
+only when its cost is amortized over a sufficiently large number of
+exchanges.
+
+\needspace{7\baselineskip}
+\begin{example}
+  Suppose that sending a message through a kernel channel costs
+  \SI{6}{\micro\second} (two system calls and two copies), and that
+  exchanging the same data through shared memory costs
+  \SI{1}{\micro\second} after the mapping has been established at a
+  one-time cost of \SI{300}{\micro\second}.  For $n$ messages, shared memory
+  costs $300 + n$ and message passing $6n$ microseconds.  Shared memory is
+  cheaper only when $300 + n < 6n$, that is, for more than 60 messages.
+\end{example}
+
+The IPC mechanisms of Unix-based systems and their use are the subject of
+Lesson~9.
+
+\begin{keypoint}[Lesson summary]
+  A process is an executing program, represented by its address
+  space---text, data, heap and stack, translated from virtual to physical
+  addresses by a page table---and by the execution state that the operating
+  system keeps in its PCB.  A context switch saves one process's state into
+  its PCB and restores another's, at a direct cost and at the indirect cost
+  of a cold cache.  Processes move between the new, ready, running, waiting
+  and terminated states; they are created with \texttt{fork} and
+  \texttt{exec}; the CPU scheduler picks the next ready process, with a
+  timeslice that trades overhead against waiting time; and IPC, by message
+  passing or shared memory, lets isolated processes communicate.
+\end{keypoint}
+
+\end{document}

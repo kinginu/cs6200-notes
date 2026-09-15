@@ -1,0 +1,14 @@
+% Replication combined with partitioning: two partitions of 250 files, each
+% replicated on two of four machines.
+% Usage: \input{figures/l14-combined}   (margin figure, width ~48 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  sv/.style={draw, fill=ln-box, minimum width=18mm, minimum height=8mm, inner sep=1pt, align=center},
+  grp/.style={draw, densely dashed, ln-muted, rounded corners=0.8mm},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, anchor=south west, inner sep=0.5pt}]
+  \foreach \y/\p/\f/\a/\b in {16/1/1--250/1/2, 0/2/251--500/3/4} {
+    \draw[grp] (0,\y-5) rectangle (47,\y+9);
+    \node[lab] at (1,\y+5) {\iflangja{パーティション}{partition} \p: \iflangja{ファイル}{files} \f};
+    \node[sv] at (11.5,\y) {S\a};
+    \node[sv] at (35.5,\y) {S\b};
+  }
+\end{tikzpicture}

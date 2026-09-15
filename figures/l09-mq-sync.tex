@@ -1,0 +1,29 @@
+% Using a message queue to coordinate access to shared memory.
+% Usage: \input{figures/l09-mq-sync}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  hd/.style={draw, rounded corners=2pt, fill=ln-box, align=center,
+             minimum height=9mm, inner sep=1.5pt,
+             text height=1.6ex, text depth=0.5ex},
+  msg/.style={font=\scriptsize\sffamily, fill=white, inner sep=0.6pt, above=0.5mm},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  bar/.style={draw=ln-accent, fill=ln-accent!20},
+  >={Stealth[length=1.6mm]}]
+  \node[hd, minimum width=16mm] (h1) at (10,0) {P1};
+  \node[hd, minimum width=25mm] (hs) at (44,0) {\iflangja{共有メモリ}{shared memory}};
+  \node[hd, minimum width=25mm] (hq) at (78,0) {\iflangja{メッセージキュー}{message queue}};
+  \node[hd, minimum width=16mm] (h2) at (108,0) {P2};
+  \foreach \x/\n in {10/h1,44/hs,78/hq,108/h2}
+    \draw[dashed, ln-rule] (\n.south) -- (\x,-62);
+  % blocking periods
+  \draw[bar] (107,-6) rectangle (109,-28);
+  \node[lab, anchor=east] at (105.5,-7) {\iflangja{\texttt{msgrcv()} で待つ}{blocked in \texttt{msgrcv()}}};
+  \draw[bar] (9,-21) rectangle (11,-55);
+  \node[lab, anchor=west] at (12.5,-24) {\iflangja{\texttt{msgrcv()} で待つ}{blocked in \texttt{msgrcv()}}};
+  % messages
+  \draw[->] (10,-12) -- node[msg] {1\ \iflangja{データを書く}{write data}} (44,-12);
+  \draw[->] (10,-19) -- node[msg, pos=0.62] {2\ \texttt{msgsnd(ready)}} (78,-19);
+  \draw[->] (78,-28) -- node[msg] {3\ \texttt{ready}} (108,-28);
+  \draw[->] (108,-37) -- node[msg, pos=0.6] {4\ \iflangja{データを読む}{read data}} (44,-37);
+  \draw[->] (108,-46) -- node[msg] {5\ \texttt{msgsnd(ok)}} (78,-46);
+  \draw[->] (78,-55) -- node[msg, pos=0.45] {6\ \texttt{ok}} (10,-55);
+\end{tikzpicture}

@@ -1,0 +1,46 @@
+% Two processes with the same virtual address range, mapped by their page
+% tables to different physical frames (one region is on disk).
+% Usage: \input{figures/l02-address-mapping}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  pa/.style={fill=ln-accent!22},  % pages of P1
+  pb/.style={fill=ln-source!18},  % pages of P2
+  lab/.style={font=\scriptsize\sffamily},
+  map/.style={->, thin},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=south}]
+  % ---- virtual address spaces (same range for both processes)
+  \foreach \x/\s/\n in {5/pa/P1, 91/pb/P2} {
+    \draw[\s] (\x,0)  rectangle ++(14,8)  node[midway, lab] {\iflangja{テキスト}{text}};
+    \draw[\s] (\x,8)  rectangle ++(14,8)  node[midway, lab] {\iflangja{データ}{data}};
+    \draw[\s] (\x,16) rectangle ++(14,8)  node[midway, lab] {\iflangja{ヒープ}{heap}};
+    \draw[fill=white] (\x,24) rectangle ++(14,14);
+    \draw[\s] (\x,38) rectangle ++(14,10) node[midway, lab] {\iflangja{スタック}{stack}};
+    \node[ttl] at (\x+7,49) {\n};
+  }
+  \node[lab, anchor=east] at (4.5,0.8)  {$V_0$};
+  \node[lab, anchor=east] at (4.5,47.2) {$V_{\max}$};
+  \node[lab, anchor=west] at (105.5,0.8)  {$V_0$};
+  \node[lab, anchor=west] at (105.5,47.2) {$V_{\max}$};
+  % ---- page tables
+  \draw[fill=white] (25,0) rectangle (35,48)
+    node[midway, rotate=90, lab] {\iflangja{P1 のページテーブル}{page table of P1}};
+  \draw[fill=white] (75,0) rectangle (85,48)
+    node[midway, rotate=90, lab] {\iflangja{P2 のページテーブル}{page table of P2}};
+  % ---- physical memory and disk
+  \node[ttl] at (55,49) {\iflangja{物理メモリ}{physical memory}};
+  \foreach \i/\s in {0/pa, 1/pb, 2/pa, 3/pb, 4/pa, 5/pb, 6/pa} {
+    \draw[\s] (47,13+5*\i) rectangle ++(16,5);
+  }
+  \draw[fill=ln-box, rounded corners=2pt] (47,0) rectangle (63,8)
+    node[midway, lab] {\iflangja{ディスク}{disk}};
+  % ---- P1 mappings: text->f0, data->f2, heap->f4, stack->f6
+  \foreach \y/\f in {4/15.5, 12/25.5, 20/35.5, 43/45.5} {
+    \draw (19,\y) -- (25,\y);
+    \draw[map] (35,\y) -- (47,\f);
+  }
+  % ---- P2 mappings: text->disk, data->f1, heap->f3, stack->f5
+  \foreach \y/\f in {4/4, 12/20.5, 20/30.5, 43/40.5} {
+    \draw (91,\y) -- (85,\y);
+    \draw[map] (75,\y) -- (63,\f);
+  }
+\end{tikzpicture}

@@ -1,0 +1,74 @@
+% Signal handling with user-level (U) and kernel-level (K) signal masks:
+% the four cases handled by the SunOS user-level thread library.
+% Usage: \input{figures/l05-signal-cases}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  ut/.style={draw, circle, fill=white, minimum size=5mm, inner sep=0pt},
+  kt/.style={draw, rectangle, fill=ln-box, minimum size=5mm, inner sep=0pt},
+  on/.style={font=\scriptsize\sffamily\bfseries, text=ln-tip, anchor=west},
+  off/.style={font=\scriptsize\sffamily\bfseries, text=ln-caution, anchor=west},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  act/.style={->, thick, ln-accent},
+  sig/.style={->, thick, ln-caution},
+  ttl/.style={font=\scriptsize\sffamily, anchor=north west}]
+  % \lsframe{title}: panel frame, title, user/kernel boundary, signal into K1
+  \def\lsframe#1{%
+    \draw[ln-rule, rounded corners=2pt] (0,-6) rectangle (56,31);
+    \node[ttl] at (1,30.5) {#1};
+    \draw[dashed, ln-rule] (1,12) -- (55,12);
+    \draw[sig] (12,-5) -- (12,2.5);
+    \node[lab, text=ln-caution, anchor=east] at (11,-2.5) {\iflangja{シグナル}{signal}};}
+  % ---------------------------------------------------------------- case 1
+  \begin{scope}[shift={(0,40)}]
+    \lsframe{\textbf{\iflangja{ケース 1}{Case 1}}\enspace
+      \iflangja{実行中の U1 が有効}{running U1 enabled}}
+    \node[ut] (u1) at (12,19) {U1}; \node[on] at (14.8,19) {1};
+    \node[kt] (k1) at (12,5) {K1};  \node[on] at (14.8,5) {1};
+    \draw (u1) -- (k1);
+    \node[lab, anchor=west, align=left] at (22,19)
+      {\iflangja{ライブラリ：U1 は有効\\→ U1 でハンドラを実行}%
+                {library: U1 enabled\\$\to$ handler runs in U1}};
+  \end{scope}
+  % ---------------------------------------------------------------- case 2
+  \begin{scope}[shift={(60,40)}]
+    \lsframe{\textbf{\iflangja{ケース 2}{Case 2}}\enspace
+      \iflangja{実行可能な U2 が有効}{runnable U2 enabled}}
+    \node[ut] (u1) at (12,19) {U1}; \node[off] at (14.8,19) {0};
+    \node[kt] (k1) at (12,5) {K1};  \node[on] at (14.8,5) {1};
+    \draw (u1) -- (k1);
+    \node[ut, dashed] (u2) at (40,21) {U2}; \node[on] at (42.8,21) {1};
+    \node[lab, text=ln-muted, anchor=north] at (40,18) {\iflangja{実行待ち}{ready}};
+    \draw[act, dashed] (35,15.5) -- node[lab, below right, pos=0.5, text=ln-accent]
+      {\iflangja{K1 に割り当て}{scheduled on K1}} (18.5,6.5);
+  \end{scope}
+  % ---------------------------------------------------------------- case 3
+  \begin{scope}[shift={(0,0)}]
+    \lsframe{\textbf{\iflangja{ケース 3}{Case 3}}\enspace
+      \iflangja{別の K 上の U2 が有効}{U2 on another K enabled}}
+    \node[ut] (u1) at (12,19) {U1}; \node[off] at (14.8,19) {0};
+    \node[kt] (k1) at (12,5) {K1};  \node[on] at (14.8,5) {1};
+    \draw (u1) -- (k1);
+    \node[ut] (u2) at (42,19) {U2}; \node[on] at (44.8,19) {1};
+    \node[kt] (k2) at (42,5) {K2};  \node[on] at (44.8,5) {1};
+    \draw (u2) -- (k2);
+    \draw[act] (19,5) -- node[lab, below, text=ln-accent]
+      {\iflangja{指定した\\シグナル}{directed\\signal}} (39.2,5);
+  \end{scope}
+  % ---------------------------------------------------------------- case 4
+  \begin{scope}[shift={(60,0)}]
+    \lsframe{\textbf{\iflangja{ケース 4}{Case 4}}\enspace
+      \iflangja{有効な U がない}{no U enabled}}
+    \node[ut] (u1) at (12,19) {U1}; \node[off] at (14.8,19) {0};
+    \node[kt] (k1) at (12,5) {K1};
+    \node[font=\scriptsize\sffamily\bfseries, anchor=west] at (14.8,5)
+      {\textcolor{ln-tip}{1}$\to$\textcolor{ln-caution}{0}};
+    \draw (u1) -- (k1);
+    \node[ut] (u2) at (42,19) {U2}; \node[off] at (44.8,19) {0};
+    \node[kt] (k2) at (42,5) {K2};
+    \node[font=\scriptsize\sffamily\bfseries, anchor=west] at (44.8,5)
+      {\textcolor{ln-tip}{1}$\to$\textcolor{ln-caution}{0}};
+    \draw (u2) -- (k2);
+    \draw[act] (24,5) -- node[lab, below, text=ln-accent]
+      {\iflangja{再送出}{re-raised}} (39.2,5);
+  \end{scope}
+\end{tikzpicture}

@@ -1,0 +1,961 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Remote Procedure Calls}
+\lessoninfo{
+  video={P4L1},
+  textbook={OSTEP \cite{ostep} ch.~48; Silberschatz et al.\ \cite{silberschatz2018} ch.~3; Birrell and Nelson \cite{birrell1984}; RFC 5531 \cite{rfc5531}, RFC 4506 \cite{rfc4506}},
+  keywords={remote procedure call, stub, RPC runtime, interface definition language, marshalling, unmarshalling, binding, registry, partial failure, Sun RPC, XDR, rpcgen, rpcbind, Java RMI},
+}
+
+The preceding lessons considered a single machine, managed by one
+operating system or, in Lesson~12, by a hypervisor beneath several.  This
+lesson opens the part on distributed systems, in which cooperating
+processes run on different machines connected by a network.  Across
+machines, the processes can only exchange messages, typically through the
+sockets of Lesson~9, and every application that uses them repeats the same
+low-level communication code.  Remote procedure calls hide this code behind
+the interface of an ordinary procedure call.  The lesson presents the
+structure of RPC systems and the design decisions that each of them must
+make---interface definition, marshalling, binding, pointer arguments and
+partial failures---and then examines how Sun RPC and Java RMI make them.
+
+\section{Why remote procedure calls?}
+\label{sec:l13-why}
+
+Consider two client-server applications.\source{P4L1, why RPC, benefits of
+RPC; Birrell and Nelson \cite{birrell1984}; OSTEP ch.~48.}  In the first, a
+client requests a file from a server, which returns the contents of the
+file.  In the second, a client sends an image together with the name and
+the parameters of an image-processing algorithm, and the server returns the
+processed image.  The services differ, yet the communication code of the
+two applications is largely the same.  Each of them must
+\begin{itemize}
+  \item create and initialize the sockets through which client and server
+    communicate;
+  \item allocate buffers for the messages and populate them;
+  \item include protocol information that tells the other side how to
+    interpret a message, such as the operation requested (retrieve a file,
+    apply an algorithm) and the size of the data that follow;
+  \item copy the data into the buffers: a file name and the contents of the
+    file in the first application, the algorithm parameters and the image
+    in the second;
+\end{itemize}
+and the receiving side performs the inverse steps.  Only the operations and
+the types of the data exchanged are specific to the application.
+
+\begin{definition}[Remote procedure call]
+  A \term{remote procedure call}[遠隔手続き呼び出し] (RPC) is an
+  inter-process communication mechanism with which a process invokes a
+  procedure that executes in another address space, usually on another
+  machine, in the same way as it invokes a local procedure.  The RPC system
+  performs the communication that transfers the arguments to the procedure
+  and the results back to the caller.
+\end{definition}
+\index{RPC|see{remote procedure call}}
+
+RPC is intended to simplify the development of interactions that cross
+address spaces and machines.  Its benefits are the following.
+\begin{description}
+  \item[Higher-level interface] Data movement and communication are
+    expressed as calls of procedures with typed arguments and results,
+    rather than as byte buffers written to and read from sockets.
+  \item[Error handling] The RPC system detects communication errors and
+    reports them to the application in a uniform way.
+  \item[Hiding complexity] The details of the interaction between machines,
+    from connection management to differences in how the machines represent
+    data, are handled by the RPC system and by code that it generates.
+\end{description}
+
+Birrell and Nelson \cite{birrell1984} described the design and
+implementation of an RPC facility for the Cedar programming environment at
+Xerox PARC in 1984.  The structure they chose, with generated stubs and a
+runtime library on both sides (\cref{sec:l13-structure}), underlies later
+RPC systems, including the two examined in this lesson.
+
+\section{RPC requirements}
+\label{sec:l13-requirements}
+
+The goal of making a remote operation look like a procedure call leads to
+the following requirements for an RPC system.\source{P4L1, RPC
+requirements; OSTEP ch.~48.}
+\begin{description}
+  \item[Client-server interactions] RPC targets the client-server model: a
+    server offers a set of procedures, and clients call them.
+  \item[Procedure call interface] An RPC has \emph{synchronous call
+    semantics}.  The calling process, or in a multithreaded process the
+    calling thread, blocks when it makes the call and continues only when
+    the procedure has completed and its result has been returned, exactly
+    as for a local call.
+  \item[Type checking] Because arguments and results have declared types,
+    the RPC system can check them and report an error when a call does not
+    match the procedure.  The types also tell the receiver how to interpret
+    the bytes of a message, which a socket delivers as an uninterpreted
+    sequence.
+  \item[Cross-machine conversion] Client and server may run on machines that
+    represent data differently, and the RPC system must convert between
+    the representations.
+  \item[Higher-level protocol] RPC is a protocol above the transport layer.
+    It can incorporate access control, authenticating clients and
+    authorizing their calls, and mechanisms for fault tolerance, and it
+    should be able to use different transport protocols, such as TCP and
+    UDP.
+\end{description}
+
+The most common difference in representation is the order in which the
+bytes of a multi-byte value are stored.  A machine is
+\term{big-endian}[ビッグエンディアン] if it stores the most significant byte
+of an integer at the lowest address, and \emph{little-endian}%
+\index{little-endian} if it stores the least significant byte there.  The
+x86 processors are little-endian; many network protocols, and the encoding
+of \cref{sec:l13-encoding}, use big-endian order.
+
+\begin{example}
+  \label{ex:l13-endian}
+  The 32-bit integer $300 = \mathtt{0x0000012C}$ occupies the bytes
+  \texttt{00 00 01 2C}, in order of increasing address, on a big-endian
+  machine and \texttt{2C 01 00 00} on a little-endian machine.  If a
+  little-endian client copied the bytes of this integer into a message
+  unchanged, a big-endian server would read them as
+  $\mathtt{0x2C010000} = \num{738263040}$.
+\end{example}
+
+\section{Structure of an RPC system}
+\label{sec:l13-structure}
+
+In a local procedure call, the caller places the arguments on the stack or
+in registers and jumps to the procedure, which computes the result and
+returns.\source{P4L1, structure of RPC, RPC steps; Birrell and Nelson
+\cite{birrell1984}; OSTEP ch.~48.}  In an RPC, caller and procedure reside in
+different address spaces, so neither the arguments nor the code of the
+procedure are accessible to the other side.  The call therefore jumps to a
+local procedure that has the same interface as the remote one but performs
+the communication instead (\cref{fig:l13-steps}).
+
+\begin{definition}[Stub]
+  A \term{stub}[スタブ] is a procedure, generated by the RPC system, that
+  converts between a procedure call and messages.  The \emph{client stub},
+  linked into the client, has the interface of the remote procedure: it
+  packs the arguments into a message and unpacks the result from the reply.
+  The \emph{server stub}, linked into the server, unpacks the arguments,
+  calls the actual implementation of the procedure and packs its result
+  into the reply.
+\end{definition}
+
+\begin{definition}[RPC runtime]
+  The \term{RPC runtime}[RPCランタイム] is the library, present on both
+  sides, that transmits the messages between client and server: it manages
+  the connections, sends and receives the messages, retransmits lost ones,
+  and passes each received message to the right stub.
+\end{definition}
+
+Neither caller nor procedure contains any communication code; each sees
+an ordinary local call.\margin{Birrell and Nelson's system had the same
+parts: user, user stub, RPCRuntime on each side, server stub and server.  A
+program called Lupine generated the stubs \cite{birrell1984}.}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-steps}
+  \caption{Structure of an RPC system and the steps of a call.  Solid
+    arrows: the call; dashed arrows: the return of the result.  Steps $-1$
+    and~0 take place before the first call.}
+  \label{fig:l13-steps}
+\end{figure}
+
+\subsection{Steps of an RPC}
+
+An RPC proceeds in the following steps, numbered as in
+\cref{fig:l13-steps}.
+\begin{description}
+  \item[$-1$ Register] The server registers the procedures it offers, their
+    argument types and its location, so that clients can find it
+    (\cref{sec:l13-binding}).
+  \item[0 Bind] The client finds a server that provides the desired
+    procedures and binds to it, for example by opening a connection.
+  \item[1 Call] The client calls the procedure.  Control passes to the
+    client stub, and the caller blocks.
+  \item[2 Marshal] The client stub marshals the arguments: it serializes
+    them into a buffer (\cref{sec:l13-marshalling}).
+  \item[3 Send] The RPC runtime of the client sends the message to the
+    server, with the transport protocol agreed on during binding.
+  \item[4 Receive] The RPC runtime of the server receives the message and
+    passes it to the server stub.  Access control checks are performed at
+    this point.
+  \item[5 Unmarshal] The server stub unmarshals the arguments: it extracts
+    them from the buffer and creates the corresponding data structures.
+  \item[6 Actual call] The server stub calls the local implementation of the
+    procedure.
+  \item[7 Result] The procedure computes the result, which returns to the
+    client along the reverse path: the server stub marshals it, the
+    runtimes transfer the reply, the client stub unmarshals it and returns
+    it to the caller, which resumes.
+\end{description}
+Steps $-1$ and~0 are performed once, before the first call; steps 1--7 are
+repeated for every call.
+
+\begin{keypoint}
+  An RPC looks like a local procedure call to both the caller and the
+  procedure.  The stubs convert between calls and messages, and the RPC
+  runtime moves the messages between the machines.
+\end{keypoint}
+
+\section{Interface definition language}
+\label{sec:l13-idl}
+
+Client and server must agree on what the server can do and on the
+arguments and results of each of its procedures.\source{P4L1, interface
+definition language, specifying an IDL; OSTEP ch.~48.}  The client needs
+this information to decide whether to bind to a server, and the RPC system
+needs it in a precise, machine-readable form to generate the stubs
+automatically.
+
+\begin{definition}[Interface definition language]
+  An \term{interface definition language}[インタフェース定義言語] (IDL) is a
+  language for describing the interface that a server exports: the names
+  of its procedures, the types of their arguments and results, and a
+  version number.
+\end{definition}
+\index{IDL|see{interface definition language}}
+
+An RPC system can use one of two kinds of IDL.
+\begin{description}
+  \item[Language-agnostic IDL] A language of its own, independent of the
+    programming languages in which clients and servers are written, from
+    which stubs are generated for each supported language.  Sun RPC uses
+    XDR (\cref{sec:l13-sunrpc}).
+  \item[Language-specific IDL] The interface is written in the programming
+    language of the application itself, so programmers need not learn
+    another language.  Java RMI uses Java (\cref{sec:l13-rmi}).
+\end{description}
+In either case the IDL describes only the interface of the server, not its
+implementation.
+
+The version number supports the evolution of a service.  When a service
+is upgraded, the servers are often not all upgraded at the same time, and a
+server may export the old and the new version of an interface side by
+side.  By stating the version it expects, a client binds only to servers
+that implement that version.
+
+\section{Marshalling and unmarshalling}
+\label{sec:l13-marshalling}
+
+The arguments of a call reside in the memory of the caller: values on the
+stack and in registers, and data elsewhere in the address space to which
+pointers refer.\source{P4L1, marshalling, unmarshalling; OSTEP ch.~48.}
+A message, in contrast, is a contiguous sequence of bytes.
+
+\begin{definition}[Marshalling]
+  The conversion of the arguments or the result of a call into a
+  contiguous buffer, in an encoding agreed between client and server, so
+  that they can be sent as a message and correctly interpreted by the
+  receiver, is called \term{marshalling}[マーシャリング] or
+  \emph{serialization}.
+\end{definition}
+\index{serialization|see{marshalling}}
+
+\begin{definition}[Unmarshalling]
+  The inverse conversion is called \term{unmarshalling}[アンマーシャリング]:
+  parsing a received buffer according to the types given by the interface,
+  extracting the values, and creating the corresponding data structures in
+  the address space of the receiver, allocating and initializing memory as
+  needed.
+\end{definition}
+
+For data of fixed size, the types in the interface tell the receiver where
+one value ends and the next begins.  Data of variable size, such as arrays
+and strings, need additional information: either their length is encoded
+before their elements, or their end is marked by a special value, as the
+NUL character terminates a C string.
+
+\begin{example}
+  \label{ex:l13-marshal}
+  The interface of a server declares a procedure
+  \texttt{int sum(int count, int *values)} and states that
+  \texttt{values} points to \texttt{count} integers.  The client calls
+  \texttt{sum(3, v)}, where \texttt{v} is an array at address
+  \texttt{0x5a10} that holds 7, $-2$ and 300.  With
+  \SI{4}{\byte} per integer, the client stub builds the \SI{16}{\byte}
+  buffer of \cref{fig:l13-marshal}: the count followed by the three
+  elements.  The address \texttt{0x5a10} is not sent.  The server stub reads
+  the count, allocates memory for three integers, here at \texttt{0x9c40},
+  copies the elements into it, and calls the implementation with
+  \texttt{count} $=3$ and \texttt{values} $=\mathtt{0x9c40}$.
+\end{example}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-marshal}
+  \caption{Marshalling and unmarshalling the arguments of
+    \texttt{sum(3, v)}.  The buffer contains the values of the arguments,
+    including the array to which the pointer refers, but not the pointer
+    itself; the numbers above it are byte offsets.}
+  \label{fig:l13-marshal}
+\end{figure}
+
+Marshalling and unmarshalling code is not written by hand.  The compiler
+of the IDL generates it from the interface, together with the stubs, as
+\cref{sec:l13-rpcgen} shows for Sun RPC.
+
+\section{Binding and registries}
+\label{sec:l13-binding}
+
+Before a client can call the procedures of a server,\source{P4L1, binding
+and registry; Birrell and Nelson \cite{birrell1984}.} it must determine
+which server to use and how to reach it.
+
+\begin{definition}[Binding]
+  In \term{binding}[バインディング] a client determines which server it will
+  communicate with, identified by the name and the version of the service,
+  and how it will connect to that server, given by the network address,
+  the transport protocol and the port, and it establishes the
+  communication.
+\end{definition}
+
+\begin{definition}[Registry]
+  A \term{registry}[レジストリ] is a database of available services.
+  Servers register their services in it, and clients search it by service
+  name to find a server that offers the service and the details needed to
+  contact that server.
+\end{definition}
+
+A registry can be organized in two ways.
+\begin{description}
+  \item[Distributed registry] A registry service, possibly replicated,
+    with which any RPC service can register wherever it runs.  Clients find
+    services without knowing their location.\margin{Birrell and Nelson used
+    Grapevine, a distributed database, for binding \cite{birrell1984}.}
+  \item[Machine-specific registry] Every machine runs a registry for the
+    services on that machine.  A client must already know the address of
+    the machine, and the registry provides the port number at which the
+    service can be reached.
+\end{description}
+A registry also needs a naming protocol.  The simplest requires the service
+name of the client to match the registered name exactly; a more elaborate
+one could also consider synonyms, so that a client looking for a service
+named \texttt{sum} would also find one registered as \texttt{add} or
+\texttt{summation}.
+
+\section{Pointers as arguments}
+\label{sec:l13-pointers}
+
+A local procedure such as \texttt{sum} of \cref{ex:l13-marshal} can
+receive a pointer and dereference it, because caller and procedure share an
+address space.\source{P4L1, pointers in RPCs; OSTEP ch.~48.}  In an RPC,
+the pointer refers to the address space of the client.  On the server the
+same address is meaningless: it may be unmapped or hold unrelated data.
+An RPC system solves the problem in one of two ways.
+\begin{description}
+  \item[Disallow pointers] Remote interfaces may not contain pointer
+    arguments.
+  \item[Serialize the pointed-to data] The client stub copies the data
+    structure to which the pointer refers into the send buffer, and the
+    server stub recreates it in the address space of the server and passes
+    a pointer to this copy, as in \cref{fig:l13-marshal}.  For linked data
+    structures, the stubs follow the pointers recursively.
+\end{description}
+With serialized pointers the server operates on a copy: changes that it
+makes to the pointed-to data are not visible to the client unless the
+interface returns the data as part of the result.
+
+\section{Partial failures}
+\label{sec:l13-failures}
+
+A local procedure call either returns or fails together with the process
+that made it:\source{P4L1, handling partial failures, RPC design choice
+summary; OSTEP ch.~48.} caller and procedure share the fate of a single
+process on a single machine.  A distributed system can fail in parts.
+
+\begin{definition}[Partial failure]
+  A \term{partial failure}[部分障害] is a failure of some components of a
+  distributed system, such as a machine, a process, a network link or an
+  individual message, while the other components continue to operate.
+\end{definition}
+
+When an RPC does not return, the cause may be that the server machine is
+down, that the server process has crashed or is overloaded, that the network
+is down, or that the request or the reply has been lost.  The client
+observes the same thing in all these cases---no reply---and cannot tell
+which component has failed (\cref{fig:l13-failures}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-failures}
+  \caption{Three partial failures that the client cannot distinguish.  The
+    shaded bar marks the time during which the client is blocked, grey
+    boxes the execution of the procedure.  (a)~The request is lost; (b)~the
+    server crashes while executing the call; (c)~the reply is lost, and the
+    retry executes the procedure a second time.}
+  \label{fig:l13-failures}
+\end{figure}
+
+An RPC system can bound the waiting with a \emph{timeout} and retransmit
+the request when it expires, but timeouts and retries give no guarantees.
+Retries cannot succeed while the server is down, and if the reply was lost,
+a retry executes the procedure again, as in \cref{fig:l13-failures}c.
+Repeated execution is harmless only for \emph{idempotent} procedures,
+whose repeated execution has the same effect as a single one.
+
+\begin{example}
+  A procedure that appends a record to a file is not idempotent: if the
+  reply to a call that appends a \SI{200}{\byte} record is lost, the retry
+  appends the record a second time and the file grows by \SI{400}{\byte}.
+  A procedure that writes \SI{200}{\byte} at a given offset, such as offset
+  \num{4096}, is idempotent: executing it twice leaves the same contents.
+\end{example}
+
+RPC systems therefore provide a special error notification---an error
+code, a signal or an exception---that serves as a catch-all for the ways in
+which a call can fail partially.  The caller must be prepared to receive it
+on every call, although it does not say which component has failed or
+whether the procedure has executed.\margin{Birrell and Nelson guaranteed
+that the procedure had executed exactly once if a call returned; otherwise
+the call raised an exception, and the procedure might or might not have
+executed \cite{birrell1984}.}
+
+\begin{keypoint}[RPC design choices]
+  Every RPC system must decide
+  \begin{itemize}
+    \item how to find the server: binding, through a registry;
+    \item how to talk to the server and package the data: an IDL and
+      marshalling;
+    \item how to treat pointer arguments: disallow them or serialize the
+      pointed-to data;
+    \item how to handle partial failures: with special error notifications.
+  \end{itemize}
+\end{keypoint}
+
+\section{Sun RPC}
+\label{sec:l13-sunrpc}
+
+Sun Microsystems developed \term{Sun RPC}[Sun RPC] in the 1980s for Unix
+systems; its best-known application is the Network File System
+(Lesson~14).\source{P4L1, what is SunRPC, SunRPC overview, SunRPC XDR
+example; RFC 5531 \cite{rfc5531}; RFC 4506 \cite{rfc4506}.}  It is now
+available on most platforms and has been standardized as ONC~RPC
+(Open Network Computing RPC) \cite{rfc5531}.\index{ONC RPC|see{Sun RPC}}
+Sun RPC makes the design choices of \cref{sec:l13-failures} as follows.
+\begin{description}
+  \item[Binding] A registry daemon runs on every machine that offers RPC
+    services (\cref{sec:l13-sun-binding}).
+  \item[IDL] XDR serves both for specifying interfaces and for encoding data
+    on the wire.
+  \item[Pointers] Pointers are allowed, and the pointed-to data are
+    serialized.
+  \item[Failures] The runtime retries calls, using timeouts, and returns as
+    much information as possible about the cause of a failure.
+\end{description}
+
+\begin{definition}[External data representation]
+  The language-agnostic IDL of Sun RPC, together with the standard binary
+  encoding of the data that it describes, is called
+  \term{external data representation}[外部データ表現] (XDR)
+  \cite{rfc4506}.
+\end{definition}
+\index{XDR|see{external data representation}}
+
+Client and server interact through procedure calls.  The interface of a
+service is specified in XDR in a \texttt{.x} file, from which
+\texttt{rpcgen} generates stubs for a specific language, C in the following
+(\cref{sec:l13-rpcgen}).  A server registers with the registry daemon of its
+machine, which records the number of the service, its version, the
+transport protocols and the port.  Binding creates a \emph{client handle},
+which the client passes to every call and in which the runtime keeps the
+state of the client's RPCs.  Client and server may run on the same machine
+or on different machines.  Current implementations descend from TI-RPC
+(transport-independent RPC), whose library does not depend on a particular
+transport protocol.
+
+\subsection{Interface specification}
+
+\Cref{lst:l13-sum-x} specifies a service that returns the sum of up to 64
+integers.
+
+\begin{lstlisting}[language=C, numbers=none, caption={The XDR
+  specification \texttt{sum.x}.}, label={lst:l13-sum-x}]
+const MAX_VALUES = 64;
+
+struct sum_in {
+  int values<MAX_VALUES>;    /* variable-length array */
+};
+struct sum_out {
+  int total;
+};
+
+program SUM_PROG {                     /* service */
+  version SUM_VERS {
+    sum_out SUM_PROC(sum_in) = 1;      /* procedure 1 */
+  } = 1;                               /* version 1 */
+} = 0x20000123;                        /* program number */
+\end{lstlisting}
+
+The data types \texttt{sum\_in} and \texttt{sum\_out} describe the argument
+and the result.  A procedure takes a single argument and returns a single
+result, so several values are grouped in a structure.  The service itself
+is a \emph{program} that contains one or more versions, each of which
+contains procedures.\margin{By convention procedure~0 of every version is
+the null procedure, which takes no arguments and returns nothing; clients
+use it to check that a server responds \cite{rfc5531}.}  Program, version
+and procedure are identified by numbers, and a request names all three.
+The 32-bit program number identifies the service uniquely; numbers from
+\texttt{0x20000000} to \texttt{0x3fffffff} are reserved for services
+defined locally, such as this one \cite{rfc5531}.  A client that sets
+\texttt{values} to the three integers 7, $-2$ and 300 and calls
+\texttt{SUM\_PROC} receives a \texttt{sum\_out} with \texttt{total} $=305$.
+
+\section{Compiling an interface with rpcgen}
+\label{sec:l13-rpcgen}
+
+The stubs of Sun RPC are generated by \term{rpcgen}[rpcgen], the compiler
+that translates an XDR specification into C code.\source{P4L1, compiling
+XDR, summarizing XDR compilation; OSTEP ch.~48.}  The command
+\texttt{rpcgen -C sum.x}, where \texttt{-C} selects ANSI~C, produces four
+files (\cref{fig:l13-rpcgen}).
+\begin{description}
+  \item[\texttt{sum.h}] The C declarations of the data types and of the
+    stub procedures, and constants such as \texttt{SUM\_PROG},
+    \texttt{SUM\_VERS} and \texttt{SUM\_PROC}.  All other files include it.
+  \item[\texttt{sum\_clnt.c}] The client stub \texttt{sum\_proc\_1}, named
+    after the procedure and the version.  It marshals the argument, sends
+    the request through the runtime, waits for the reply and unmarshals the
+    result.
+  \item[\texttt{sum\_svc.c}] The server stub and a skeleton of the server
+    program.  Its \texttt{main} function creates the transports, registers
+    the program and version with the registry daemon, and enters a loop
+    that waits for requests.  For each request, the dispatch procedure
+    \texttt{sum\_prog\_1} determines the procedure number, unmarshals the
+    argument, calls \texttt{sum\_proc\_1\_svc}, and marshals and sends the
+    result.
+  \item[\texttt{sum\_xdr.c}] The XDR routines that marshal and unmarshal
+    \texttt{sum\_in} and \texttt{sum\_out}, used by both sides
+    (\cref{sec:l13-xdr-types}).
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-rpcgen}
+  \caption{Building a Sun RPC client and server.  The developer writes the
+    interface, the client program and the implementation of the procedure;
+    \texttt{rpcgen} generates the rest.  \texttt{sum.h} is included by all
+    C files.}
+  \label{fig:l13-rpcgen}
+\end{figure}
+
+The developer writes two pieces of code.  On the server side it is the
+implementation of the procedure, \texttt{sum\_proc\_1\_svc}
+(\cref{lst:l13-server}); on the client side it is the program that includes
+\texttt{sum.h} and calls \texttt{sum\_proc\_1}
+(\cref{sec:l13-sun-binding}).  Each is compiled and linked with the
+generated files.  The RPC runtime library does the rest: the interaction
+with the operating system, such as the use of sockets, and the management
+of the communication.
+
+\begin{lstlisting}[language=C, numbers=none, caption={Implementation of the
+  procedure, \texttt{server.c}.}, label={lst:l13-server}]
+#include "sum.h"
+
+sum_out *
+sum_proc_1_svc(sum_in *in, struct svc_req *req)
+{
+  static sum_out out;       /* must outlive the call */
+  u_int i;
+
+  out.total = 0;
+  for (i = 0; i < in->values.values_len; i++)
+    out.total += in->values.values_val[i];
+  return &out;              /* marshalled by the stub */
+}
+\end{lstlisting}
+
+The result is returned by pointer, and it must remain valid after the
+procedure has returned, until the server stub has marshalled it, so it is
+kept in a static variable.  The generated client stub likewise returns a
+pointer to a static variable, which the next call overwrites.  This makes
+the code generated by \texttt{rpcgen -C} unsafe for multithreaded clients
+and servers.  With the option \texttt{-M}, \texttt{rpcgen} generates
+thread-safe code, in which the caller of a stub supplies the memory for the
+result.  The option does not make the server multithreaded: the generated
+\texttt{main} still handles one request at a time.  On Solaris, the
+additional option \texttt{-A} lets the runtime of the server create threads
+for requests automatically.
+
+\section{Registry and binding in Sun RPC}
+\label{sec:l13-sun-binding}
+
+The registry of Sun RPC is machine-specific:\source{P4L1, SunRPC registry
+and binding; RFC 1833 \cite{rfc1833}.} each machine that offers RPC
+services runs a registry daemon of its own, which clients contact at a
+well-known port.
+
+\begin{definition}[rpcbind]
+  The registry daemon of Sun RPC is \term{rpcbind}[rpcbind].  It listens
+  on port 111 for both TCP and UDP and maps a program number, version
+  number and transport protocol to the address at which the corresponding
+  server listens.
+\end{definition}
+\index{portmapper|see{rpcbind}}
+
+The daemon \texttt{rpcbind} replaces the older \emph{portmapper} daemon,
+\texttt{portmap}, which offered the same service for TCP and UDP ports
+\cite{rfc1833}.  Because port 111 is a privileged port, the daemon must be
+started with superuser privileges.  When a server starts, the generated
+\texttt{main} registers each version of the program for each transport
+(\cref{fig:l13-rpcbind}, step~1).  The registrations of a machine can be
+listed with \texttt{rpcinfo -p}:
+
+\begin{lstlisting}[numbers=none]
+$ rpcinfo -p
+   program vers proto   port  service
+    100000    4   tcp    111  portmapper
+    100000    2   udp    111  portmapper
+    100003    3   tcp   2049  nfs
+ 536871203    1   tcp  40123
+\end{lstlisting}
+
+Each line gives the program number, the version, the transport protocol
+and the port.  The daemon itself appears as program \num{100000} on port
+111, and the NFS server as program \num{100003}.  The last line is the
+\texttt{sum} server, whose program number \texttt{0x20000123} is printed in
+decimal.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-rpcbind}
+  \caption{Registration and binding in Sun RPC.  (1)~The server registers
+    its program, version, transport and port with \texttt{rpcbind};
+    (2,\,3)~\texttt{clnt\_create} asks \texttt{rpcbind} on the server
+    machine for the port; (4)~the calls go directly to the server.}
+  \label{fig:l13-rpcbind}
+\end{figure}
+
+A client binds with \texttt{clnt\_create}, whose arguments are the name of
+the server machine, the program number, the version number and the
+transport protocol.  \texttt{clnt\_create} asks \texttt{rpcbind} on that
+machine for the port of the server (steps 2 and~3) and returns a pointer to
+a client handle of type \texttt{CLIENT}, which the client passes to every
+stub.  Besides the address of the server, the handle holds the
+authentication information and the status of the most recent call, from
+which error messages are derived.  \Cref{lst:l13-client} shows the complete
+client.
+
+\begin{lstlisting}[language=C, numbers=none, caption={The client,
+  \texttt{client.c}.}, label={lst:l13-client}]
+#include <stdio.h>
+#include <stdlib.h>
+#include "sum.h"
+
+int main(int argc, char *argv[])
+{
+  int v[3] = { 7, -2, 300 };
+  sum_in in = { { 3, v } };   /* values_len, values_val */
+  sum_out *out;
+  CLIENT *clnt;
+
+  /* bind: ask rpcbind on host argv[1] for the port */
+  clnt = clnt_create(argv[1], SUM_PROG, SUM_VERS, "tcp");
+  if (clnt == NULL) {
+    clnt_pcreateerror(argv[1]);
+    exit(1);
+  }
+  out = sum_proc_1(&in, clnt);         /* the RPC */
+  if (out == NULL) {                   /* RPC failed */
+    clnt_perror(clnt, argv[1]);
+    exit(1);
+  }
+  printf("total = %d\n", out->total);
+  clnt_destroy(clnt);
+  return 0;
+}
+\end{lstlisting}
+
+A stub that returns \texttt{NULL} reports a failed call.  The runtime has
+recorded the reason in the handle---for example that the server machine
+could not be reached or that the call timed out---and
+\texttt{clnt\_perror} prints it.  The stubs generated by \texttt{rpcgen}
+wait up to \SI{25}{\second} for a reply, a timeout that
+\texttt{clnt\_control} can change; over UDP the runtime retransmits the
+request at shorter intervals within this time.
+
+\section{XDR data types and routines}
+\label{sec:l13-xdr-types}
+
+XDR provides the basic types familiar from C, such as integers,
+floating-point numbers, enumerations, Booleans and
+structures.\source{P4L1, XDR data types, XDR routines; RFC 4506
+\cite{rfc4506}.}  It adds the following.
+\begin{description}
+  \item[\texttt{const}] a symbolic constant, translated into a
+    \texttt{\#define};
+  \item[\texttt{hyper}] a 64-bit integer;
+  \item[\texttt{quadruple}] a 128-bit floating-point number;
+  \item[\texttt{opaque}] uninterpreted binary data, represented in C as
+    \texttt{char} bytes.
+\end{description}
+Arrays and strings are declared as in \cref{tab:l13-xdr-types}.  A
+variable-length array, whose maximum length is given in angle brackets,
+becomes a C structure with a length field and a pointer to the elements.
+The size of this structure does not depend on the maximum length; the
+elements reside in separately allocated memory.  A string becomes a
+pointer to a NUL-terminated C string in memory, but it is transmitted as a
+length followed by the characters (\cref{sec:l13-encoding}).
+
+\begin{table}[htbp]
+  \centering
+  \caption{XDR arrays and strings and their C representation generated by
+    \texttt{rpcgen}.}
+  \label{tab:l13-xdr-types}
+  \small
+  \begin{tabular}{@{}>{\raggedright}p{27mm}>{\raggedright}p{31mm}%
+      >{\raggedright\arraybackslash}p{52mm}@{}}
+    \toprule
+    Kind & XDR declaration & C representation \\
+    \midrule
+    Fixed-length array & \texttt{int data[8];} & \texttt{int data[8];} \\
+    \addlinespace
+    Variable-length array & \texttt{int data<8>;}
+      & \texttt{struct \{ u\_int data\_len; int *data\_val; \} data;} \\
+    \addlinespace
+    String & \texttt{string name<32>;} & \texttt{char *name;} \\
+    \addlinespace
+    Fixed-length opaque & \texttt{opaque id[16];} & \texttt{char id[16];} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Pointers are declared with an asterisk, as in C.  Such \emph{optional
+data} is encoded as a Boolean that states whether the pointer is non-null,
+followed by the pointed-to data if it is, so that a linked list is
+serialized element by element \cite{rfc4506}.
+
+\subsection{XDR routines}
+
+The file \texttt{sum\_xdr.c} contains one XDR routine for every data type
+of the interface.  \Cref{lst:l13-xdr} shows the routine for
+\texttt{sum\_in} as generated by \texttt{rpcgen}.
+
+\begin{lstlisting}[language=C, numbers=none, caption={Generated XDR routine
+  for \texttt{sum\_in}.}, label={lst:l13-xdr}]
+bool_t
+xdr_sum_in(XDR *xdrs, sum_in *objp)
+{
+  if (!xdr_array(xdrs,
+      (char **)&objp->values.values_val,
+      (u_int *)&objp->values.values_len, MAX_VALUES,
+      sizeof(int), (xdrproc_t)xdr_int))
+    return FALSE;
+  return TRUE;
+}
+\end{lstlisting}
+
+The same routine serves for marshalling, unmarshalling and freeing, and
+the field \texttt{x\_op} of the XDR stream \texttt{xdrs} selects the
+direction.  When it encodes, the routine writes the length and the
+elements into the buffer; when it decodes, it reads them and allocates the
+array if \texttt{values\_val} is null; when it frees, it releases this
+memory.  Memory allocated while unmarshalling must eventually be released.
+On the client, \texttt{xdr\_free} applies a routine in the freeing direction
+to a result that is no longer needed.  In servers generated with
+\texttt{-M}, the server stub calls a procedure written by the developer,
+\texttt{sum\_prog\_1\_freeresult}, after the result has been returned to
+the client; it typically calls \texttt{xdr\_free}.
+
+\section{XDR encoding}
+\label{sec:l13-encoding}
+
+An RPC message on the wire consists of three parts.\source{P4L1, encoding,
+XDR encoding; RFC 5531 \cite{rfc5531}; RFC 4506 \cite{rfc4506}.}
+\begin{description}
+  \item[Transport header] the headers of the transport protocol, such as
+    TCP or UDP, and of the protocols below it.
+  \item[RPC header] the identification of the call: a request identifier
+    (the \emph{xid}), with which the client matches replies to requests,
+    the program, version and procedure numbers, and authentication data.
+  \item[Data] the arguments or the result, encoded into a byte stream
+    according to their data types.
+\end{description}
+XDR thus comprises both the IDL and the encoding, the binary representation
+of the data on the wire.  Its encoding rules are few.
+\begin{itemize}
+  \item Every item is encoded in a multiple of \SI{4}{\byte}; shorter data
+    are padded with zero bytes.
+  \item Multi-byte values are transmitted in big-endian order.
+  \item Integers are represented in two's complement.
+  \item Floating-point numbers are represented in the IEEE~754 format.
+\end{itemize}
+Each machine converts between its native representation and XDR when it
+marshals and unmarshals, so neither side needs to know the representation
+of the other.
+
+\begin{example}
+  \label{ex:l13-encoding}
+  \Cref{tab:l13-encoding} traces the request with which the client of
+  \cref{lst:l13-client} calls \texttt{SUM\_PROC} over TCP, with request
+  identifier \num{1234} and no authentication.  Over TCP every message is
+  preceded by a \SI{4}{\byte} \emph{record mark}, whose highest bit marks
+  the last fragment of a message and whose other bits give the length of
+  the fragment \cite{rfc5531}.  The RPC header takes \SI{40}{\byte} and the
+  argument \SI{16}{\byte}, so the message occupies $4 + 40 + 16 =
+  \SI{60}{\byte}$ of TCP payload.  The value $-2$ is encoded as
+  \texttt{ff ff ff fe}, and 300 as \texttt{00 00 01 2c} regardless of the
+  byte order of the client.  The reply carries the same xid, a header of
+  \SI{24}{\byte} and the result 305 in \SI{4}{\byte}.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{The TCP payload of a call to \texttt{SUM\_PROC}.  Rules separate
+    the record mark, the RPC call header and the XDR-encoded argument.}
+  \label{tab:l13-encoding}
+  \small
+  \begin{tabular}{@{}rlll@{}}
+    \toprule
+    Offset & Bytes & Field & Value \\
+    \midrule
+     0 & \texttt{80 00 00 38} & record mark & last fragment, 56 bytes \\
+    \midrule
+     4 & \texttt{00 00 04 d2} & xid & 1234 \\
+     8 & \texttt{00 00 00 00} & message type & 0 (call) \\
+    12 & \texttt{00 00 00 02} & RPC version & 2 \\
+    16 & \texttt{20 00 01 23} & program & \texttt{SUM\_PROG} \\
+    20 & \texttt{00 00 00 01} & version & \texttt{SUM\_VERS} $=1$ \\
+    24 & \texttt{00 00 00 01} & procedure & \texttt{SUM\_PROC} $=1$ \\
+    28 & \texttt{00 00 00 00} & credentials: flavor & none \\
+    32 & \texttt{00 00 00 00} & credentials: length & 0 \\
+    36 & \texttt{00 00 00 00} & verifier: flavor & none \\
+    40 & \texttt{00 00 00 00} & verifier: length & 0 \\
+    \midrule
+    44 & \texttt{00 00 00 03} & \texttt{values}: length & 3 \\
+    48 & \texttt{00 00 00 07} & \texttt{values[0]} & 7 \\
+    52 & \texttt{ff ff ff fe} & \texttt{values[1]} & $-2$ \\
+    56 & \texttt{00 00 01 2c} & \texttt{values[2]} & 300 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Strings show the difference between the representation in memory and on
+the wire.
+
+\begin{example}
+  The string \texttt{"kernel"}, declared as \texttt{string name<32>}, takes
+  \SI{7}{\byte} in the memory of client and server: six characters and the
+  terminating NUL.  XDR encodes it in \SI{12}{\byte}: the length 6 in
+  \SI{4}{\byte}, the six characters, and two bytes of padding to reach a
+  multiple of four, without a terminator:
+  \begin{center}
+    \texttt{00 00 00 06 \quad 6b 65 72 6e \quad 65 6c 00 00}
+  \end{center}
+\end{example}
+
+\begin{keypoint}
+  XDR is both an IDL and an encoding.  Every item is encoded in multiples
+  of \SI{4}{\byte}, in big-endian order, with two's complement integers and
+  IEEE floating point; variable-length data carry their length.  A message
+  adds an RPC header, which identifies the request, program, version and
+  procedure, to the transport header.
+\end{keypoint}
+
+\section{Java RMI}
+\label{sec:l13-rmi}
+
+Java offers a counterpart to RPC that matches its object-oriented
+semantics.\source{P4L1, Java RMI; Wollrath et al.\ \cite{wollrath1996}.}
+
+\begin{definition}[Remote method invocation]
+  The invocation of a method of an object that resides in another address
+  space, with the syntax and semantics of a local method invocation, is
+  called \term{remote method invocation}[リモートメソッド呼び出し] (RMI).  In
+  Java RMI the address spaces are those of Java virtual machines (JVMs),
+  on the same machine or on different machines.
+\end{definition}
+\index{RMI|see{remote method invocation}}%
+\index{Java RMI|see{remote method invocation}}
+
+The IDL of Java RMI is Java itself, a language-specific IDL.  A remote
+interface is a Java interface that extends \texttt{java.rmi.Remote}, and
+each of its methods declares the exception \texttt{RemoteException}, the
+error notification through which partial failures are reported.
+\Cref{lst:l13-rmi} declares the \texttt{sum} service as a remote interface
+and calls it.
+
+\begin{lstlisting}[language=Java, numbers=none, caption={A remote interface
+  and its use in Java RMI.}, label={lst:l13-rmi}]
+public interface Summation extends java.rmi.Remote {
+  int sum(int[] values) throws java.rmi.RemoteException;
+}
+
+/* client */
+Registry reg = LocateRegistry.getRegistry("server");
+Summation s = (Summation) reg.lookup("Summation");
+int total = s.sum(new int[] { 7, -2, 300 });
+\end{lstlisting}
+
+The server creates an object that implements the interface and binds it
+under a name in the \emph{RMI registry}; a client looks the name up and
+obtains a stub for the remote object, whose methods it then invokes
+(\cref{fig:l13-rmi}).  Arguments that are ordinary objects, such as the
+array in \cref{lst:l13-rmi}, are passed by value: they are serialized
+together with the objects they refer to.  Remote objects are passed by
+reference, as stubs.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-rmi}
+  \caption{Java RMI.  Invocations pass from the client through the stub,
+    the remote reference layer and the transport layer to the server, where
+    they are delivered to the remote object.}
+  \label{fig:l13-rmi}
+\end{figure}
+
+The RMI runtime consists of two layers beneath the stubs.
+\begin{description}
+  \item[Remote reference layer] It determines the invocation semantics:
+    \emph{unicast}, to a single object, or \emph{broadcast}, to a group of
+    objects such as replicas, returning the first response or returning
+    only if all responses match.
+  \item[Transport layer] It sets up and manages the connections and
+    transfers the data.  The architecture allows different transports, such
+    as TCP, UDP or shared memory.
+\end{description}
+\Cref{tab:l13-design} compares the design choices of Sun RPC and Java RMI.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Design choices of Sun RPC and Java RMI.}
+  \label{tab:l13-design}
+  \small
+  \begin{tabular}{@{}>{\raggedright}p{22mm}>{\raggedright}p{45mm}%
+      >{\raggedright\arraybackslash}p{45mm}@{}}
+    \toprule
+    Choice & Sun RPC & Java RMI \\
+    \midrule
+    Binding & per-machine registry daemon, \texttt{rpcbind}
+      & RMI registry maps names to remote objects \\
+    \addlinespace
+    IDL & XDR, language-agnostic, compiled by \texttt{rpcgen}
+      & Java remote interfaces, language-specific \\
+    \addlinespace
+    Encoding & XDR encoding & Java object serialization \\
+    \addlinespace
+    Pointers and references & allowed; pointed-to data serialized
+      & objects copied; remote objects passed as stubs \\
+    \addlinespace
+    Partial failures & timeouts and retries; error status in the client
+      handle & \texttt{RemoteException} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}[Lesson summary]
+  RPC lets a process call a procedure in another address space, usually on
+  another machine, with the synchronous semantics of a local call.  Stubs
+  generated from an IDL marshal and unmarshal arguments and results, and
+  the RPC runtime transfers the messages.  Every RPC system must decide how
+  clients bind to servers through a registry, how interfaces are described
+  and data encoded, how pointer arguments are treated, and how partial
+  failures, which a client cannot diagnose, are reported.  Sun RPC uses
+  XDR as IDL and encoding, \texttt{rpcgen} to generate stubs, and a
+  per-machine \texttt{rpcbind} registry; Java RMI uses Java as IDL and adds
+  a remote reference layer that defines invocation semantics.
+\end{keypoint}
+
+\end{document}

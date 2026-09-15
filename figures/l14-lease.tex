@@ -1,0 +1,48 @@
+% Lease-based locking: client 1 acquires a lock with a 30 s lease, renews it
+% at 25 s and crashes at 40 s; the lease expires at 55 s and the server
+% grants the lock to client 2, which has been waiting since 45 s.
+% Usage: \input{figures/l14-lease}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.3mm]},
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  lab/.style={font=\scriptsize\sffamily, inner sep=0.8pt, align=center}]
+  % time t (s) -> x = 18 + 1.4 t (mm)
+  \node[row] at (16,16) {\iflangja{クライアント 1}{client 1}};
+  \node[row] at (16,8) {\iflangja{サーバ}{server}};
+  \node[row] at (16,0) {\iflangja{クライアント 2}{client 2}};
+  \draw[ln-rule] (18,16) -- ({18+1.4*40},16);
+  \draw[ln-rule, densely dotted] ({18+1.4*40},16) -- (116,16);
+  \draw[ln-rule] (18,8) -- (116,8);
+  \draw[ln-rule] (18,0) -- (116,0);
+  % lock holder on the server
+  \draw[fill=ln-box] ({18+1.4*0},6) rectangle ({18+1.4*55},10);
+  \node[lab] at ({18+1.4*12},8) {\iflangja{クライアント 1 がロックを保持}{held by client 1}};
+  \draw[fill=ln-accent!30] ({18+1.4*55},6) rectangle (116,10);
+  \node[lab] at ({(18+1.4*55+116)/2},8) {\iflangja{クライアント 2}{client 2}};
+  % lease expiry marks
+  \foreach \t in {30,55} {
+    \draw[densely dashed, ln-caution] ({18+1.4*\t},4.6) -- ({18+1.4*\t},11.4);
+  }
+  \node[lab, text=ln-caution, anchor=south] at ({18+1.4*55},11.4) {\iflangja{リース期限切れ}{lease expires}};
+  \node[lab, text=ln-caution, anchor=north] at ({18+1.4*30},4.6) {\iflangja{当初の期限}{first expiry}};
+  % client 1: acquire, renew, crash
+  \draw[->, thick] ({18+1.4*0},14.8) -- ({18+1.4*0},10.3);
+  \node[lab, anchor=south west] at ({18+1.4*0},17) {\iflangja{ロック獲得（リース 30 秒）}{lock (30 s lease)}};
+  \draw[->, thick] ({18+1.4*25},14.8) -- ({18+1.4*25},10.3);
+  \node[lab, anchor=south] at ({18+1.4*25},17) {\iflangja{更新}{renew}};
+  \node[text=ln-caution, font=\normalsize\bfseries] at ({18+1.4*40},16) {$\times$};
+  \node[lab, anchor=south, text=ln-caution] at ({18+1.4*40},17) {\iflangja{クラッシュ}{crash}};
+  % client 2: request and grant
+  \draw[->, thick] ({18+1.4*45},1.2) -- ({18+1.4*45},5.7);
+  \node[lab, anchor=north] at ({18+1.4*45},-1.2) {\iflangja{ロック要求}{request}};
+  \draw[densely dotted, thick] ({18+1.4*45},0) -- ({18+1.4*55},0);
+  \draw[->, thick] ({18+1.4*55},5.7) -- ({18+1.4*55},1.2);
+  \node[lab, anchor=north] at ({18+1.4*55},-1.2) {\iflangja{許可}{granted}};
+  % time axis
+  \draw[->] (18,-8) -- (117,-8);
+  \foreach \t in {0,10,...,70} {
+    \draw ({18+1.4*\t},-7.2) -- ({18+1.4*\t},-8.8);
+    \node[lab, anchor=north] at ({18+1.4*\t},-9) {\t};
+  }
+  \node[lab, anchor=south east] at (117,-7.6) {\iflangja{時間（秒）}{time (s)}};
+\end{tikzpicture}

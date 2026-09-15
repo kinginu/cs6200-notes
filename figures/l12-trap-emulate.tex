@@ -1,0 +1,35 @@
+% Trap-and-emulate: non-privileged guest instructions run directly on the
+% CPU; privileged ones trap to the hypervisor, which emulates legal
+% operations and terminates the VM on illegal ones.
+% Usage: \input{figures/l12-trap-emulate}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  stp/.style={draw, rounded corners=1.5pt, fill=white, align=center,
+               minimum height=9mm, inner sep=1pt},
+  hyp/.style={stp, fill=ln-accent!15},
+  dec/.style={draw, diamond, aspect=2, fill=ln-box, inner sep=0.3pt,
+              align=center},
+  yn/.style={font=\scriptsize\sffamily\itshape, text=ln-muted}]
+  \node[stp, minimum width=24mm] (ins) at (12,28)
+    {\iflangja{ゲストが命令を\\実行する}{guest executes\\an instruction}};
+  \node[dec] (priv) at (42,28) {\iflangja{特権命令?}{privileged?}};
+  \node[stp, minimum width=38mm] (hw) at (93,28)
+    {\iflangja{CPU 上で直接実行\\（ハードウェアの速度）}{runs directly on the CPU\\(hardware speed)}};
+  \node[hyp, minimum width=24mm] (trap) at (42,13)
+    {\iflangja{ハイパーバイザへ\\トラップ}{trap to the\\hypervisor}};
+  \node[dec] (legal) at (70,13) {\iflangja{正当?}{legal?}};
+  \node[hyp, minimum width=30mm] (emu) at (102,13)
+    {\iflangja{期待された効果を仮想\\状態上でエミュレート}{emulate the expected\\effect on virtual state}};
+  \node[hyp, minimum width=26mm, minimum height=7mm] (term) at (70,-2)
+    {\iflangja{VM を終了させる}{terminate the VM}};
+  \draw[->] (ins) -- (priv);
+  \draw[->] (priv) -- node[yn, above] {\iflangja{いいえ}{no}} (hw);
+  \draw[->] (priv) -- node[yn, right] {\iflangja{はい}{yes}} (trap);
+  \draw[->] (trap) -- (legal);
+  \draw[->] (legal) -- node[yn, above] {\iflangja{はい}{yes}} (emu);
+  \draw[->] (legal) -- node[yn, right] {\iflangja{いいえ}{no}} (term);
+  \draw[->, densely dashed, ln-muted] (emu.east) -- ++(2.5,0) |- (12,38)
+    -- (ins.north);
+  \draw[densely dashed, ln-muted] (hw.north) -- (93,38);
+  \node[yn, anchor=south] at (52,38) {\iflangja{次の命令（ゲストを再開）}{next instruction (guest resumes)}};
+\end{tikzpicture}

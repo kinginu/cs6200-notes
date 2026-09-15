@@ -1,0 +1,39 @@
+% Shared-memory IPC: the same (non-contiguous) physical frames are mapped
+% into two virtual address spaces at different virtual addresses.
+% Usage: \input{figures/l09-shm-mapping}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  slot/.style={draw, fill=white, minimum width=18mm, minimum height=5mm,
+               inner sep=0pt, font=\scriptsize\sffamily},
+  sh/.style={slot, fill=ln-accent!20},
+  oth/.style={slot, fill=ln-box},
+  hd/.style={font=\scriptsize\sffamily, align=center, text width=30mm},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  >={Stealth[length=1.6mm]}]
+  \foreach \i in {0,...,7} {
+    \node[slot] (a\i) at (17, 2.5+5*\i) {};
+    \node[slot] (m\i) at (59, 2.5+5*\i) {};
+    \node[slot] (b\i) at (101, 2.5+5*\i) {};
+  }
+  % other (private) frames
+  \foreach \i in {0,3,4,7} { \node[oth] at (59, 2.5+5*\i) {}; }
+  % shared pages
+  \node[sh] (a5) at (17,27.5)  {\iflangja{共有 0}{shared 0}};
+  \node[sh] (a6) at (17,32.5)  {\iflangja{共有 1}{shared 1}};
+  \node[sh] (m6) at (59,32.5)  {\iflangja{共有 0}{shared 0}};
+  \node[sh] (m2) at (59,12.5)  {\iflangja{共有 1}{shared 1}};
+  \node[sh] (b1) at (101,7.5)  {\iflangja{共有 0}{shared 0}};
+  \node[sh] (b2) at (101,12.5) {\iflangja{共有 1}{shared 1}};
+  \draw[->] (a5.east) -- (m6.west);
+  \draw[->] (a6.east) -- (m2.west);
+  \draw[->] (b1.west) -- (m6.east);
+  \draw[->] (b2.west) -- (m2.east);
+  % headers
+  \node[hd, anchor=south] at (17,41)  {\iflangja{P1 の仮想アドレス空間}{virtual address\\space of P1}};
+  \node[hd, anchor=south] at (59,41)  {\iflangja{物理メモリ}{physical memory}};
+  \node[hd, anchor=south] at (101,41) {\iflangja{P2 の仮想アドレス空間}{virtual address\\space of P2}};
+  % virtual addresses of the region
+  \draw[ln-muted] (6,25) -- (8,25);
+  \node[lab, anchor=east] at (6,25) {$\mathit{VA}_1$};
+  \draw[ln-muted] (110,5) -- (112,5);
+  \node[lab, anchor=west] at (112,5) {$\mathit{VA}_2$};
+\end{tikzpicture}

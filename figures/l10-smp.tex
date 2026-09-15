@@ -1,0 +1,34 @@
+% Shared memory multiprocessor configurations: bus-based and
+% interconnect-based, each CPU with its own cache.
+% Usage: \input{figures/l10-smp}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  cpu/.style={draw, fill=white, minimum width=13mm, minimum height=6mm, inner sep=1pt},
+  cache/.style={draw, fill=ln-box, minimum width=13mm, minimum height=4.5mm,
+                inner sep=1pt, font=\scriptsize\sffamily},
+  mem/.style={draw, fill=ln-box, minimum height=7mm, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center}]
+  % (a) bus-based
+  \foreach \x/\n in {8/1, 27/2, 46/3} {
+    \node[cpu] (a\n) at (\x,0) {CPU \n};
+    \node[cache, anchor=north] (ac\n) at (a\n.south) {\iflangja{キャッシュ}{cache}};
+    \draw (ac\n.south) -- (\x,-13);
+  }
+  \draw[line width=1.6pt] (0,-13) -- (54,-13);
+  \node[lab, anchor=south west] at (48,-12.6) {\iflangja{バス}{bus}};
+  \node[mem, minimum width=30mm] (am) at (27,-22) {\iflangja{メモリ}{memory}};
+  \draw (am.north) -- (27,-13);
+  \node[lab] at (27,-31) {\iflangja{(a) バス型}{(a) bus-based}};
+  % (b) interconnect-based
+  \foreach \x/\n in {70/1, 89/2, 108/3} {
+    \node[cpu] (b\n) at (\x,0) {CPU \n};
+    \node[cache, anchor=north] (bc\n) at (b\n.south) {\iflangja{キャッシュ}{cache}};
+    \draw (bc\n.south) -- (\x,-10.5);
+  }
+  \node[draw, fill=white, minimum width=50mm, minimum height=5mm, inner sep=1pt]
+    (ic) at (89,-13) {\iflangja{インターコネクト}{interconnect}};
+  \node[mem, minimum width=22mm] (bm1) at (76,-22) {\iflangja{メモリ}{memory}};
+  \node[mem, minimum width=22mm] (bm2) at (102,-22) {\iflangja{メモリ}{memory}};
+  \draw (bm1.north) -- (76,-15.5);
+  \draw (bm2.north) -- (102,-15.5);
+  \node[lab] at (89,-31) {\iflangja{(b) インターコネクト型}{(b) interconnect-based}};
+\end{tikzpicture}

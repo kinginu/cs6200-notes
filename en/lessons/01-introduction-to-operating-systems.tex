@@ -1,0 +1,618 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Introduction to Operating Systems}
+\lessoninfo{
+  video={P1L2},
+  textbook={OSTEP \cite{ostep} ch.~2, 6; Silberschatz et al.\ \cite{silberschatz2018} ch.~1--2},
+  keywords={operating system, abstraction, arbitration, mechanism, policy, kernel mode, user mode, trap, system call, signal, monolithic operating system, modular operating system, microkernel, Linux},
+}
+
+Every application depends on an operating system to use the CPUs, the
+memory and the devices of the machine on which it runs.  This lesson defines
+what an operating system is and which roles it plays, introduces the
+elements from which it is built---abstractions, mechanisms and
+policies---and the principles that guide their design.  It then examines
+the protection boundary between applications and the operating system,
+which applications cross by means of system calls, and compares the ways in
+which operating systems are organized, with Linux and Mac OS X as examples.
+The abstractions introduced here, such as processes, threads, memory pages
+and files, are the subject of the lessons that follow.
+
+\section{What is an operating system?}
+\label{sec:l01-what}
+
+A computer system consists of hardware---one or more CPUs, each possibly
+with several cores, main memory, storage devices such as hard disks, SSDs
+and USB flash drives, network interfaces for Ethernet or WiFi, and graphics
+processors (GPUs)---and of the applications that use
+it.\source{P1L2, what is an operating system, operating system definition;
+OSTEP ch.~2; Silberschatz et al.\ ch.~1.}  Several applications usually run
+at the same time, and all of them need these hardware components.  The
+operating system is the layer of software that sits between the two
+(\cref{fig:l01-os-layers}).
+
+\begin{definition}[Operating system]
+  An \term{operating system}[オペレーティングシステム] (OS) is a layer of
+  systems software that
+  \begin{itemize}
+    \item has direct, privileged access to the underlying hardware;
+    \item hides the complexity of the hardware from applications;
+    \item manages the hardware on behalf of one or more applications
+      according to predefined policies; and
+    \item ensures that applications are isolated and protected from one
+      another.
+  \end{itemize}
+\end{definition}
+\index{OS|see{operating system}}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l01-os-layers}
+  \caption{The operating system between applications and hardware.
+    Applications request services through system calls; components such
+    as the scheduler, the memory manager, file systems and device drivers
+    carry them out on the hardware.}
+  \label{fig:l01-os-layers}
+\end{figure}
+
+In short, an operating system \emph{abstracts} the hardware, simplifying
+what it looks like to applications, and \emph{arbitrates} its use,
+overseeing and controlling how applications share it.  The definition
+names three roles.
+\begin{description}
+  \item[Hiding hardware complexity] The operating system presents the
+    hardware to applications through an
+    \term{abstraction}[抽象化]: a simpler, higher-level interface that
+    hides the details of the devices behind it.  An application that
+    stores data does not address the sectors and blocks of a particular
+    disk; it writes to a \emph{file}, and the operating system translates
+    file operations into operations on whatever storage device is
+    present.  In the same way a \emph{socket} represents network
+    communication independently of the network interface.  Because the
+    abstraction stays the same when the device changes, applications run
+    unchanged on different hardware.
+  \item[Resource management] The operating system manages the hardware
+    resources by \term{arbitration}[調停]: it decides which application
+    uses which resource and how much of it, allocating memory to
+    applications, scheduling them on the CPUs and controlling their access
+    to devices.  The decisions follow policies, for example that access
+    to resources be fair or that the resources used by one application be
+    limited.
+  \item[Isolation and protection] Applications that run at the same time
+    must not interfere with one another.  The operating system provides
+    \term{isolation}[隔離] by giving each application its own share of the
+    resources, for example its own portion of physical memory, so that its
+    execution is not affected by the others.  It provides
+    \term{protection}[保護] by preventing an application from accessing
+    resources that have not been assigned to it, such as the memory of
+    other applications or of the operating system itself.
+\end{description}
+
+The operating system thus consists of components such as the CPU scheduler,
+the memory manager, device drivers and file systems.  Application programs
+that merely use these services, such as a spreadsheet or a media player,
+are not part of it, even when they are distributed together with it.
+
+\begin{example}
+  A function of the operating system is an abstraction when it simplifies
+  the interface to a device, and arbitration when it divides a resource
+  among applications.  Letting a program send a document to a printer
+  without knowing the command language of the printer's model is
+  abstraction; deciding in which order the documents of three programs
+  that print at the same time reach the printer is arbitration.  Likewise,
+  offering the same socket interface over Ethernet and over WiFi is
+  abstraction, while limiting the network bandwidth that one application
+  may consume is arbitration.
+\end{example}
+
+\subsection{Examples of operating systems}
+
+Operating systems differ with the environment they are designed
+for.\source{P1L2, operating system examples.}  On desktop and server
+machines the main examples are Microsoft Windows and the UNIX-based
+systems, among them Mac OS X, which derives from BSD UNIX, and Linux.  On
+embedded devices such as smartphones they include Android, which is based
+on Linux, iOS and Symbian.  Each makes design choices suited to its
+environment; the lessons that follow use Linux as their main example.
+
+\section{Abstractions, mechanisms and policies}
+\label{sec:l01-elements}
+
+An operating system is built from three kinds of
+elements.\source{P1L2, OS elements, OS elements example; Silberschatz et
+al.\ ch.~2.}  Its abstractions represent executing applications---the
+process and the thread---and hardware resources---the file, the socket and
+the memory page.  On these abstractions it provides operations, and it
+decides how the operations are applied.
+
+\begin{definition}[Mechanism and policy]
+  A \term{mechanism}[機構] is an operation that the operating system
+  provides on its abstractions, such as creating or scheduling a process,
+  opening or writing a file, or allocating memory.  A
+  \term{policy}[方針] is a rule that determines how the mechanisms are
+  used to manage the hardware, such as least recently used (LRU) for
+  memory or earliest deadline first (EDF) for scheduling.
+\end{definition}
+
+Memory management shows how the three elements work together
+(\cref{tab:l01-elements}).  The abstraction is the memory page, a
+fixed-size block of memory.  The mechanisms allocate a page and map it into
+the address space of a process, so that the process can use it.  Physical
+memory (DRAM) is usually smaller than the total demand of all processes,
+so the operating system also moves some pages to disk and brings them back
+when they are accessed again.  The policy decides which pages to move: with
+LRU, the pages that have not been accessed for the longest time, on the
+assumption that they are the least likely to be needed soon.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The elements of an operating system, in general and for memory
+    management.}
+  \label{tab:l01-elements}
+  \small
+  \begin{tabular}{@{}l>{\raggedright}p{47mm}>{\raggedright\arraybackslash}p{45mm}@{}}
+    \toprule
+    Element & Examples & Memory management \\
+    \midrule
+    Abstraction & process, thread, file, socket, memory~page & memory page \\
+    Mechanism & create, schedule, open, write, allocate
+      & allocate a page, map it into a process \\
+    Policy & LRU, EDF & LRU: move the least recently used pages to disk \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Design principles}
+\label{sec:l01-principles}
+
+Two principles guide the design of these elements.\source{P1L2, OS design
+principles; Silberschatz et al.\ ch.~2.}  The first is the
+\term{separation of mechanism and policy}[機構と方針の分離]: the operating
+system implements flexible mechanisms that can support many policies, so
+that a policy can be chosen or replaced without changing the mechanisms.
+For choosing the pages to move to disk, the same mechanisms---recording
+page accesses, moving a page to disk and updating its mapping---support
+LRU, least frequently used (LFU) and even random selection.  Which of them
+works best depends on the setting in which the system is used.
+
+\begin{example}
+  Physical memory holds four pages, and a fifth page is needed, so one of
+  the four must move to disk.  At time \SI{160}{\milli\second} the
+  recorded accesses are:
+  \begin{center}
+    \small
+    \begin{tabular}{@{}lcccc@{}}
+      \toprule
+      Page & A & B & C & D \\
+      \midrule
+      Last access (\si{\milli\second}) & 120 & 40 & 95 & 150 \\
+      Number of accesses & 9 & 25 & 3 & 12 \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+  LRU moves page B, whose last access lies furthest in the past; LFU moves
+  page C, which has been accessed least often; random selection moves each
+  page with probability $1/4$.  In all three cases the mechanism executed
+  is the same: the chosen page is written to disk and its mapping is
+  invalidated.
+\end{example}
+
+The second principle is to \term{optimize for the common case}[頻繁に起こる場合の最適化].
+The designers must understand where the operating system will be used,
+which applications its users will run on the machine, and what the
+requirements of that workload are.  They then choose the policies that
+make sense for this common case and that the underlying abstractions and
+mechanisms can support.  A server that mostly runs a database, for
+example, performs many random reads and writes, whereas a media server
+reads large files sequentially, and the policies that suit one workload
+are a poor fit for the other.
+
+\begin{keypoint}
+  Abstractions simplify, mechanisms operate on the abstractions, and
+  policies decide how the mechanisms are used.  Keeping mechanisms general
+  lets the same operating system adopt the policies that fit its common
+  case.
+\end{keypoint}
+
+\section{The user/kernel protection boundary}
+\label{sec:l01-boundary}
+
+Because the operating system needs direct access to the hardware, it must
+execute with privileges that applications do not
+have.\source{P1L2, user/kernel protection boundary; OSTEP ch.~6.}
+Computer platforms therefore distinguish at least two modes of execution.
+
+\begin{definition}[Kernel mode and user mode]
+  In \term{kernel mode}[カーネルモード], the privileged mode, software may
+  execute every instruction of the processor and access the hardware
+  directly.  In \term{user mode}[ユーザモード], the unprivileged mode,
+  instructions that access the hardware directly are forbidden.
+\end{definition}
+
+The part of the operating system that executes in kernel mode is its
+\term{kernel}[カーネル]; applications execute in user mode.  The
+distinction between the two modes is supported by the hardware.  The CPU
+contains a \term{mode bit}[モードビット] that records the current mode, and
+an instruction that directly manipulates hardware---a
+\term{privileged instruction}[特権命令]---is executed only if the mode bit
+indicates kernel mode.\margin{x86 processors provide four privilege
+levels, the protection rings of Lesson~12; operating systems use at least
+two of them.}  An attempt to execute a privileged instruction in user mode
+does not take effect but causes a trap.
+
+\begin{definition}[Trap]
+  A \term{trap}[トラップ] is a transfer of control from a running
+  application to the operating system, performed by the hardware: the
+  application is interrupted, the CPU switches to kernel mode, and
+  execution continues at a location in the kernel that the operating
+  system has registered in advance.
+\end{definition}
+
+After a trap caused by a privileged instruction or by an access to memory
+that requires privileges, the operating system determines what caused the
+trap and whether the access should be granted; if the application attempted
+something illegal, the operating system may terminate it.  Applications
+and the operating system interact in three ways (\cref{fig:l01-user-kernel}):
+\begin{description}
+  \item[Traps] transfer control to the operating system when an
+    application performs an operation that requires privileges.
+  \item[System calls] are requested explicitly.  A
+    \term{system call}[システムコール] is an operation that the operating
+    system exports so that applications can ask it to perform a service or
+    a privileged access on their behalf, for example \texttt{open} for a
+    file, \texttt{send} for a socket or \texttt{mmap} for memory.  The set
+    of these operations is the \emph{system call interface}.
+  \item[Signals] travel in the opposite direction.  A
+    \term{signal}[シグナル] is a notification that the operating system
+    passes to an application, for example that a timer the application
+    has set has expired.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l01-user-kernel}
+  \caption{The user/kernel protection boundary.  Only the kernel accesses
+    the hardware; applications enter the kernel through system calls or
+    traps, and the kernel notifies applications with signals.}
+  \label{fig:l01-user-kernel}
+\end{figure}
+
+\section{System calls}
+\label{sec:l01-syscalls}
+
+\Cref{fig:l01-syscall-flow} shows the sequence of events when a user
+process executes a system call.\source{P1L2, system call flowchart;
+OSTEP ch.~6; Silberschatz et al.\ ch.~2.}  The process runs in user mode
+until it needs a service of the operating system and calls the system call.
+The call traps into the kernel: the mode bit is switched to kernel mode,
+the execution context changes from that of the user process to that of the
+kernel, the arguments are passed, and execution jumps to the kernel code
+that implements the call.  The kernel executes the call in kernel mode.
+When it has completed, the mode bit is switched back to user mode, the
+execution context of the process is restored, the results are passed back,
+and the process continues with the instruction after the call.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l01-syscall-flow}
+  \caption{Execution of a system call: a trap switches to kernel mode, the
+    kernel executes the call, and the return switches back to user mode.
+    The mode bit follows the convention of Silberschatz et al.\
+    \cite{silberschatz2018}: 0 in kernel mode, 1 in user mode.}
+  \label{fig:l01-syscall-flow}
+\end{figure}
+
+To make a system call, an application writes the arguments and other
+relevant data to a well-defined location and invokes the call by its
+\emph{system call number}.  From the number the kernel determines which
+operation is requested, how many arguments it takes and where to find
+them.  Arguments are passed either directly, as values, or indirectly, as
+the address of a memory area that holds them.  In the synchronous mode
+described here the process waits until the system call has completed;
+asynchronous system calls are discussed in later lessons.
+
+\begin{example}
+  Both calls in the following C program ask Linux to write six bytes to
+  the standard output:
+  \begin{lstlisting}[language=C, numbers=none]
+#include <unistd.h>
+#include <sys/syscall.h>
+
+int main(void) {
+  const char msg[] = "hello\n";
+  /* C library wrapper for the system call */
+  write(1, msg, sizeof msg - 1);
+  /* the same system call, invoked by number */
+  syscall(SYS_write, 1, msg, sizeof msg - 1);
+  return 0;
+}
+  \end{lstlisting}
+  The library function \texttt{write} places the number of the
+  \texttt{write} system call and its three arguments where the kernel
+  expects them and executes the trap.  The output channel~1 and the length
+  are passed directly; the text is passed indirectly, through its address
+  \texttt{msg}.\margin{On x86-64 Linux the number is placed in register
+  \texttt{rax}, the arguments in \texttt{rdi}, \texttt{rsi} and
+  \texttt{rdx}, and the \texttt{syscall} instruction performs the trap.}
+\end{example}
+
+\subsection{Crossing the user/kernel boundary}
+
+Transitions between user mode and kernel mode are a necessary part of
+application execution: an application that reads a file, sends data over
+the network or allocates memory must cross the
+boundary.\source{P1L2, crossing the OS boundary.}  The transitions have
+three properties.
+\begin{itemize}
+  \item They are supported by the hardware, through traps on illegal
+    instructions or on memory accesses that require special privileges.
+  \item They require executing a number of instructions to save and
+    switch state; on a \SI{2}{\giga\hertz} machine running Linux a
+    transition takes about \SIrange{50}{100}{\nano\second}.
+  \item They switch locality.  The kernel executes different code and uses
+    different data than the application, so its instructions replace
+    application data in the processor caches.  When the application
+    resumes, part of its data must be fetched from main memory again,
+    which slows it down.
+\end{itemize}
+User/kernel transitions are therefore not cheap.\caution{A system call
+looks like an ordinary procedure call in C, but it costs far more: a mode
+switch, a change of execution context and the loss of cache locality.}
+
+\section{Operating system services}
+\label{sec:l01-services}
+
+An operating system gives applications access to the hardware by exporting
+services.\source{P1L2, OS services; Silberschatz et al.\ ch.~2.}  At the
+most basic level the services correspond to hardware components: a
+scheduler controls access to the CPUs; a memory manager allocates physical
+memory to the applications that run at the same time and makes sure that
+they do not overwrite each other's memory; a block device driver gives
+access to block devices such as disks.  Other services provide higher-level
+abstractions that do not correspond directly to one hardware component,
+such as the files and directories of a file system.  Grouped by purpose,
+operating systems offer process management, file management, device
+management, memory management, storage management and security.
+
+Applications reach all of these services through system calls.  Different
+operating systems name and structure their calls differently, but they
+provide comparable functionality, as the Windows and Unix calls in
+\cref{tab:l01-syscalls} show.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Examples of Windows and Unix system calls
+    (after Silberschatz et al.\ \cite{silberschatz2018}).}
+  \label{tab:l01-syscalls}
+  \small
+  \begin{tabular}{@{}>{\raggedright}p{24mm}>{\raggedright}p{55mm}%
+      >{\raggedright\arraybackslash}p{32mm}@{}}
+    \toprule
+    Category & Windows & Unix \\
+    \midrule
+    Process control
+      & \texttt{CreateProcess()}, \texttt{ExitProcess()},
+        \texttt{WaitForSingleObject()}
+      & \texttt{fork()}, \texttt{exit()}, \texttt{wait()} \\
+    \addlinespace
+    File manipulation
+      & \texttt{CreateFile()}, \texttt{ReadFile()}, \texttt{WriteFile()},
+        \texttt{CloseHandle()}
+      & \texttt{open()}, \texttt{read()}, \texttt{write()},
+        \texttt{close()} \\
+    \addlinespace
+    Device manipulation
+      & \texttt{SetConsoleMode()}, \texttt{ReadConsole()},
+        \texttt{WriteConsole()}
+      & \texttt{ioctl()}, \texttt{read()}, \texttt{write()} \\
+    \addlinespace
+    Information maintenance
+      & \texttt{GetCurrentProcessID()}, \texttt{SetTimer()},
+        \texttt{Sleep()}
+      & \texttt{getpid()}, \texttt{alarm()}, \texttt{sleep()} \\
+    \addlinespace
+    Communication
+      & \texttt{CreatePipe()}, \texttt{CreateFileMapping()},
+        \texttt{MapViewOfFile()}
+      & \texttt{pipe()}, \texttt{shm\_open()}, \texttt{mmap()} \\
+    \addlinespace
+    Protection
+      & \texttt{SetFileSecurity()}, \texttt{InitializeSecurityDescriptor()},
+        \texttt{SetSecurityDescriptorGroup()}
+      & \texttt{chmod()}, \texttt{umask()}, \texttt{chown()} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Organization of an operating system}
+\label{sec:l01-organization}
+
+Operating systems differ in how their services are
+organized.\source{P1L2, monolithic OS, modular OS, microkernel;
+Silberschatz et al.\ ch.~2.}  \Cref{fig:l01-structures} shows three basic
+organizations, and \cref{tab:l01-organization} summarizes their advantages
+and disadvantages.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l01-structures}
+  \caption{Three organizations of an operating system.  The dashed line is
+    the user/kernel boundary.  A monolithic kernel contains every service;
+    a modular kernel adds services as modules through a common interface;
+    a microkernel keeps only address spaces, threads and IPC, and runs
+    all other services at user level.}
+  \label{fig:l01-structures}
+\end{figure}
+
+\subsection{Monolithic operating systems}
+
+Historically, operating systems were monolithic.  In a
+\term{monolithic operating system}[モノリシックOS] every service that any
+application may require and that any type of hardware may demand is part
+of the operating system: memory management, device drivers, file
+management, processes and threads, scheduling.  Such a system may even
+include several file systems, one specialized for sequential access and
+another optimized for random access, as used by databases.  Because all
+of this code is compiled together, the compiler can optimize across the
+boundaries between components, for example by inlining.  The price is a
+large amount of code and state that is hard to customize, port, maintain,
+debug and upgrade, and a large memory footprint that reduces the memory
+left for applications and can therefore degrade their performance.
+
+\subsection{Modular operating systems}
+
+A \term{modular operating system}[モジュール型OS], of which Linux is the
+standard example, contains a set of basic services and APIs, and
+everything else can be added as a \term{kernel module}[カーネルモジュール].
+The operating system specifies interfaces that a module must implement to
+become part of it, for example an interface for file systems.  Modules can
+be installed dynamically, according to the workload: a machine that runs a
+database can load a file system optimized for random access.  Since only
+the modules that are needed are loaded, the system is smaller, easier to
+maintain and upgrade, and leaves more resources to applications.  The
+indirection through the module interface can cost some performance,
+although usually not much, and modules may come from entirely different
+code bases, which makes them a source of bugs.\margin{Linux modules run in
+kernel mode in the kernel's address space; Silberschatz et al.\ therefore
+describe Linux as a monolithic kernel with loadable modules.}
+
+\subsection{Microkernels}
+
+A \term{microkernel}[マイクロカーネル] provides only the most basic
+primitives at the operating-system level: address spaces, which represent
+the memory of executing applications, and threads, which represent their
+execution contexts.  Everything else---file systems, device drivers,
+databases---runs outside the kernel, at user level, as separate processes.
+Serving a request therefore involves many interactions between processes,
+and inter-process communication (IPC) is one of the core abstractions and
+mechanisms of the microkernel, together with address spaces and threads.
+A microkernel is small, which lowers its overhead and can improve
+performance for some applications, and its code is easier to verify.  This
+makes microkernels attractive for embedded devices and control systems,
+where correct behaviour of the operating system is critical.  On the
+other hand, microkernels are often specialized to the underlying hardware,
+which limits portability; software development is more complex, because
+common operating-system components are harder to find; and the frequent
+crossings of the user/kernel boundary are costly.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Advantages and disadvantages of the three organizations.}
+  \label{tab:l01-organization}
+  \small
+  \begin{tabular}{@{}>{\RaggedRight}p{19mm}>{\RaggedRight}p{46mm}%
+      >{\RaggedRight\arraybackslash}p{47mm}@{}}
+    \toprule
+    Organization & Advantages & Disadvantages \\
+    \midrule
+    Monolithic & everything included; optimization across components
+      & hard to customize, port and manage; large memory footprint \\
+    \addlinespace
+    Modular & maintainable; smaller footprint; fewer resources needed
+      & indirection through interfaces; bugs from separately developed
+      modules \\
+    \addlinespace
+    Microkernel & small size and low overhead; easier to verify
+      & limited portability; complex software development; frequent
+      user/kernel crossings \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{example}
+  Consider a read from a file on disk.  In a monolithic or modular kernel
+  the file system and the disk driver run inside the kernel, so the
+  application makes one system call and the request crosses the user/kernel
+  boundary twice, on entry and on return.  In a microkernel the application
+  sends an IPC message to the file-system process, which sends one to the
+  driver process; the driver replies to the file system, which replies to
+  the application.  Each of the four messages enters the kernel and leaves
+  it again, for eight crossings in total.  Assuming \SI{80}{\nano\second}
+  per crossing and \num{50000} reads per second, the monolithic design
+  spends $\num{50000}\times 2\times\SI{80}{\nano\second} =
+  \SI{8}{\milli\second}$ of every second on crossings and the microkernel
+  $\num{50000}\times 8\times\SI{80}{\nano\second} =
+  \SI{32}{\milli\second}$, not counting the switches between the address
+  spaces of the processes involved.
+\end{example}
+
+\begin{keypoint}
+  A monolithic kernel is complete and can be optimized as a whole but is
+  large and hard to manage; a modular kernel adds only the services that
+  are needed, at the cost of indirection; a microkernel is small and
+  verifiable but pays for frequent user/kernel crossings and IPC.
+\end{keypoint}
+
+\section{Linux and Mac OS X}
+\label{sec:l01-linux-macos}
+
+A Linux system is organized in layers (\cref{fig:l01-linux},
+left).\source{P1L2, Linux and Mac OS architectures; Tanenbaum and Bos
+\cite{tanenbaum2015} ch.~10; Silberschatz et al.\ ch.~2.}  The Linux kernel
+runs in kernel mode directly on the hardware.  Above it, in user mode, the
+standard library provides the system call interface as functions such as
+\texttt{open}, \texttt{close}, \texttt{read}, \texttt{write} and
+\texttt{fork}; the standard utility programs, such as the shell, editors
+and compilers, use the library; and users interact with the utility
+programs and with their applications.  The boundaries between these layers
+are the system call interface, the library interface and the user
+interface.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l01-linux}
+  \caption{Left: the layers of a Linux system; the dashed line is the
+    user/kernel boundary.  Right: the components of the Linux kernel
+    (after Tanenbaum and Bos \cite{tanenbaum2015}).}
+  \label{fig:l01-linux}
+\end{figure}
+
+The kernel itself (\cref{fig:l01-linux}, right) is entered through the
+system calls at the top, and at the bottom it handles interrupts and
+contains the dispatcher, which switches the CPU between processes.  In
+between lie three components.  The I/O component contains the terminal
+and character device drivers, the sockets, network protocols and network
+device drivers, and the file systems and block device drivers.  The memory
+management component implements virtual memory, paging and page
+replacement, and the page cache.  The process management component handles
+signals, creates and terminates processes and threads, and schedules the
+CPU.  Each component can be modified or replaced independently of the
+others, which is what makes the modular approach possible.
+
+Mac OS X (now macOS) is built around the Mach microkernel
+(\cref{fig:l01-macos}).\margin{Mach and BSD execute in the same kernel
+address space, so Silberschatz et al.\ describe the result as a hybrid of
+the microkernel and monolithic organizations.}  Mach implements the key
+primitives: memory management, thread scheduling, and IPC, including
+remote procedure calls (Lesson~13).  A BSD component provides Unix
+interoperability through the BSD command-line interface, support for the
+POSIX API and network I/O.  All application environments are layered above
+these two.  Below them, the I/O Kit is an environment for developing device
+drivers, and kernel extensions are components that are loaded into the
+kernel dynamically.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l01-macos}
+  \caption{The structure of Mac OS X: the Mach microkernel with a BSD
+    layer, the I/O Kit and kernel extensions.}
+  \label{fig:l01-macos}
+\end{figure}
+
+\begin{keypoint}[Lesson summary]
+  An operating system is the privileged layer of software between
+  applications and hardware.  It hides hardware complexity behind
+  abstractions, arbitrates the use of hardware resources, and isolates and
+  protects applications from one another.  It is built from abstractions,
+  mechanisms and policies; separating mechanism from policy and optimizing
+  for the common case guide its design.  Hardware-supported user and kernel
+  modes protect the operating system; applications cross the boundary
+  through system calls and traps, which are not cheap, and the operating
+  system notifies applications with signals.  Monolithic, modular and
+  microkernel organizations trade completeness, flexibility, size and
+  performance against each other, as the modular Linux kernel and the
+  Mach-based Mac OS X illustrate.
+\end{keypoint}
+
+\end{document}

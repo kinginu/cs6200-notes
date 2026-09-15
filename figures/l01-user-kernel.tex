@@ -1,0 +1,32 @@
+% The user/kernel protection boundary and the ways to cross it.
+% Usage: \input{figures/l01-user-kernel}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  app/.style={draw, rounded corners=2pt, fill=white, minimum height=8mm,
+              minimum width=30mm, inner sep=1pt},
+  big/.style={draw, rounded corners=2pt, minimum height=8mm,
+              minimum width=112mm, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  lvl/.style={font=\scriptsize\sffamily, text=ln-muted, align=right},
+  >={Stealth[length=1.8mm]}]
+  \node[app] (a) at (28,42) {\iflangja{アプリケーション}{application}};
+  \node[app] (b) at (78,42) {\iflangja{アプリケーション}{application}};
+  \draw[dashed, ln-rule, thick] (0,26) -- (112,26);
+  \node[lvl, anchor=south east] at (112,26.8) {\iflangja{ユーザレベル（非特権）}{user level (unprivileged)}};
+  \node[lvl, anchor=north east] at (112,25.2) {\iflangja{カーネルレベル（特権）}{kernel level (privileged)}};
+  \node[big, fill=ln-box, thick, draw=ln-accent] (k) at (56,15)
+    {\iflangja{OS カーネル}{OS kernel}};
+  \node[big, fill=white] (h) at (56,0) {\iflangja{ハードウェア}{hardware}};
+  % system call and signal
+  \draw[->, thick, ln-accent] (22,38) -- (22,19);
+  \node[lab, anchor=east] at (21,32) {\iflangja{システムコール}{system call}};
+  \draw[->, thick, ln-accent] (34,19) -- (34,38);
+  \node[lab, anchor=west] at (35,32) {\iflangja{シグナル}{signal}};
+  % trap
+  \draw[->, thick, ln-caution] (78,38) -- (78,19);
+  \node[lab, anchor=east] at (77,32)
+    {\iflangja{トラップ\\（特権操作）}{trap (privileged\\operation)}};
+  % privileged access
+  \draw[<->, thick] (56,11) -- (56,4);
+  \node[lab, anchor=west] at (57,7.5)
+    {\iflangja{ハードウェアへの直接アクセス}{direct hardware access}};
+\end{tikzpicture}

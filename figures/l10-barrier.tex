@@ -1,0 +1,29 @@
+% A barrier for n = 3 threads: threads block at the barrier until the
+% third one arrives, then all continue.
+% Usage: \input{figures/l10-barrier}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  run/.style={line width=1.6pt, ln-accent},
+  blk/.style={line width=4pt, ln-caution!25},
+  >={Stealth[length=1.8mm]}]
+  \foreach \y/\t/\a in {10/T1/40, 3/T2/62, -4/T3/82} {
+    \node[lab, anchor=east] at (18,\y) {\t};
+    \draw[run] (20,\y) -- (\a,\y);
+    \ifnum\a<82 \draw[blk] (\a,\y) -- (82,\y); \fi
+    \draw[run, ->] (82,\y) -- (112,\y);
+    \fill[ln-accent] (\a,\y) circle (0.9);
+  }
+  \draw[line width=1.2pt] (82,15) -- (82,-9);
+  \node[lab, anchor=south] at (82,15)
+    {\iflangja{バリア（$n=3$）}{barrier ($n=3$)}};
+  \node[lab, anchor=south] at (40,12)
+    {\iflangja{T1 が到着}{T1 arrives}};
+  \node[lab, anchor=west] at (83,-7.5)
+    {\iflangja{T3 の到着で全員が進む}{T3 arrives: all proceed}};
+  % legend and time axis
+  \draw[run] (20,-15) -- (28,-15);
+  \node[lab, anchor=west] at (29,-15) {\iflangja{実行中}{running}};
+  \draw[blk] (46,-15) -- (54,-15);
+  \node[lab, anchor=west] at (55,-15) {\iflangja{バリアで待機}{blocked at the barrier}};
+  \draw[->] (92,-15) -- node[lab, above] {\iflangja{時間}{time}} (116,-15);
+\end{tikzpicture}

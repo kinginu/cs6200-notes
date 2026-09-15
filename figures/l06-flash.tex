@@ -1,0 +1,41 @@
+% Flash (AMPED): the dispatcher tests with mincore whether the file data are
+% in memory; if not, a helper process reads them and reports completion
+% through a pipe.
+% Usage: \input{figures/l06-flash}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  box/.style={draw, rounded corners=2pt, fill=ln-box, align=center, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  num/.style={draw, circle, fill=white, inner sep=0pt, minimum size=3.4mm,
+    font=\tiny\sffamily\bfseries, text=ln-accent},
+  >={Stealth[length=1.6mm]}]
+  % main process
+  \draw[ln-rule, rounded corners=3pt] (0,-15) rectangle (64,21);
+  \node[lab, text=ln-muted, anchor=north west] at (1,20)
+    {\iflangja{Flash のプロセス（ディスパッチャとハンドラ）}{Flash process (dispatcher and handlers)}};
+  \node[box, fill=ln-accent!15, minimum width=20mm, minimum height=10mm]
+    (disp) at (12,6) {\iflangja{ディスパッチャ}{dispatcher}};
+  \node[box, fill=white, minimum width=24mm, minimum height=10mm, font=\scriptsize\sffamily]
+    (chk) at (48,6) {\iflangja{ページはメモリ上か}{pages in memory?}\\(\texttt{mincore})};
+  \node[box, minimum width=24mm, minimum height=8mm, font=\scriptsize\sffamily]
+    (hnd) at (48,-8) {\iflangja{ハンドラ：}{handler:}\\\iflangja{データを送信}{send data}};
+  \draw[->] (disp) -- node[num, above=0.6mm] {1} (chk);
+  \draw[->] (chk) -- node[lab, right] {\iflangja{はい}{yes}} node[num, left=0.6mm] {2} (hnd);
+  % helpers
+  \foreach \y/\n in {14/1,6/2,-2/3} {
+    \node[box, minimum width=16mm, minimum height=6mm, font=\scriptsize\sffamily]
+      (h\n) at (86,\y) {\iflangja{ヘルパ}{helper} \n};
+  }
+  \draw[->] (chk) -- node[lab, above, pos=0.62] {\iflangja{いいえ：パイプ}{no: pipe}}
+    node[num, below=0.6mm, pos=0.62] {3} (h2);
+  % disk
+  \node[cylinder, shape border rotate=90, draw, aspect=0.25, fill=ln-box,
+    minimum width=11mm, minimum height=13mm, font=\scriptsize\sffamily]
+    (disk) at (109,6) {\iflangja{ディスク}{disk}};
+  \draw[<->] (h2.east) -- node[lab, above] {\texttt{mmap}} (disk.west);
+  % completion
+  \draw[->, densely dashed, ln-caution] (h3.south) -- (86,-20) -- (12,-20)
+    -- node[num, left=0.6mm, pos=0.5] {4} (disp.south);
+  \node[lab, text=ln-caution, anchor=south] at (48,-19.6)
+    {\iflangja{完了をパイプで通知（イベント）}{completion reported through the pipe (an event)}};
+  \draw[->, densely dashed, ln-caution] (disp.south east) -- (hnd.west);
+\end{tikzpicture}

@@ -1,0 +1,47 @@
+% Runqueue of the Linux O(1) scheduler: an active and an expired array of
+% 140 priority lists, each with a bitmap of the non-empty lists.
+% Usage: \input{figures/l07-o1}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  bit/.style={draw, minimum width=4mm, minimum height=4mm, inner sep=0pt},
+  slot/.style={draw, fill=ln-box, minimum width=5mm, minimum height=4mm, inner sep=0pt},
+  tk/.style={draw, circle, fill=ln-accent!22, minimum size=3.6mm, inner sep=0pt},
+  ttl/.style={font=\footnotesize\sffamily\bfseries}]
+  % rows: label / y
+  \def\rows{0/0, {\vdots}/-4.5, 99/-9, 100/-13.5, {\vdots}/-18, 120/-22.5, {\vdots}/-27, 139/-31.5}
+  % ---------------- active array at x0 = 18
+  \node[ttl, anchor=south] at (32,5) {\iflangja{アクティブ配列}{active array}};
+  \node[anchor=south, text=ln-muted] at (18,2) {\iflangja{ビットマップ}{bitmap}};
+  \foreach \l/\y in \rows { \node[anchor=east] at (29,\y) {\l}; }
+  \foreach \y/\b in {0/0, -9/0, -13.5/1, -22.5/1, -31.5/1} {
+    \node[bit] at (18,\y) {\b};
+    \node[slot] at (33,\y) {};
+  }
+  \node[tk] (a1) at (41,-13.5) {};
+  \draw[->] (33,-13.5) -- (a1);
+  \node[tk] (a2) at (41,-22.5) {};
+  \node[tk] (a3) at (48,-22.5) {};
+  \draw[->] (33,-22.5) -- (a2); \draw[->] (a2) -- (a3);
+  \node[tk] (a4) at (41,-31.5) {};
+  \draw[->] (33,-31.5) -- (a4);
+  % priority classes
+  \draw (13,2) -- (11.5,2) -- (11.5,-11) -- (13,-11);
+  \node[anchor=east, align=right] at (9.5,-4.5) {\iflangja{リアル\\タイム}{real-\\time}};
+  \draw (13,-11.8) -- (11.5,-11.8) -- (11.5,-33.5) -- (13,-33.5);
+  \node[anchor=east, align=right] at (9.5,-22.5) {\iflangja{タイム\\シェアリング}{time-\\sharing}};
+  % ---------------- expired array at x0 = 76
+  \node[ttl, anchor=south] at (90,5) {\iflangja{期限切れ配列}{expired array}};
+  \node[anchor=south, text=ln-muted] at (76,2) {\iflangja{ビットマップ}{bitmap}};
+  \foreach \l/\y in \rows { \node[anchor=east] at (87,\y) {\l}; }
+  \foreach \y/\b in {0/0, -9/0, -13.5/0, -22.5/1, -31.5/0} {
+    \node[bit] at (76,\y) {\b};
+    \node[slot] at (91,\y) {};
+  }
+  \node[tk] (e1) at (99,-22.5) {};
+  \draw[->] (91,-22.5) -- (e1);
+  % a task whose timeslice expires moves to the expired array
+  \draw[->, thick, ln-accent, rounded corners=2mm] (a3.south) -- (48,-37.5) -- (99,-37.5) -- (e1.south);
+  \node[above, text=ln-accent, inner sep=1pt] at (62,-37.5) {\iflangja{タイムスライス満了}{timeslice expires}};
+  % swap
+  \draw[<->, thick] (44,-44) -- node[below, align=center] {\iflangja{アクティブ配列が空になったら交換}{swapped when the active array is empty}} (88,-44);
+\end{tikzpicture}

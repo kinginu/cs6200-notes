@@ -1,0 +1,33 @@
+% Journaling: updates are appended sequentially to the journal and later
+% applied to their proper locations on disk.
+% Usage: \input{figures/l11-journal}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  num/.style={circle, draw=black, fill=white, text=black, line width=0.4pt,
+              inner sep=0.4pt, font=\scriptsize\sffamily\bfseries}]
+  % updates
+  \node[draw, fill=white, align=center, inner sep=1.5pt] (up) at (39,22)
+    {\iflangja{更新：ブロック 870，12，301}{updates to blocks 870, 12, 301}};
+  \draw[->, line width=1.2pt, ln-accent] (up.south) -- node[num, right=0.8mm] {1} (39,8.2);
+  \node[lab, anchor=west] at (43,14) {\iflangja{順に追記（シーケンシャル書き込み）}{appended in order (sequential writes)}};
+  % disk strip
+  \node[lab, anchor=east] at (17,4) {\iflangja{ディスク}{disk}};
+  \draw[fill=white] (18,0) rectangle (116,8);
+  \foreach \x/\b in {18/870, 32/12, 46/301} {
+    \draw[fill=ln-accent!10] (\x,0) rectangle (\x+14,8);
+    \node[font=\scriptsize\ttfamily] at (\x+7,4) {\b};
+  }
+  \foreach \x/\b in {66/12, 84/301, 102/870} {
+    \draw[fill=ln-box] (\x,0) rectangle (\x+10,8);
+    \node[font=\scriptsize\ttfamily] at (\x+5,4) {\b};
+  }
+  \node[lab, anchor=south west, text=ln-muted] at (18,8.3) {\iflangja{ジャーナル}{journal}};
+  \node[lab, anchor=south, text=ln-muted] at (89,8.3) {\iflangja{本来の位置}{proper locations}};
+  % apply later
+  \draw[->, densely dashed] (25,0) .. controls (30,-15) and (100,-15) .. (107,0);
+  \draw[->, densely dashed] (39,0) .. controls (42,-7) and (68,-7) .. (71,0);
+  \draw[->, densely dashed] (53,0) .. controls (58,-10) and (84,-10) .. (89,0);
+  \node[num] at (66,-11.3) {2};
+  \node[lab, anchor=west] at (69,-13.5) {\iflangja{後でまとめて反映}{applied later}};
+\end{tikzpicture}

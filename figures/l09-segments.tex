@@ -1,0 +1,33 @@
+% Two ways of organizing shared memory among several processes.
+% Usage: \input{figures/l09-segments}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  blk/.style={draw, minimum height=8mm, inner sep=0pt, font=\scriptsize\sffamily},
+  used/.style={blk, fill=ln-accent!20},
+  freeb/.style={blk, fill=white},
+  box/.style={draw, rounded corners=2pt, fill=ln-box, align=center,
+              inner sep=1.5pt, font=\scriptsize\sffamily},
+  cell/.style={draw, fill=white, minimum width=5mm, minimum height=5mm,
+               inner sep=0pt, font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center},
+  >={Stealth[length=1.6mm]}]
+  % (a) one large segment managed by an allocator
+  \node[used,  minimum width=12mm, anchor=west] (a1) at (0,0) {P1/P2};
+  \node[freeb, minimum width=8mm,  anchor=west] (a2) at (a1.east) {};
+  \node[used,  minimum width=12mm, anchor=west] (a3) at (a2.east) {P1/P3};
+  \node[used,  minimum width=12mm, anchor=west] (a4) at (a3.east) {P2/P3};
+  \node[freeb, minimum width=8mm,  anchor=west] (a5) at (a4.east) {};
+  \node[box, text width=24mm] (alloc) at (26,18)
+    {\iflangja{アロケータ\\（確保・解放）}{allocator\\(allocate / free)}};
+  \foreach \t in {a1,a3,a4} \draw[->] (alloc.south) -- (\t.north);
+  \node[lab] at (26,-9) {\iflangja{(a) 1 つの大きなセグメント}{(a) one large segment}};
+  % (b) pool of small segments
+  \foreach \i/\s in {1/used,2/freeb,3/used,4/freeb} {
+    \node[\s, minimum width=10mm] (s\i) at (58+13*\i,0) {seg \i};
+  }
+  \node[lab, anchor=east] at (86.5,18) {\iflangja{空きID}{free ids}};
+  \node[cell] (q2) at (90,18) {2};
+  \node[cell] (q4) at (95,18) {4};
+  \draw[->, dashed] (q2.south) -- (s2.north);
+  \draw[->, dashed] (q4.south) -- (s4.north);
+  \node[lab] at (90.5,-9) {\iflangja{(b) 小さなセグメントのプール}{(b) pool of small segments}};
+\end{tikzpicture}

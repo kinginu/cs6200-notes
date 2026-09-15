@@ -1,0 +1,37 @@
+% Synchronous versus asynchronous I/O: timelines of the requesting thread and
+% the device.
+% Usage: \input{figures/l11-sync-async}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % \lelseg{x1}{x2}{y}{fill}{text}
+  \def\lelseg#1#2#3#4#5{%
+    \draw[fill=#4] (#1,#3-2.5) rectangle (#2,#3+2.5);
+    \node[lab] at ({(#1+#2)/2},#3) {#5};}
+  % (a) synchronous
+  \node[ttl] at (0,31) {\iflangja{(a) 同期 I/O}{(a) synchronous I/O}};
+  \node[row] at (20,24) {\iflangja{スレッド}{thread}};
+  \lelseg{22}{44}{24}{white}{\iflangja{実行}{running}}
+  \lelseg{44}{86}{24}{black!15}{\iflangja{ブロック（デバイスの待ち行列）}{blocked (on the device's wait queue)}}
+  \lelseg{86}{116}{24}{white}{\iflangja{結果を使って続行}{continues with result}}
+  \node[row] at (20,15) {\iflangja{デバイス}{device}};
+  \lelseg{48}{80}{15}{ln-box}{\iflangja{I/O 処理}{I/O operation}}
+  \draw[->] (44,21.5) -- node[lab, left=0.3mm, pos=0.35] {\iflangja{要求}{request}} (48,17.5);
+  \draw[->, ln-caution] (80,17.5) -- node[lab, right=0.3mm, pos=0.55, text=ln-caution] {\iflangja{完了}{done}} (86,21.5);
+  % (b) asynchronous
+  \node[ttl] at (0,6) {\iflangja{(b) 非同期 I/O}{(b) asynchronous I/O}};
+  \node[row] at (20,-1) {\iflangja{スレッド}{thread}};
+  \lelseg{22}{44}{-1}{white}{\iflangja{実行}{running}}
+  \lelseg{44}{92}{-1}{white}{\iflangja{他の処理を続ける}{continues with other work}}
+  \lelseg{92}{116}{-1}{ln-accent!22}{\iflangja{結果を取得}{retrieves result}}
+  \node[row] at (20,-10) {\iflangja{デバイス}{device}};
+  \lelseg{48}{80}{-10}{ln-box}{\iflangja{I/O 処理}{I/O operation}}
+  \draw[->] (44,-3.5) -- node[lab, left=0.3mm, pos=0.35] {\iflangja{要求}{request}} (48,-7.5);
+  \draw[->, densely dashed, ln-caution] (80,-7.5) -- (92,-3.5);
+  \node[lab, anchor=north west, text=ln-caution] at (81,-12.8)
+    {\iflangja{通知，またはスレッドが確認}{notification, or the thread checks}};
+  % time axis
+  \draw[->] (22,-21) -- node[lab, below] {\iflangja{時間}{time}} (116,-21);
+\end{tikzpicture}

@@ -1,0 +1,1082 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Scheduling}
+\lessoninfo{
+  video={P3L1},
+  textbook={OSTEP \cite{ostep} ch.~7--10; Silberschatz et al.\ \cite{silberschatz2018} ch.~5; Fedorova et al.\ \cite{fedorova2004}},
+  keywords={runqueue, FCFS, SJF, priority inversion, round robin, timeslice, MLFQ, O(1) scheduler, CFS, cache affinity, NUMA, simultaneous multithreading, hardware performance counter},
+}
+
+Lesson~2 introduced the CPU scheduler, which selects the next process to
+run from the ready queue, and showed that the length of the timeslice trades
+the overhead of scheduling against the time that ready processes wait.  This
+lesson studies how the selection is made: scheduling algorithms from simple
+run-to-completion policies to preemptive, priority-based and timesharing
+schedulers, the runqueue data structures that implement them, and the two
+schedulers of the Linux kernel.  It then turns to the questions raised by
+multiprocessors and by hyperthreaded processors, following the paper of
+Fedorova et al.\ \cite{fedorova2004}.  The performance metrics of Lesson~6
+serve to compare the algorithms.
+
+\section{Overview of CPU scheduling}
+\label{sec:l07-overview}
+
+The CPU scheduler decides how and when processes, and the threads within
+them, access the shared CPUs.\source{P3L1, visual metaphor, scheduling
+overview; OSTEP ch.~7; Silberschatz et al.\ ch.~5.}  It schedules tasks that
+run user-level processes and threads as well as the kernel's own
+kernel-level threads.  Following the Linux terminology of Lesson~5, this
+lesson calls every such schedulable entity a \emph{task}.
+
+Even the simplest scheduler embodies a goal.  Three elementary strategies
+show the range of possible goals:
+\begin{itemize}
+  \item dispatch tasks immediately, in the order in which they arrive: the
+    scheduling decision is trivial and its overhead is low;
+  \item dispatch simple, short tasks first: this maximizes the throughput,
+    the number of tasks completed per unit time;
+  \item dispatch complex, long tasks first: this keeps the resources
+    occupied and maximizes the utilization of the CPU, the devices and
+    memory.
+\end{itemize}
+
+The scheduler runs whenever the CPU may have to be given to a different
+task:
+\begin{itemize}
+  \item the CPU becomes idle, for example because the running task blocks
+    waiting for I/O;
+  \item a new task becomes ready, for example a newly created task or a task
+    whose I/O operation has completed; the scheduler must determine whether
+    the new task is more important than the running one and should interrupt
+    it;
+  \item the timeslice of the running task expires.
+\end{itemize}
+The scheduler then selects one of the ready tasks and dispatches it: it
+performs a context switch to the selected task, enters user mode, and sets
+the program counter to the next instruction of the task, which continues to
+execute from there.
+
+Which task is selected is determined by the scheduling policy, or
+algorithm.  How the selection is carried out depends on the data structure
+that holds the ready tasks.
+
+\begin{definition}[Runqueue]
+  The data structure in which the scheduler keeps the tasks that are ready
+  to run is its \term{runqueue}[ランキュー].
+\end{definition}
+
+The ready queue of Lesson~2 is such a runqueue.  Despite the name, a
+runqueue need not be a FIFO queue: many schedulers use trees, or several
+queues.  The runqueue and the
+scheduling algorithm are tightly coupled.  An algorithm can be implemented
+efficiently only with a runqueue that makes its selection cheap, and a
+runqueue is designed for the algorithm that it serves.
+
+\needspace{7\baselineskip}
+\section{Run-to-completion scheduling}
+\label{sec:l07-rtc}
+
+The first schedulers to consider never take the CPU away from a
+task.\source{P3L1, run to completion scheduling, SJF performance; OSTEP
+ch.~7; Silberschatz et al.\ ch.~5.}  We analyze them under simplifying
+assumptions: a group of tasks is to be scheduled, the execution time of
+every task is known in advance, there is no preemption, and there is a
+single CPU.  The algorithms are compared by throughput, average completion
+time, average wait time and CPU utilization (Lesson~6).  The completion time
+of a task is measured from its arrival until it completes, and its wait
+time from its arrival until it starts to run.
+
+\begin{definition}[Run-to-completion scheduling]
+  Under \term{run-to-completion scheduling}[実行完了型スケジューリング] a
+  task, once dispatched, runs on the CPU until it completes; it is never
+  preempted.
+\end{definition}
+
+\begin{definition}[FCFS]
+  A scheduler that follows
+  \term{first-come first-served scheduling}[先着順スケジューリング]%
+  \index{FCFS|see{first-come first-served scheduling}} (FCFS) runs the tasks
+  in the order in which they arrive.
+\end{definition}
+
+The runqueue of FCFS is a FIFO queue: an arriving task is appended at the
+tail, and the scheduler takes the task at the head.  Both operations take
+constant time.
+
+\begin{definition}[SJF]
+  A scheduler that follows the policy
+  \term{shortest job first}[最短ジョブ優先]%
+  \index{SJF|see{shortest job first}} (SJF) runs the tasks in the order of
+  their execution times, shortest first.
+\end{definition}
+
+The runqueue of SJF must be ordered by execution time.  An ordered queue
+lets the scheduler take the first task in constant time, but inserting a
+task requires a search for its position, which takes time linear in the
+length of the queue.  A balanced tree ordered by execution time inserts a
+task in logarithmic time, and the scheduler takes its leftmost node.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-gantt}
+  \caption{Three tasks that arrive at time 0 in the order T1, T2, T3, with
+    execution times of \SI{5}{\second}, \SI{2}{\second} and
+    \SI{1}{\second}, under FCFS, SJF and round robin with a timeslice of
+    \SI{1}{\second} (\cref{sec:l07-rr}).  Dotted lines separate consecutive
+    timeslices of the same task.}
+  \label{fig:l07-gantt}
+\end{figure}
+
+\begin{example}
+  \label{ex:l07-rtc}
+  Three tasks arrive at time 0 in the order T1, T2, T3, with execution
+  times of \SI{5}{\second}, \SI{2}{\second} and \SI{1}{\second}
+  (\cref{fig:l07-gantt}).  Under FCFS they complete at 5, 7 and
+  \SI{8}{\second}.  The throughput is $3/8 = 0.375$ tasks per second, the
+  average completion time is $(5+7+8)/3 \approx \SI{6.67}{\second}$, and
+  the average wait time is $(0+5+7)/3 = \SI{4}{\second}$.  SJF runs T3, T2,
+  T1, which complete at 1, 3 and \SI{8}{\second}.  The throughput is still
+  0.375 tasks per second, but the average completion time falls to
+  $(1+3+8)/3 = \SI{4}{\second}$ and the average wait time to
+  $(0+1+3)/3 \approx \SI{1.33}{\second}$.
+\end{example}
+
+The total work is the same in both orders, so the throughput of the batch
+does not change.  By running short tasks first, however, SJF lets most
+tasks complete early and lowers both averages.  In fact, for tasks that
+arrive together and run to completion, no other order yields a smaller
+average wait time.
+
+\needspace{7\baselineskip}
+\section{Preemptive scheduling}
+\label{sec:l07-preemptive}
+
+In practice tasks arrive at different times, and a task that arrives may
+deserve the CPU more than the task that is running.\source{P3L1, preemptive
+scheduling: SJF + preempt, priority; OSTEP ch.~7--8; Silberschatz et al.\
+ch.~5.}  It may be shorter, or more important.  A run-to-completion
+scheduler makes it wait until the running task completes, however long that
+takes.
+
+\begin{definition}[Preemptive scheduling]
+  Under \term{preemptive scheduling}[プリエンプティブスケジューリング] the
+  scheduler may interrupt a running task before it completes and give the
+  CPU to another task.
+\end{definition}
+
+SJF becomes preemptive as follows.  Whenever a task arrives, the scheduler
+compares its execution time with the remaining execution time of the
+running task.  If the new task is shorter, the running task is preempted,
+returned to the runqueue, and the new task runs.\margin{This policy is also
+known as \emph{shortest remaining time first}; OSTEP calls it
+\emph{shortest time-to-completion first} (STCF).}
+
+The execution time of a task is rarely known in advance.  The scheduler
+therefore estimates it from the history of the task, using heuristics such
+as the time the task ran the last time it was on the CPU, or a windowed
+average of the times it ran the last $n$ times.
+
+\subsection{Priority scheduling}
+
+Tasks also differ in importance.  Kernel-level threads that perform
+critical work for the operating system may be more important than threads
+of user processes, and among user processes some are more urgent than
+others.
+
+\begin{definition}[Priority]
+  The \term{priority}[優先度] of a task is a value that expresses its
+  importance to the scheduler.  A scheduler that uses
+  \term{priority scheduling}[優先度スケジューリング] runs the ready task of
+  highest priority next, and preempts the running task when a task of higher
+  priority becomes ready.
+\end{definition}
+
+The runqueue of a priority scheduler can consist of one queue per priority
+level, from which the scheduler selects the first task of the highest
+non-empty level; or it can be a tree ordered by priority.
+
+\begin{example}
+  \label{ex:l07-preemptive}
+  Three tasks arrive as follows (\cref{fig:l07-preemptive}):
+
+  \begin{center}\small
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Task & Arrival (s) & Execution time (s) & Priority \\
+    \midrule
+    T1 & 0 & 7 & medium \\
+    T2 & 1 & 2 & low \\
+    T3 & 2 & 3 & high \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+
+  With preemptive SJF, T1 runs until T2 arrives at \SI{1}{\second}; T2 is
+  shorter than the \SI{6}{\second} that remain of T1 and preempts it.  When
+  T3 arrives at \SI{2}{\second}, only \SI{1}{\second} of T2 remains, so T2
+  continues and completes at \SI{3}{\second}.  T3 is shorter than the rest
+  of T1 and runs next, completing at \SI{6}{\second}; T1 completes at
+  \SI{12}{\second}.  Measured from their arrivals, the tasks take 12, 2 and
+  \SI{4}{\second}, \SI{6}{\second} on average.  With preemptive priority
+  scheduling, T2 does not preempt T1, but T3 does: T3 runs from 2 to
+  \SI{5}{\second}, T1 then completes at \SI{10}{\second}, and T2 only at
+  \SI{12}{\second}.
+\end{example}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-preemptive}
+  \caption{The tasks of \cref{ex:l07-preemptive} under (a) preemptive SJF
+    and (b) preemptive priority scheduling.}
+  \label{fig:l07-preemptive}
+\end{figure}
+
+\subsection{Starvation and aging}
+
+Priority scheduling has a danger.  As long as tasks of higher priority keep
+arriving, a task of low priority remains in the runqueue.
+
+\begin{definition}[Starvation]
+  A ready task that is indefinitely denied the CPU, because the scheduler
+  always prefers other tasks, suffers \term{starvation}[スタベーション].
+\end{definition}
+
+The remedy is \term{priority aging}[エージング].  The priority used by the
+scheduler is not the task's actual priority alone but a function of the
+actual priority and of the time the task has spent in the runqueue.  The
+longer a task waits, the higher its effective priority becomes, until it
+exceeds that of the arriving tasks and the task runs.  Aging thus prevents
+starvation.
+
+\needspace{7\baselineskip}
+\section{Priority inversion}
+\label{sec:l07-inversion}
+
+Priorities interact with synchronization.\source{P3L1, priority inversion;
+Silberschatz et al.\ ch.~5--6.}  Consider three tasks with priorities
+$\text{T1} > \text{T2} > \text{T3}$, of which T1 and T3 lock the same mutex
+\texttt{m} (\cref{fig:l07-inversion}a).  T3 arrives first and locks
+\texttt{m} at time 1.  At time 2, T2 arrives and preempts T3; at time 3, T1
+arrives and preempts T2.  At time 4, T1 tries to lock \texttt{m}, which is
+held by T3, and blocks.  Of the two remaining tasks, T2 has the higher
+priority, so T2 runs, and it runs to completion before T3 can continue.
+Only then does T3 finish its critical section and unlock \texttt{m}, and T1
+can proceed.  T2 completes at time 6, before T1, which completes at 9.
+
+\begin{definition}[Priority inversion]
+  In a \term{priority inversion}[優先度逆転] a task of high priority waits
+  for a resource held by a task of lower priority, while tasks of
+  intermediate priority, which do not need the resource, run in the
+  meantime.  The high-priority task is delayed as if the priorities were
+  inverted.
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-inversion}
+  \caption{T1 and T3 share mutex \texttt{m}.  (a) While T1 is blocked on
+    \texttt{m}, the medium-priority T2 runs to completion ahead of it.
+    (b) With priority inheritance, T3 runs at the priority of T1 until it
+    unlocks \texttt{m}, and T1 completes before T2.}
+  \label{fig:l07-inversion}
+\end{figure}
+
+The solution is to raise the priority of the owner of the mutex temporarily
+(\cref{fig:l07-inversion}b).  When T1 blocks on \texttt{m}, T3 is given the
+priority of T1, so that T3, not T2, runs and finishes its critical section.
+When T3 unlocks \texttt{m}, its priority is lowered back to its own, T1
+acquires the mutex and runs, and T1 completes at time 7, ahead of T2.
+
+\begin{definition}[Priority inheritance]
+  With \term{priority inheritance}[優先度継承] the owner of a lock
+  temporarily runs at the priority of the highest-priority task that is
+  blocked on the lock, and returns to its own priority when it releases the
+  lock.
+\end{definition}
+
+\needspace{9\baselineskip}
+To boost the owner, the lock operation must know who the owner is; this is
+another reason for recording the owner in the mutex data structure
+(Lesson~5).  POSIX threads (Lesson~4) provide priority inheritance as a
+protocol attribute of a mutex:
+\begin{lstlisting}[language=C, numbers=none]
+pthread_mutexattr_t attr;
+pthread_mutex_t m;
+
+pthread_mutexattr_init(&attr);
+pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+pthread_mutex_init(&m, &attr);
+\end{lstlisting}
+
+\begin{keypoint}
+  Preemption lets a scheduler serve short or important tasks first.
+  Priorities bring the risks of starvation, avoided by aging, and of
+  priority inversion, avoided by letting a lock owner inherit the priority
+  of the tasks blocked on its lock.
+\end{keypoint}
+
+\needspace{7\baselineskip}
+\section{Round robin scheduling and timesharing}
+\label{sec:l07-rr}
+
+A scheduler for tasks whose execution times are unknown can simply let them
+take turns.\source{P3L1, round robin scheduling, timesharing and
+timeslices; OSTEP ch.~7.}  Such a scheduler needs neither estimates of
+execution times nor, in its basic form, priorities.
+
+\begin{definition}[Round robin]
+  A scheduler that uses
+  \term{round robin scheduling}[ラウンドロビンスケジューリング] (RR) takes
+  the task at the head of the runqueue, like FCFS.  Unlike FCFS, a task
+  need not run to completion: it may yield the CPU, for example to wait
+  for I/O, and when it is ready again it is placed at the tail of the
+  runqueue.
+\end{definition}
+
+Round robin can be combined with priorities: tasks of equal priority take
+turns, and a task of higher priority that becomes ready preempts the
+running one.  In its most common form, round robin interleaves the tasks
+even when they do not yield, by limiting how long each task may run.
+
+The timeslice of Lesson~2\index{timeslice} is the maximum amount of
+uninterrupted time given to a task; it is also called the time quantum.  A
+task may run for less than its timeslice.  It may block, waiting for I/O or
+on a synchronization construct, and be placed on the corresponding queue;
+or a task of higher priority may become ready and preempt it.  When the
+timeslice expires, the running task is preempted and returns to the tail
+of the runqueue.
+
+\begin{definition}[Timesharing]
+  The interleaving of tasks by means of timeslices is called
+  \term{timesharing}[タイムシェアリング] of the CPU: every task runs for at
+  most one timeslice at a time, so that a CPU-intensive task is preempted
+  when its timeslice expires and cannot hold the CPU until it completes.
+\end{definition}
+
+\begin{example}
+  The tasks of \cref{ex:l07-rtc} run under round robin with a timeslice of
+  \SI{1}{\second}, ignoring the cost of context switches
+  (\cref{fig:l07-gantt}).  The order is T1, T2, T3, T1, T2, T1: T3
+  completes at \SI{3}{\second}, T2 at \SI{5}{\second} and T1 at
+  \SI{8}{\second}, after running alone for its last three timeslices.  The
+  metrics are compared in \cref{tab:l07-rr}.  Without knowing any execution
+  time, round robin comes close to the average completion time of SJF, and
+  since a task waits for at most one timeslice of each task ahead of it
+  before it first runs, its average wait time is even shorter.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Metrics of the three schedules of \cref{fig:l07-gantt}.}
+  \label{tab:l07-rr}
+  \small
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    & FCFS & SJF & RR (\SI{1}{\second}) \\
+    \midrule
+    Throughput (tasks/s)    & 0.375 & 0.375 & 0.375 \\
+    Average completion time (s) & 6.67 & 4.00 & 5.33 \\
+    Average wait time (s)       & 4.00 & 1.33 & 1.00 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Timesharing has several benefits: short tasks complete sooner; the system
+is more responsive, since every ready task runs within a bounded time; and
+tasks that initiate lengthy I/O operations reach them sooner, so that the
+operations can proceed while other tasks compute.  It also has a cost that
+the example ignores.  At the end of every timeslice the timer interrupts
+the running task, the scheduler runs, and a context switch takes place.  To
+keep this overhead small, the timeslice must be much longer than the time
+of a context switch, as \cref{eq:l02-useful} showed.
+
+\needspace{7\baselineskip}
+\section{Choosing the timeslice length}
+\label{sec:l07-timeslice}
+
+How long a timeslice should be depends on how the tasks use
+it.\source{P3L1, how long should a timeslice be, CPU bound timeslice
+length, I/O bound timeslice length, summarizing timeslice length; OSTEP
+ch.~7.}  The timeslice must balance the benefits of timesharing against its
+overhead, and the balance differs between tasks that mostly compute and
+tasks that mostly wait for I/O.
+
+\subsection{CPU-bound tasks}
+
+A task that spends most of its time computing and rarely blocks is a
+\term{CPU-bound task}[CPUバウンドタスク].
+
+\begin{example}
+  \label{ex:l07-cpu-bound}
+  Two CPU-bound tasks, T1 and T2, each need \SI{6}{\second} of CPU time and
+  arrive at time 0; a context switch takes \SI{0.2}{\second}.  With a
+  timeslice of \SI{1}{\second} the tasks alternate twelve times, with eleven
+  context switches between the timeslices.  T2 starts at \SI{1.2}{\second}.
+  The last timeslice of T1 starts after ten timeslices and ten context
+  switches, at \SI{12}{\second}, so T1 completes at \SI{13}{\second} and T2,
+  after one more context switch, at \SI{14.2}{\second}.  With a timeslice of \SI{3}{\second}
+  the tasks alternate four times, with three context switches: T2 starts
+  at \SI{3.2}{\second}, T1 completes at \SI{9.4}{\second} and T2 at
+  \SI{12.6}{\second}.  With an infinite timeslice T1 runs to completion at
+  \SI{6}{\second} and T2 runs from 6.2 to \SI{12.2}{\second}.
+  \Cref{tab:l07-cpu-bound} lists the resulting metrics.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Two CPU-bound tasks of \SI{6}{\second} with a context switch
+    of \SI{0.2}{\second} (\cref{ex:l07-cpu-bound}).}
+  \label{tab:l07-cpu-bound}
+  \small
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Timeslice & Throughput (tasks/s) & Avg.\ wait (s) & Avg.\ completion (s) \\
+    \midrule
+    \SI{1}{\second}  & $2/14.2 \approx 0.141$ & $(0+1.2)/2 = 0.6$ & $(13+14.2)/2 = 13.6$ \\
+    \SI{3}{\second}  & $2/12.6 \approx 0.159$ & $(0+3.2)/2 = 1.6$ & $(9.4+12.6)/2 = 11.0$ \\
+    $\infty$         & $2/12.2 \approx 0.164$ & $(0+6.2)/2 = 3.1$ & $(6+12.2)/2 = 9.1$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+For CPU-bound tasks, a longer timeslice improves throughput and average
+completion time, because fewer context switches are spent.  Only the wait
+time grows, and for CPU-bound tasks, such as batch computations, it matters
+little: their users see the time at which a computation completes, not the
+time at which it starts.  In the limit, an infinite timeslice, that is,
+run to completion, is best for them.
+
+\subsection{I/O-bound tasks}
+
+A task that frequently blocks for I/O and computes only briefly between its
+I/O operations is an \term{I/O-bound task}[I/Oバウンドタスク].  If all tasks
+are I/O-bound, the length of the timeslice hardly matters:
+each task blocks for I/O before its timeslice expires, whatever the
+timeslice.  The length matters when I/O-bound tasks share the CPU with
+CPU-bound ones.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-io-timeslice}
+  \caption{A CPU-bound task T1 and an I/O-bound task T2 under round robin
+    (\cref{ex:l07-io-bound}).  When a timeslice of T1 expires while T2 is
+    still waiting for its I/O, T1 simply continues.}
+  \label{fig:l07-io-timeslice}
+\end{figure}
+
+\begin{example}
+  \label{ex:l07-io-bound}
+  A CPU-bound task T1 shares the CPU with an I/O-bound task T2, which
+  computes for \SI{5}{\milli\second} and then issues an I/O operation that
+  takes \SI{10}{\milli\second}; a context switch takes
+  \SI{2}{\milli\second} (\cref{fig:l07-io-timeslice}).  With a timeslice of
+  \SI{5}{\milli\second}, the I/O operation of T2 completes during the second
+  timeslice of T1, and T2 waits \SI{4}{\milli\second} before it runs again.
+  The pattern repeats every \SI{19}{\milli\second}: T2 issues an I/O
+  operation every \SI{19}{\milli\second}, and the device is busy for
+  $10/19 \approx \SI{53}{\percent}$ of the time.  With a timeslice of
+  \SI{30}{\milli\second}, T2 waits \SI{24}{\milli\second} after each I/O
+  operation, the pattern repeats every \SI{39}{\milli\second}, and the
+  device is busy only $10/39 \approx \SI{26}{\percent}$ of the time.  T1, in
+  turn, receives \SI{10}{\milli\second} of every \SI{19}{\milli\second}
+  ($\approx\SI{53}{\percent}$) with the short timeslice but
+  \SI{30}{\milli\second} of every \SI{39}{\milli\second}
+  ($\approx\SI{77}{\percent}$) with the long one.
+\end{example}
+
+\subsection{Summary}
+
+The two kinds of tasks prefer opposite timeslice lengths.
+\begin{description}
+  \item[CPU-bound tasks prefer longer timeslices.]  Fewer context switches
+    limit the overhead and keep CPU utilization and throughput high.
+  \item[I/O-bound tasks prefer shorter timeslices.]  An I/O-bound task runs
+    soon after its I/O completes and issues its next I/O operation earlier,
+    which keeps the devices busy and gives better user-perceived
+    performance, since interactive tasks are typically I/O-bound.
+\end{description}
+
+\subsection{CPU utilization}
+
+The fraction of CPU time spent on useful work, \cref{eq:l02-useful},
+extends to a mix of tasks with different behaviour.  Choose a recurring
+interval of the schedule in which every task has had its opportunity to
+run.  Within that interval, let $t_{\mathrm{run}}$ be the total time the CPU
+spends running tasks and $t_{\mathrm{ctx}}$ the total time it spends on
+context switches.  Then
+\begin{equation}
+  \text{CPU utilization} \;=\;
+  \frac{t_{\mathrm{run}}}{t_{\mathrm{run}} + t_{\mathrm{ctx}}} .
+  \label{eq:l07-utilization}
+\end{equation}
+
+\begin{example}
+  Three I/O-bound tasks each compute for \SI{2}{\milli\second} and then
+  issue an I/O operation of \SI{5}{\milli\second}; two CPU-bound tasks
+  never block; a context switch takes \SI{0.5}{\milli\second}; all tasks run
+  for a long time.  With a timeslice of \SI{2}{\milli\second}, every task,
+  CPU-bound or not, leaves the CPU after \SI{2}{\milli\second}, and every
+  run is followed by a context switch, so the utilization is
+  $2/(2+0.5) = \SI{80}{\percent}$.  With a timeslice of
+  \SI{20}{\milli\second}, one round consists of $3\cdot 2 + 2\cdot 20 =
+  \SI{46}{\milli\second}$ of computation and five context switches; the
+  utilization is $46/(46+2.5) \approx \SI{94.8}{\percent}$.  Both rounds,
+  of 12.5 and \SI{48.5}{\milli\second}, are longer than an I/O operation,
+  so the I/O-bound tasks are always ready when their turn comes.
+\end{example}
+
+\begin{keypoint}
+  Timesharing makes a system responsive without knowledge of execution
+  times, at the price of an interrupt, a scheduler run and a context
+  switch per timeslice.  CPU-bound tasks favour long timeslices, I/O-bound
+  tasks short ones.
+\end{keypoint}
+
+\needspace{7\baselineskip}
+\section{Multi-level feedback queues}
+\label{sec:l07-mlfq}
+
+To give I/O-bound and CPU-bound tasks different timeslices, the scheduler
+can keep all tasks in one runqueue and check the type of each task when it
+is selected, or it can keep the two kinds of tasks in different
+structures.\source{P3L1, runqueue data structure; OSTEP ch.~8; Corbató et
+al.\ \cite{corbato1962}.}  A runqueue of several queues takes the second
+approach (\cref{fig:l07-mlfq}):
+\begin{itemize}
+  \item the first queue holds the most I/O-intensive tasks, has the highest
+    priority, and gives its tasks a timeslice of \SI{8}{\milli\second};
+  \item the second queue holds tasks that mix I/O and computation, with a
+    timeslice of \SI{16}{\milli\second};
+  \item the last queue holds the CPU-intensive tasks, has the lowest
+    priority, and gives them an infinite timeslice, that is, it schedules
+    them FCFS.
+\end{itemize}
+The I/O-bound tasks receive the benefits of timesharing, and the CPU-bound
+tasks avoid its overhead.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-mlfq}
+  \caption{A multi-level feedback queue with three levels.  Each level
+    serves its tasks with its own timeslice; tasks move between levels
+    according to how they use their timeslices.}
+  \label{fig:l07-mlfq}
+\end{figure}
+
+This design raises the question of how the scheduler knows whether a task
+is I/O-intensive or CPU-intensive.  Heuristics based on the history of a
+task do not help for a new task, nor for a task that changes its behaviour.
+The solution is to let the scheduler learn the type of a task from the way
+the task uses its timeslices:
+\begin{enumerate}
+  \item a new task enters the topmost queue;
+  \item if the task yields the CPU before its timeslice expires, the choice
+    of level was good, and the task stays at this level;
+  \item if the task uses its entire timeslice, it is more CPU-intensive than
+    the level assumes, and it is moved down one level;
+  \item a task in a lower queue that releases the CPU early because it
+    waits for I/O receives a priority boost and is moved up.
+\end{enumerate}
+
+\begin{definition}[Multi-level feedback queue]
+  A \term{multi-level feedback queue}[多段フィードバックキュー]%
+  \index{MLFQ|see{multi-level feedback queue}} (MLFQ) is a runqueue of
+  several levels, each with its own scheduling policy, in which tasks move
+  between the levels according to their observed use of the CPU.
+\end{definition}
+
+An MLFQ is not merely a set of priority queues.  Its levels treat tasks
+differently, with timeslices of different lengths and FCFS at the lowest
+level, and the feedback mechanism adjusts the level of each task over time.
+The design goes back to the CTSS timesharing system of Fernando
+Corbató \cite{corbato1962}, who received the Turing Award in 1990.
+
+\begin{example}
+  A new task enters the \SI{8}{\milli\second} level and computes for
+  \SI{30}{\milli\second} without blocking.  It uses its whole first
+  timeslice and moves to the \SI{16}{\milli\second} level, uses that
+  timeslice as well and moves to the lowest level, where it completes its
+  remaining \SI{6}{\milli\second}.  A task that computes for
+  \SI{3}{\milli\second} between I/O operations never uses up an
+  \SI{8}{\milli\second} timeslice and stays at the top level.
+\end{example}
+
+\needspace{7\baselineskip}
+\section{The Linux O(1) scheduler}
+\label{sec:l07-o1}
+
+The \term[O(1) scheduler]{$O(1)$ scheduler}[O(1)スケジューラ] of Linux
+selects a task to run and adds a task to its runqueue in constant time,
+regardless of the number of tasks in the system.\source{P3L1, Linux O(1)
+scheduler; Bovet and Cesati \cite{bovet2005} ch.~7.}  It is a preemptive,
+priority-based scheduler with 140 priority levels, numbered so that a
+smaller number means a higher priority.  Levels 0 to 99 are for real-time
+tasks, and levels 100 to 139 for timesharing tasks.
+
+A user process has the default priority 120.  It can be adjusted through
+the process's \term{nice value}[nice値], which ranges from $-20$ to 19 and
+is added to the default, so that the priorities of timesharing tasks range
+from 100 to 139.  A process can lower its own priority, for example with
+the \texttt{nice} system call; raising it requires privileges.
+
+The timeslice of a task depends on its priority: tasks of low priority
+receive the shortest timeslices, and tasks of high priority the longest.
+The scheduler also uses feedback, based on the \emph{sleep time} of a task,
+the time it spends waiting or idling:
+\begin{itemize}
+  \item a task that sleeps for long periods is interactive, and its priority
+    is boosted by up to 5 levels (its number decreases by up to 5);
+  \item a task that sleeps little is compute-intensive, and its priority is
+    lowered by up to 5 levels (its number increases by up to 5).
+\end{itemize}
+
+\begin{example}
+  In the Linux~2.6 kernels described by Bovet and Cesati, a timesharing
+  task whose static priority, the priority given by its nice value, is $p$
+  receives a timeslice of $(140 - p) \times
+  \SI{20}{\milli\second}$ if $p < 120$ and $(140 - p) \times
+  \SI{5}{\milli\second}$ otherwise.  A process with nice value 5 has
+  priority 125 and a timeslice of $15 \times 5 = \SI{75}{\milli\second}$; a
+  process with nice value 0, \SI{100}{\milli\second}; a process with nice
+  value $-10$, $30 \times 20 = \SI{600}{\milli\second}$.  If the process with
+  nice value 5 is interactive, the feedback lets it run at a priority as high
+  as 120; if it computes without sleeping, at a priority as low as 130.
+\end{example}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-o1}
+  \caption{The runqueue of the $O(1)$ scheduler.  Each array has one list
+    per priority level and a bitmap of the non-empty lists.  A task whose
+    timeslice expires moves to the expired array; when the active array is
+    empty, the two arrays are swapped.}
+  \label{fig:l07-o1}
+\end{figure}
+
+The runqueue consists of two arrays of task lists, with one list for each
+priority level (\cref{fig:l07-o1}).  The \term{active array}[アクティブ配列]
+is the one from which the scheduler picks the next task.  A bitmap records
+which of its 140 lists are non-empty; the scheduler finds the first set bit
+and takes the first task of that list, and adding a task appends it to a
+list and sets a bit.  Both operations take constant time, because the
+number of levels is fixed.  A task remains in the active array until its
+timeslice expires: a task that blocks before then returns to the active
+array, with the rest of its timeslice, when it becomes ready again.
+
+The \term{expired array}[期限切れ配列] holds the tasks whose timeslices
+have expired and that are therefore inactive.  When the timeslice of a task
+expires, the scheduler recomputes its priority and timeslice and moves it to
+the expired array.  When no more tasks remain in the active array, the
+scheduler swaps the two arrays, which requires only exchanging two
+pointers.  This arrangement also gives tasks of low priority a chance to
+run: a task of high priority, although it receives a long timeslice, moves
+to the expired array once it has used that timeslice, and waits there
+until every task in the active array, including those of low priority, has
+used its own.
+
+The $O(1)$ scheduler was introduced by Ingo Molnar in the Linux~2.5
+development series and became the scheduler of Linux~2.6.  As workloads
+became more interactive, with applications such as streaming media, its
+jitter became a problem, and in Linux~2.6.23 it was replaced by the
+Completely Fair Scheduler, also written by Molnar.
+
+\needspace{7\baselineskip}
+\section{The Linux Completely Fair Scheduler}
+\label{sec:l07-cfs}
+
+The $O(1)$ scheduler has two problems.\source{P3L1, Linux CFS scheduler;
+OSTEP ch.~9.}  First, the performance of interactive tasks is poor: once a
+task is in the expired array, it is not scheduled until all tasks in the
+active array have used their timeslices, so an interactive task may wait an
+unpredictable time before it runs.  Second, it makes no guarantee of
+fairness, in the sense that within a given time interval every task should
+run for an amount of time proportional to its priority.
+
+The \term{Completely Fair Scheduler}[CFS]%
+\index{CFS|see{Completely Fair Scheduler}} (CFS) addresses both problems.
+It has been the default Linux scheduler for non-real-time tasks since
+version 2.6.23.  Its runqueue is a \term{red-black tree}[赤黒木], a
+self-balancing binary search tree in which no path from the root to a leaf is more than
+twice as long as any other, so that all paths have approximately the same
+length.  The tree is ordered by the virtual runtime of the tasks
+(\cref{fig:l07-cfs}).
+
+\begin{definition}[Virtual runtime]
+  The \term{virtual runtime}[仮想実行時間] (\texttt{vruntime}) of a task is
+  the time the task has spent running on the CPU, measured with nanosecond
+  granularity and scaled according to the priority of the task.
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-cfs}
+  \caption{The runqueue of CFS, a red-black tree of the ready tasks ordered
+    by virtual runtime (grey nodes are black, red nodes red).  The leftmost
+    task runs next; a preempted task is inserted at the position given by
+    its virtual runtime.}
+  \label{fig:l07-cfs}
+\end{figure}
+
+The algorithm of CFS is simple:\margin{Since Linux~6.6 the fair
+scheduling class selects tasks by the EEVDF algorithm, which retains the
+virtual runtime accounting of CFS.}
+\begin{itemize}
+  \item it always schedules the task of the leftmost node, which has the
+    smallest virtual runtime, that is, the task that has so far received
+    the least CPU time;
+  \item while the task runs, CFS periodically increases its virtual runtime
+    and compares it with the virtual runtime of the leftmost task in the
+    tree;
+  \item if the running task's virtual runtime is still smaller, the task
+    continues to run; if it is larger, the task is preempted and inserted
+    into the tree at the position its virtual runtime dictates, and the
+    leftmost task runs.
+\end{itemize}
+
+Priorities are expressed by the rate at which virtual runtime progresses.
+For tasks of low priority, virtual runtime advances faster than real time,
+so they soon lose the CPU; for tasks of high priority it advances more
+slowly, so they run longer.  A single tree thus holds the tasks of all
+priorities.  Selecting a task takes constant time, since the scheduler keeps
+a pointer to the leftmost node, and adding a task takes $O(\log N)$ time for
+$N$ tasks.
+
+\begin{example}
+  CFS derives the rate from a weight for each nice value: nice value 0 has
+  weight 1024, and each step of the nice value changes the weight by a
+  factor of about 1.25; nice value 5 has weight 335.  A task of weight $w$
+  that runs for a time $\Delta t$ advances its virtual runtime by
+  $\Delta t \cdot 1024/w$.  If task A (nice 0) and task B (nice 5) each run
+  for \SI{6}{\milli\second}, the virtual runtime of A grows by
+  \SI{6}{\milli\second} but that of B by $6 \cdot 1024/335 \approx
+  \SI{18.3}{\milli\second}$.  Because CFS keeps the virtual runtimes of the
+  tasks close, B runs about a third as long as A, and the two receive
+  $1024/1359 \approx \SI{75}{\percent}$ and \SI{25}{\percent} of the CPU.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{The two Linux schedulers.}
+  \label{tab:l07-linux}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.22\linewidth}>{\raggedright\arraybackslash}p{0.34\linewidth}>{\raggedright\arraybackslash}p{0.34\linewidth}@{}}
+    \toprule
+    & $O(1)$ scheduler & CFS \\
+    \midrule
+    Linux versions & 2.6.0--2.6.22 & since 2.6.23 \\
+    Runqueue & active and expired arrays of 140 lists & red-black tree ordered
+      by virtual runtime \\
+    Select a task & $O(1)$ & $O(1)$ \\
+    Add a task & $O(1)$ & $O(\log N)$ \\
+    Priorities & timeslice length, sleep-time feedback & rate of virtual
+      runtime \\
+    Interactive tasks & may wait for the whole active array & run as soon
+      as they have the least virtual runtime \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\needspace{7\baselineskip}
+\section{Scheduling on multiprocessors}
+\label{sec:l07-multi}
+
+Scheduling becomes more complex when there are several
+CPUs.\source{P3L1, scheduling on multiprocessors; OSTEP ch.~10;
+Silberschatz et al.\ ch.~5.}  Two architectures must be distinguished
+(\cref{fig:l07-multicpu}).
+
+\begin{definition}[Shared memory multiprocessor]
+  A \term{shared memory multiprocessor}[共有メモリ型マルチプロセッサ] has
+  several CPUs, each with its own private caches, all of which share main
+  memory.
+\end{definition}
+
+\begin{definition}[Multicore processor]
+  A \term{multicore processor}[マルチコアプロセッサ] contains several
+  cores, each of which is a CPU with its own private caches; the cores
+  share the last-level cache (LLC) of the processor and main memory.
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-multicpu}
+  \caption{(a) A shared memory multiprocessor: every CPU has its own
+    caches.  (b) A multicore processor: the cores have private caches and
+    share the last-level cache.}
+  \label{fig:l07-multicpu}
+\end{figure}
+
+To the operating system, each core of a multicore processor is a CPU, and a
+system may combine both architectures, with several multicore processors.
+
+\subsection{Cache affinity and load balancing}
+
+The performance of a task depends on the state of the caches.  While a task
+runs on a CPU, the CPU's caches fill with the task's data.  If the task
+runs on the same CPU the next time, it finds a hot cache (Lesson~2); if it
+runs on a different CPU, it starts with a cold cache and runs more slowly
+until that cache has been filled.
+
+\begin{definition}[Cache affinity]
+  The benefit that a task gains from running on the CPU whose caches hold
+  its data is its \term{cache affinity}[キャッシュアフィニティ].  A scheduler
+  preserves it by keeping each task on the same CPU as much as possible.
+\end{definition}
+
+Schedulers for multiprocessors therefore use a hierarchical architecture.
+Each CPU has its own runqueue, and a scheduler for that CPU selects tasks
+only from it, so that a task keeps running on the same CPU.  Above the
+per-CPU schedulers, a \term{load balancing}[負荷分散] component moves tasks
+between the runqueues so that no CPU is overloaded while another has too
+little to do.  It acts on the lengths of the runqueues, or when a CPU becomes
+idle and takes tasks from the runqueues of other CPUs.\margin{On Linux an
+application can restrict a thread to a set of CPUs with
+\texttt{sched\_setaffinity}.}
+
+\subsection{NUMA-aware scheduling}
+
+A multiprocessor may also have several memory nodes (\cref{fig:l07-numa}).
+
+\begin{definition}[NUMA]
+  In a system with \term{non-uniform memory access}[NUMA]%
+  \index{NUMA|see{non-uniform memory access}} (NUMA) main memory consists
+  of several memory nodes, each of which is close to a socket of one or more
+  processors.  Access from a CPU to its local memory node is faster than
+  access to a remote node, which passes through an interconnect between the
+  sockets, such as Intel's QuickPath Interconnect.
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-numa}
+  \caption{Hierarchical scheduling on a NUMA system.  Every CPU schedules
+    tasks from its own runqueue, and load balancing moves tasks between the
+    runqueues.  A CPU reaches the memory of its own node directly and the
+    memory of the other node through the interconnect.}
+  \label{fig:l07-numa}
+\end{figure}
+
+With \term{NUMA-aware scheduling}[NUMA対応スケジューリング] the scheduler
+keeps a task on a CPU close to the memory node that holds the task's state,
+so that its memory accesses remain local.  Load balancing must take this into account: moving a
+task to a CPU on another node may balance the runqueues but slows down
+every memory access of the task.
+
+\begin{example}
+  A task spends \SI{40}{\percent} of its execution time accessing memory, and
+  a remote access takes 1.5 times as long as a local one.  If the load
+  balancer moves the task to a CPU of the other node while its memory stays
+  where it is, the task's execution time grows by a factor of
+  $0.6 + 0.4 \times 1.5 = 1.2$, that is, by \SI{20}{\percent}.
+\end{example}
+
+\needspace{7\baselineskip}
+\section{Hyperthreading}
+\label{sec:l07-smt}
+
+The CPUs must be multiplexed among tasks because the execution context of a
+task, its register values such as the program counter and the stack
+pointer, is held in the registers of a CPU while the task
+runs.\source{P3L1, hyperthreading; Silberschatz et al.\ ch.~5; Fedorova et
+al.\ \cite{fedorova2004}.}  To switch to another task, the context must be
+saved and the other context loaded.  Hardware can instead provide several
+sets of registers, and thus several hardware-supported execution contexts,
+on one CPU.  The CPU remains a single CPU, with a single pipeline, but it can
+switch between these contexts very quickly.
+
+\begin{definition}[Simultaneous multithreading]
+  In \term{simultaneous multithreading}[同時マルチスレッディング]%
+  \index{SMT|see{simultaneous multithreading}}%
+  \index{hyperthreading|see{simultaneous multithreading}} (SMT) a CPU
+  provides several hardware execution contexts, or hardware threads, each
+  with its own register state, which share the CPU's pipeline and caches.
+\end{definition}
+
+The technique is also called hardware multithreading, hyperthreading, the
+name used by Intel, or chip multithreading.  More precisely,
+\term{chip multithreading}[チップマルチスレッディング]%
+\index{CMT|see{chip multithreading}} (CMT) refers to processors that combine
+several cores with several hardware threads per core, the platforms studied
+by Fedorova et al.; in practice the names are often used interchangeably.  Processors
+with up to eight hardware threads per core have been built, but two is the
+most common configuration, and SMT can be enabled or disabled at boot time.
+
+Each hardware thread appears to the operating system as a separate virtual
+CPU, on which the scheduler can place a task.  The scheduler must therefore
+decide which tasks to co-schedule on the hardware threads of the same CPU.
+A context switch between hardware threads takes on the order of a few
+cycles, whereas loading data from memory after a cache miss takes on the
+order of 100 cycles.  By the argument of Lesson~3, switching pays off when
+the idle time exceeds twice the cost of a switch (\cref{eq:l03-idle}); it
+pays off by a wide margin here.  With SMT, a CPU can therefore hide the
+latency of memory accesses, just as multithreading on a single CPU hides the
+latency of I/O.
+
+\needspace{7\baselineskip}
+\section{Scheduling for hyperthreaded platforms}
+\label{sec:l07-smt-sched}
+
+Which tasks should share a CPU?  Fedorova et al.\ answer the question with a
+simple model of an SMT CPU based on four assumptions.\source{P3L1,
+scheduling for hyperthreading platforms; Fedorova et al.}
+\begin{enumerate}
+  \item A thread issues an instruction on every CPU cycle, and the pipeline
+    executes at most one instruction per cycle.
+  \item A memory access of a memory-bound thread takes 4 cycles, during which
+    the thread issues no instructions.
+  \item Switching between hardware threads is instantaneous.
+  \item The CPU has two hardware threads.
+\end{enumerate}
+In this model, a CPU-bound task needs the pipeline on every cycle.  A
+\term{memory-bound task}[メモリバウンドタスク] is one whose progress is
+limited by memory accesses: it spends most of its cycles waiting for data to
+arrive from memory.  \Cref{fig:l07-smt} shows the three possible pairings.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l07-smt}
+  \caption{Co-scheduling two threads on the hardware threads (HT) of one
+    SMT CPU, with C for a CPU-bound and M for a memory-bound thread.  Each
+    column is a cycle of the shared pipeline.}
+  \label{fig:l07-smt}
+\end{figure}
+
+\begin{description}
+  \item[Two CPU-bound threads.]  Both threads are ready on every cycle, but
+    the pipeline executes only one instruction per cycle.  The threads
+    interfere, contending for the pipeline: each progresses at half the
+    speed it would have alone, a performance degradation by a factor of 2.
+    The memory component meanwhile is idle.
+  \item[Two memory-bound threads.]  Both threads spend most of their cycles
+    waiting for memory, and during 6 of the 10 cycles in the figure neither
+    has an instruction to execute.  These CPU cycles are wasted.
+  \item[A CPU-bound and a memory-bound thread.]  The CPU-bound thread uses
+    the cycles in which the memory-bound thread waits: it executes on 8 of
+    10 cycles, while the memory-bound thread progresses as fast as it would
+    alone.  No cycle is idle, and both the CPU and the memory are well
+    utilized.  Some interference remains, since the CPU-bound thread loses
+    one cycle in five, but it is small.
+\end{description}
+
+\needspace{6\baselineskip}
+\begin{keypoint}
+  On an SMT CPU, co-scheduling a CPU-bound with a memory-bound task avoids
+  both contention for the pipeline and idle cycles.  The scheduler should
+  therefore mix the two kinds of tasks on the hardware threads of each CPU.
+\end{keypoint}
+
+\needspace{7\baselineskip}
+\section{Hardware performance counters}
+\label{sec:l07-counters}
+
+Mixing CPU-bound and memory-bound tasks requires the scheduler to know
+which is which.\source{P3L1, CPU bound or memory bound, scheduling with
+hardware counters; Fedorova et al.}  The history-based heuristics used for
+I/O-bound tasks do not work.  Sleep time, as used by the $O(1)$ scheduler,
+does not reveal a memory-bound task, because a thread that waits for memory
+is not sleeping: it waits inside the processor, invisible to the operating
+system.  Nor can software keep track of individual memory accesses, which
+would take far too much time.  The information must come from the hardware.
+
+\begin{definition}[Hardware performance counter]
+  A \term{hardware performance counter}[ハードウェア性能カウンタ] is a
+  register of the processor that is updated as the processor executes, and
+  counts events relevant to performance.
+\end{definition}
+
+Processors typically provide several counters, and the counters available
+differ between architectures.  They count, for example:
+\begin{itemize}
+  \item cache misses at each level of the cache hierarchy, L1, L2 and so on
+    up to the LLC;
+  \item instructions and cycles, from which the instructions per cycle (IPC)
+    or its inverse, the cycles per instruction, are derived;
+  \item power and energy consumption, on some processors.
+\end{itemize}
+Software interfaces and tools make the counters accessible, for example
+\texttt{oprofile}, whose documentation lists the counters available on
+different architectures, and the Linux \texttt{perf} tool.\tip{The command
+\texttt{perf stat -e cycles,instructions,LLC-load-misses} \emph{cmd} reports
+these counts for a program \emph{cmd}.}
+
+From counter values the scheduler can estimate what kind of resources a
+task needs.  A task with few LLC misses finds its data in the cache and is
+likely CPU-bound; a task with many LLC misses keeps waiting for memory and
+is likely memory-bound.  A single counter is rarely conclusive.  Schedulers
+therefore combine several counters in models with thresholds tuned for each
+architecture, based on well-understood characteristics of workloads.
+
+\begin{definition}[Cycles per instruction]
+  The \term{cycles per instruction}[CPI]%
+  \index{CPI|see{cycles per instruction}} (CPI) of a task is the number of CPU cycles it takes per
+  instruction executed, the ratio of the cycle count to the instruction
+  count.
+\end{definition}
+
+\begin{example}
+  During an interval of \SI{100}{\milli\second}, the counters report that
+  task A executed $4.2 \times 10^8$ instructions in $4.6 \times 10^8$
+  cycles, with 0.2 LLC misses per 1000 instructions, and that task B
+  executed $0.9 \times 10^8$ instructions in the same number of cycles, with
+  25 LLC misses per 1000 instructions.  A has a CPI of about 1.1 and B of
+  about 5.1.  Both indicators classify A as CPU-bound and B as memory-bound,
+  and a scheduler following \cref{sec:l07-smt-sched} would place them on the
+  two hardware threads of the same CPU.
+\end{example}
+
+\needspace{7\baselineskip}
+\section{Is cycles per instruction a useful metric?}
+\label{sec:l07-cpi}
+
+Fedorova et al.\ asked whether a single counter-derived metric, the CPI,
+suffices to distinguish the tasks.\source{P3L1, CPI experiment, CPI
+experiment results; Fedorova et al.}  The idea is attractive: a
+memory-bound task spends many cycles waiting for memory and has a high CPI,
+while a CPU-bound task has a CPI close to 1.  A scheduler could then mix
+tasks with different CPIs on the hardware threads of each core.
+
+To test the idea, they simulated a chip multithreading processor with four
+cores of four hardware threads each, sixteen hardware threads in total.  The
+workload was synthetic and consisted of threads with widely different CPIs.
+The threads were assigned to the cores in several ways, ranging from
+assignments in which every core ran a mix of CPIs to assignments in which
+every core ran threads of the same CPI.  Performance was measured in
+instructions per second (IPS).
+
+The assignments with mixed CPIs achieved the highest IPS, and those in
+which the threads on each core had similar CPIs the lowest.  With these
+workloads, scheduling by CPI is clearly beneficial, and the experiment
+confirms that contention for the processor pipeline matters.  Realistic
+workloads, however, behave differently.  The CPIs of real applications, such
+as those of standard benchmark suites, are not nearly as distinct: they
+cluster in a narrow range.  CPI therefore cannot tell the tasks of a real
+workload apart well enough to guide the scheduler, and what works for the
+synthetic workload does not work in practice.
+
+\begin{note}
+  The study nevertheless leaves three lessons.  Tasks on SMT processors
+  contend for the processor pipeline; hardware counters can characterize a
+  workload; and schedulers must be aware of resource contention, not merely
+  balance the load.  The use of the last-level cache over time turned out to
+  be a better indicator of contention than CPI.
+\end{note}
+
+\begin{keypoint}[Lesson summary]
+  A scheduler selects the next task from its runqueue, and the runqueue
+  structure is designed together with the algorithm.  FCFS and SJF run
+  tasks to completion; preemption and priorities serve urgent tasks but
+  bring starvation, avoided by aging, and priority inversion, avoided by
+  priority inheritance.  Round robin with timeslices makes a system
+  responsive; CPU-bound tasks favour long timeslices and I/O-bound tasks
+  short ones, which a multi-level feedback queue provides by learning the
+  type of each task.  Linux replaced its $O(1)$ scheduler, with active and
+  expired arrays, by CFS, which runs the task of least virtual runtime from a
+  red-black tree.  On multiprocessors, per-CPU runqueues preserve cache
+  affinity, load balancing spreads the tasks, and NUMA-aware scheduling keeps
+  tasks near their memory.  On SMT processors, CPU-bound and memory-bound
+  tasks should share a CPU; hardware performance counters help to tell them
+  apart, although CPI alone is not a sufficient metric.
+\end{keypoint}
+
+\end{document}

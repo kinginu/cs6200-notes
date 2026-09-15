@@ -1,0 +1,879 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Virtualization}
+\lessoninfo{
+  video={P3L6},
+  textbook={OSTEP \cite{ostep} app.~B; Silberschatz et al.\ \cite{silberschatz2018} ch.~18},
+  keywords={virtualization, virtual machine, hypervisor, bare-metal hypervisor, hosted hypervisor, protection ring, trap-and-emulate, binary translation, paravirtualization, hypercall, shadow page table, split-device driver model, hardware-assisted virtualization, extended page table},
+}
+
+The preceding lessons showed how an operating system manages the CPUs, the
+memory and the devices of a machine on behalf of the processes that run on
+it.  Virtualization moves this role one level down: a thin layer of
+software manages the hardware on behalf of several complete operating
+systems, each of which behaves as if it owned the machine.  This lesson
+defines virtualization, explains why it has become widespread, and compares
+the two ways in which virtualization software is organized.  It then
+examines how the CPU, memory and devices are virtualized, first with
+software techniques alone and then with the support that current processors
+provide.  The protection boundary of Lesson~1, the page tables of Lesson~8
+and the device drivers of Lesson~11 reappear throughout, now with one more
+layer of software beneath the operating system.
+
+\section{What is virtualization?}
+\label{sec:l12-what}
+
+Virtualization is an old idea.  It originated at IBM in the 1960s, when
+computing was done on a small number of large and expensive mainframes, and
+the owner of such a machine wanted to use it for workloads that had been
+developed for different operating systems.\source{P3L6, what is
+virtualization, defining virtualization; Popek and Goldberg
+\cite{popek1974}; OSTEP app.~B; Silberschatz et al.\ ch.~18.}
+
+\begin{definition}[Virtualization]
+  Allowing several operating systems, each together with its applications,
+  to execute concurrently on the same physical machine is called
+  \term{virtualization}[仮想化].
+\end{definition}
+
+None of these operating systems is in control of the hardware any more.
+Each runs in an environment of its own and is given the illusion that it
+owns the hardware resources---CPUs, memory and devices---although the
+resources it sees are \emph{virtual resources} that stand in for a share of
+the physical ones (\cref{fig:l12-vmm}).
+
+\begin{definition}[Virtual machine]
+  A \term{virtual machine}[仮想マシン] (VM) is an operating system together
+  with its applications and the virtual resources on which they run.
+\end{definition}
+\index{VM|see{virtual machine}}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l12-vmm}
+  \caption{Virtualization.  Each VM consists of a guest OS, its
+    applications and the virtual resources presented to it; the virtual
+    machine monitor manages the physical hardware beneath all VMs.}
+  \label{fig:l12-vmm}
+\end{figure}
+
+\begin{definition}[Virtual machine monitor]
+  The \term{virtual machine monitor}[仮想マシンモニタ] (VMM), also called
+  the \emph{hypervisor}, is the virtualization layer beneath the VMs.  It
+  manages the physical hardware, provides the virtual resources to the VMs,
+  coordinates their access to the physical resources, and isolates them
+  from one another.
+\end{definition}
+\index{VMM|see{virtual machine monitor}}%
+\index{hypervisor|see{virtual machine monitor}}
+
+The operating system that runs inside a VM is called a
+\term{guest operating system}[ゲストOS] (guest OS), and a VM as a whole is
+also called a \emph{guest domain}.
+
+Popek and Goldberg \cite{popek1974} gave the classic definition: a virtual
+machine is \enquote{an efficient, isolated duplicate of the real machine}.
+The VMM that supports it must provide three properties.%
+\margin{Popek and Goldberg name the three properties equivalence,
+efficiency and resource control.}
+\begin{description}
+  \item[Fidelity] Programs, operating systems included, run in an
+    environment essentially identical to the original machine and behave
+    as they would on it, apart from timing and the amount of available
+    resources.  This \term{fidelity}[忠実性] is what lets an unmodified
+    operating system run in a VM; paravirtualization
+    (\cref{sec:l12-pv}) deliberately relaxes it.
+  \item[Performance] Programs in a VM show at worst a minor decrease in
+    speed.  Most instructions must therefore execute directly on the
+    hardware rather than be interpreted by the VMM.
+  \item[Safety and isolation] The VMM is in complete control of the system
+    resources.  A VM cannot access resources that the VMM has not allocated
+    to it, and it cannot interfere with other VMs or with the VMM itself.
+\end{description}
+
+\begin{note}
+  The definition excludes technologies that are also called virtual
+  machines.  A high-level language virtual machine executes programs
+  compiled for an abstract instruction set, not for the real machine, so
+  it is not a duplicate of the hardware beneath it.  An emulator that
+  implements a different hardware platform in software duplicates that
+  platform, not the real machine, and it interprets every instruction, so
+  it does not meet the performance requirement.
+\end{note}
+
+\section{Benefits of virtualization}
+\label{sec:l12-benefits}
+
+Running several operating systems on one physical machine has a number of
+benefits.\source{P3L6, benefits of virtualization; Rosenblum and Garfinkel
+\cite{rosenblum2005}; Silberschatz et al.\ ch.~18.}
+\begin{description}
+  \item[Consolidation] The workloads of several physical machines, each
+    with its own operating system and applications, can run as VMs on fewer
+    machines.  This \term{consolidation}[サーバ統合] decreases cost---fewer
+    machines to buy, house, power and cool---and improves manageability,
+    because fewer machines need administration.
+  \item[Migration] A VM is decoupled from the physical machine, so its
+    complete state, operating system and applications included, can be
+    moved from one machine to another, for example before a machine is
+    taken down for maintenance.  Migration improves availability and
+    reliability.
+  \item[Security] Bugs and malicious behaviour are contained within the VM
+    in which they occur and do not affect the other VMs.
+  \item[Debugging] New operating systems and new operating system features
+    can be brought up and tested quickly in a VM, without a dedicated
+    machine; a crash takes down only that VM.
+  \item[Support for legacy operating systems] An operating system that no
+    longer runs on current hardware, together with the applications that
+    depend on it, can continue to run in a VM next to current systems.
+\end{description}
+
+Although IBM mainframes supported virtualization from the 1960s on, it
+remained confined to them until the late 1990s \cite{rosenblum2005}.
+Mainframes were expensive and few.  Once commodity hardware had become cheap and its
+operating systems supported multitasking, it was simpler to buy another
+machine for another application than to share one machine among several
+operating systems, and interest in VMMs faded.  This practice eventually
+created the problems that revived them.  Data centers filled with machines
+that each ran a single application and were underutilized; their number
+grew, and with it the number of administrators needed and the cost of
+power and cooling.  Consolidating the applications onto fewer machines
+addresses all these costs at once, but it requires virtualizing commodity
+x86 hardware, which, as \cref{sec:l12-x86} shows, had not been designed for
+it.
+
+\begin{example}
+  A company runs 24 servers, each dedicated to one application and
+  averaging \SI{8}{\percent} CPU utilization.  Their combined load
+  corresponds to $24 \times 0.08 = 1.92$ fully used servers.  If each
+  physical machine is loaded to at most \SI{70}{\percent}, leaving headroom
+  for load peaks and for the overhead of virtualization, and memory and
+  I/O capacity suffice, the 24 workloads fit as VMs on
+  $\lceil 1.92/0.7 \rceil = 3$ machines, each at about \SI{64}{\percent}
+  utilization.  The number of machines to power, cool and administer drops
+  by a factor of eight.
+\end{example}
+
+\section{Virtualization models}
+\label{sec:l12-models}
+
+Virtualization software is organized in one of two ways, which differ in
+what runs directly on the hardware and, in particular, in who owns the
+device drivers.\source{P3L6, virtualization models: bare-metal, hosted;
+Barham et al.\ \cite{barham2003}; Kivity et al.\ \cite{kivity2007};
+Silberschatz et al.\ ch.~18.}
+
+\subsection{Bare-metal hypervisors}
+
+\begin{definition}[Bare-metal hypervisor]
+  A \term{bare-metal hypervisor}[ベアメタル型ハイパーバイザ], also called a
+  hypervisor-based or \emph{type~1} VMM, runs directly on the hardware.  It
+  manages all hardware resources and supports the execution of the VMs.
+\end{definition}
+
+Such a hypervisor must also control the devices.  Devices are diverse, and
+supporting all of them would put a large body of device drivers into the
+hypervisor.  Bare-metal designs therefore often run a privileged
+\emph{service VM} next to the guest VMs (\cref{fig:l12-models}a).  The
+service VM runs a standard operating system with the device drivers, has
+direct access to the devices, and performs configuration and management
+tasks, so that the hypervisor itself stays small.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l12-models}
+  \caption{Virtualization models.  (a) A bare-metal hypervisor with a
+    privileged service VM that owns the device drivers, as in Xen.  (b) A
+    hosted hypervisor: a module of the host OS, as KVM in Linux; each VM is
+    a host process in which QEMU emulates the devices.}
+  \label{fig:l12-models}
+\end{figure}
+
+\term{Xen}[Xen] \cite{barham2003}, available as open source and as the
+commercial Citrix XenServer, follows this design.  Its VMs are called
+\emph{domains}.  The privileged service VM is \term{dom0}[dom0], which runs
+Linux with the device drivers and the management tools; the guest VMs are
+unprivileged domains, \emph{domU}, and the Xen hypervisor itself contains
+no device drivers.  VMware ESX takes the other route and places the drivers
+in the hypervisor.  This is practical because ESX targets servers from a
+limited number of vendors, who supply drivers for it.  ESX is administered
+through remote management APIs, which replaced an earlier Linux-based
+control core.
+
+\subsection{Hosted hypervisors}
+
+\begin{definition}[Hosted hypervisor]
+  A \term{hosted hypervisor}[ホスト型ハイパーバイザ], or \emph{type~2} VMM,
+  runs on top of a conventional operating system, the
+  \term{host operating system}[ホストOS] (host OS), which owns all the
+  hardware.  A special VMM module in the host OS provides the hardware
+  interfaces to the VMs and handles the switches between VMs.
+\end{definition}
+
+A hosted hypervisor reuses what the host OS already provides.  Device
+drivers, scheduling, memory management and other services need not be
+re-implemented, and ordinary applications continue to run natively on the
+host next to the VMs (\cref{fig:l12-models}b).
+
+\needspace{6\baselineskip}
+The \term{Kernel-based Virtual Machine}[KVM] (KVM)
+\cite{kivity2007}\index{KVM|see{Kernel-based Virtual Machine}} is the
+hosted hypervisor of Linux.  A loadable kernel module turns Linux into a
+hypervisor.  Each VM is an ordinary Linux process, whose virtual CPUs are
+threads of that process, so the Linux scheduler and memory manager serve
+VMs as they serve other processes.  The devices of a VM are emulated within
+its process by \term{QEMU}[QEMU], a hardware emulator running at user
+level, while the instructions of the guest execute directly on the CPU with
+the hardware support described in \cref{sec:l12-hw}.  Because KVM is part
+of Linux, it benefits from the Linux open-source community: new features,
+bug fixes and drivers for new devices become available to it without
+separate effort.
+
+\begin{keypoint}
+  A bare-metal hypervisor runs directly on the hardware and typically
+  leaves device drivers to a privileged service VM, such as dom0 in Xen.  A
+  hosted hypervisor is a module of a host OS, such as KVM in Linux, and
+  reuses the drivers and services of that OS.
+\end{keypoint}
+
+\section{Hardware protection levels}
+\label{sec:l12-rings}
+
+A guest OS is written to run in kernel mode and to execute privileged
+instructions, yet under virtualization only the hypervisor may control the
+hardware.\source{P3L6, hardware protection levels; Silberschatz et al.\
+ch.~18.}  The two modes of Lesson~1 cannot separate three kinds of
+software---applications, guest OS and hypervisor---but commodity processors
+offer more than two privilege levels.
+
+\begin{definition}[Protection ring]
+  A \term{protection ring}[保護リング] is one of a hierarchy of privilege
+  levels enforced by the processor; software in a ring may execute only
+  the instructions and access only the resources permitted at its level.
+  x86 processors provide four rings, from ring~0, the most privileged, to
+  ring~3, the least privileged.
+\end{definition}
+
+Without virtualization, the OS kernel runs in ring~0 and applications in
+ring~3, and rings~1 and~2 are unused (\cref{fig:l12-rings}a).  With
+virtualization, the hypervisor takes ring~0, the guest OS moves to ring~1,
+and applications remain in ring~3 (\cref{fig:l12-rings}b).  When the guest
+OS attempts a privileged operation from ring~1, the processor traps to the
+hypervisor in ring~0.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l12-rings}
+  \caption{Use of the x86 protection rings.  (a) Native execution.
+    (b) Virtualization without hardware support: the guest OS is
+    deprivileged to ring~1, and its privileged operations trap to the
+    hypervisor.  (c) Processors with virtualization support: the guest OS
+    runs in ring~0 of non-root mode, and a VM exit transfers control to
+    the hypervisor in root mode.}
+  \label{fig:l12-rings}
+\end{figure}
+
+Processors with virtualization support, including current x86-64
+processors, go further: they provide two modes of operation, each with its
+own four rings (\cref{fig:l12-rings}c).
+
+\begin{definition}[Root mode and non-root mode]
+  In \term{root mode}[ルートモード] the processor runs the hypervisor, in
+  ring~0, with full control of the hardware.  In
+  \term{non-root mode}[非ルートモード] it runs the VMs, with the guest OS
+  in ring~0 and applications in ring~3, and privileged operations are
+  restricted.
+\end{definition}
+
+The guest OS thus runs at the privilege level for which it was written.  An
+attempt by the guest OS to perform a privileged operation causes a trap
+called a \term{VM exit}[VM exit], which switches the processor to root mode
+and passes control to the hypervisor.  When the hypervisor has handled the
+operation, a \emph{VM entry}\index{VM entry} switches the processor back to
+non-root mode and resumes the VM.
+
+\section{Processor virtualization}
+\label{sec:l12-cpu}
+
+To meet the performance requirement of \cref{sec:l12-what}, the hypervisor
+does not interpret the instructions of a VM but lets them execute directly
+on the hardware.\source{P3L6, processor virtualization; Popek and Goldberg
+\cite{popek1974}; OSTEP app.~B.}  The question is what must happen when such
+an instruction is privileged.
+
+\begin{definition}[Trap-and-emulate]
+  In \term{trap-and-emulate}[トラップアンドエミュレート] virtualization,
+  the instructions of a guest execute directly on the CPU, with the guest
+  OS deprivileged.  Non-privileged instructions run at hardware speed.  A
+  privileged instruction traps to the hypervisor, which determines what to
+  do: if the operation is illegal for the VM, the hypervisor terminates the
+  VM; if it is legal, the hypervisor emulates the behaviour that the guest
+  OS expects from the hardware and resumes the guest.
+\end{definition}
+
+\Cref{fig:l12-trap-emulate} summarizes the decisions.  The emulation acts
+on the virtual state of the VM, not on the physical hardware.  When a guest
+OS disables interrupts, for example, the hypervisor records that interrupts
+are disabled for this VM and holds back the interrupts destined for it,
+while physical interrupts remain enabled so that the hypervisor and the
+other VMs continue to receive theirs.  Every trap costs a transition into
+the hypervisor, so the overhead of trap-and-emulate grows with the number
+of privileged operations that the guest performs.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l12-trap-emulate}
+  \caption{Trap-and-emulate.  Only privileged instructions involve the
+    hypervisor; legal ones are emulated on the virtual state of the VM.}
+  \label{fig:l12-trap-emulate}
+\end{figure}
+
+\begin{note}
+  Trap-and-emulate is correct only if every instruction whose effect the
+  hypervisor must control actually traps.  Popek and Goldberg
+  \cite{popek1974} call such instructions \emph{sensitive}: they change or
+  reveal the configuration of the machine, or behave differently depending
+  on the privilege level.  An architecture can be virtualized in this way
+  if every sensitive instruction is privileged, that is, traps when
+  executed outside the most privileged level.
+\end{note}
+
+\section{x86 virtualization before hardware support}
+\label{sec:l12-x86}
+
+Before 2005, x86 processors had four rings but no root and non-root modes,
+so a hypervisor ran in ring~0 and deprivileged the guest OS to
+ring~1.\source{P3L6, x86 virtualization in the past; Robin and Irvine
+\cite{robin2000}.}  The architecture did not satisfy the condition of
+trap-and-emulate: Robin and Irvine \cite{robin2000} identified 17 sensitive
+instructions that do not trap when executed in a less privileged ring.  Executed in
+ring~1, they fail silently or reveal machine state that the hypervisor
+intends to hide, and trap-and-emulate alone cannot virtualize the
+processor correctly.
+
+The best-known examples are \texttt{PUSHF} and \texttt{POPF}, which save
+the flags register on the stack and restore it.  The flags register
+contains the interrupt-enable flag IF, and kernels commonly re-enable
+interrupts at the end of a section that ran with interrupts disabled by
+restoring the saved flags with \texttt{POPF}.  In ring~0, \texttt{POPF}
+restores IF.  In ring~1 the processor ignores the IF bit of the restored
+value, without a trap.\margin{Precisely, \texttt{POPF} leaves IF unchanged
+whenever the current ring is numerically greater than the I/O privilege
+level in the flags register, which the hypervisor sets to~0.  \texttt{CLI}
+traps under the same condition.}  The hypervisor is not invoked, so it does
+not learn that the guest wanted to change the interrupt state and cannot
+emulate the change; the guest OS receives no error and assumes that the
+change succeeded.  \Cref{tab:l12-popf} traces the consequence.
+
+\begin{table}[htbp]
+  \centering
+  \caption{A guest kernel in ring~1 saves the flags, disables interrupts
+    and later restores the flags.  \texttt{CLI} traps and is emulated;
+    \texttt{POPF} does not trap.  \emph{Virtual IF} is the interrupt flag
+    that the hypervisor records for the VM; physical interrupts stay
+    enabled throughout.}
+  \label{tab:l12-popf}
+  \small
+  \begin{tabular}{@{}clccc@{}}
+    \toprule
+    Step & Guest kernel executes & Traps & Virtual IF & Guest assumes \\
+    \midrule
+    1 & \texttt{PUSHF} (saves IF $=1$)     & no  & 1 & enabled \\
+    2 & \texttt{CLI}                         & yes & 0 & disabled \\
+    3 & critical section                     & no  & 0 & disabled \\
+    4 & \texttt{POPF} (restores IF $=1$)   & no  & 0 & enabled \\
+    5 & waits for a device interrupt         & no  & 0 & enabled \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+From step~4 on, the hypervisor considers interrupts disabled for the VM and
+withholds its interrupts, while the guest OS waits for an interrupt that it
+believes to be enabled: the guest hangs.  Two remedies were developed in
+software, one that leaves the guest OS unmodified and one that modifies it.
+
+\section{Binary translation}
+\label{sec:l12-bt}
+
+The first remedy rewrites the binary code of the guest so that it never
+executes the problematic instructions.\source{P3L6, binary translation;
+Bugnion et al.\ \cite{bugnion2012}; Silberschatz et al.\ ch.~18.}  The
+approach was pioneered by Mendel Rosenblum's group at Stanford University
+and commercialized by VMware \cite{bugnion2012}.  Its goal is to run the
+guest OS without any modification.
+
+\begin{definition}[Full virtualization]
+  Virtualization in which the guest operating system runs unmodified, as
+  it would on the physical machine, is called
+  \term{full virtualization}[完全仮想化].
+\end{definition}
+
+\begin{definition}[Binary translation]
+  In dynamic \term{binary translation}[バイナリ変換] the hypervisor rewrites
+  guest code at run time, just before it executes.  Code that contains
+  problematic instructions is translated into an alternative instruction
+  sequence with the intended effect; all other code runs unchanged at
+  hardware speed.
+\end{definition}
+
+The translation proceeds block by block (\cref{fig:l12-bt}).
+\begin{enumerate}
+  \item Inspect the block of code that is about to be executed, for
+    example the instructions up to the next branch.
+  \item If the block contains problematic instructions, translate them into
+    a sequence that emulates the desired behaviour, for example a call to
+    an emulation routine of the hypervisor.  The translation may even avoid
+    a trap where the original instruction would have trapped.
+  \item Otherwise execute the block as it is, at hardware speed.
+\end{enumerate}
+Translated blocks are kept in a \emph{translation cache}, so the cost of
+translating a block is paid once and amortized over its later executions.
+The translation must be dynamic because which code executes, and where
+indirect branches lead, is known only at run time.%
+\margin{In VMware's design only guest kernel code is translated;
+applications in ring~3 run directly \cite{bugnion2012}.}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l12-binary-translation}
+  \caption{Dynamic binary translation with a translation cache.  A block is
+    inspected and translated only the first time it is about to run.}
+  \label{fig:l12-bt}
+\end{figure}
+
+\needspace{8\baselineskip}
+\begin{example}
+  A block of guest kernel code executes natively in \SI{5}{\micro\second}.
+  Translating it takes \SI{2}{\milli\second}, and because one instruction
+  is replaced by a call into the hypervisor, the translated block takes
+  \SI{6}{\micro\second}.  If the block runs \num{20000} times, translating
+  it once and caching the result costs
+  $\SI{2}{\milli\second} + \num{20000}\times\SI{6}{\micro\second} =
+  \SI{122}{\milli\second}$, against \SI{100}{\milli\second} natively, an
+  overhead of \SI{22}{\percent}.  Translating it anew before every
+  execution would cost
+  $\num{20000}\times(\SI{2}{\milli\second}+\SI{6}{\micro\second}) \approx
+  \SI{40.1}{\second}$, about 400 times the native time.
+\end{example}
+
+\section{Paravirtualization}
+\label{sec:l12-pv}
+
+The second remedy gives up on unmodified guests in exchange for
+performance.\source{P3L6, paravirtualization; Barham et al.\
+\cite{barham2003}.}  The guest OS is ported to the hypervisor, much as an
+operating system is ported to a new hardware platform.
+
+\begin{definition}[Paravirtualization]
+  In \term{paravirtualization}[準仮想化] the guest operating system is
+  modified so that it knows it runs in a VM.  Instead of executing
+  privileged operations and relying on traps, it requests them from the
+  hypervisor explicitly.
+\end{definition}
+
+An explicit request of a guest OS to the hypervisor is a
+\term{hypercall}[ハイパーコール].  It plays the role for a guest OS that a
+system call plays for an application (Lesson~1): the guest places the
+context information---the arguments---in a well-defined location,
+specifies which hypercall it requests, and traps into the hypervisor, which
+performs the operation and returns control to the guest.  The hypervisor
+therefore does not have to infer the intended operation from individual
+trapped instructions, and one hypercall can carry several operations, as
+\cref{sec:l12-memory} shows.  Only the guest OS is modified; applications
+run unchanged, because the interface that the guest OS offers them stays
+the same \cite{barham2003}.
+
+Xen, developed at the University of Cambridge and later commercialized by
+XenSource and Citrix, is the best-known paravirtualizing hypervisor.
+\Cref{tab:l12-cpu} in \cref{sec:l12-hw} compares paravirtualization with
+the other approaches to processor virtualization.
+
+\begin{keypoint}
+  Trap-and-emulate requires every sensitive instruction to trap, which
+  x86 processors before 2005 did not guarantee.  Binary translation
+  rewrites the problematic instructions at run time and keeps the guest OS
+  unmodified; paravirtualization modifies the guest OS to issue hypercalls
+  and gains performance.
+\end{keypoint}
+
+\section{Memory virtualization}
+\label{sec:l12-memory}
+
+\subsection{Full virtualization}
+
+A guest OS expects what an operating system finds on a physical machine:
+physical memory that is contiguous and starts at address~0, which it
+manages with page tables as described in Lesson~8.\source{P3L6, memory
+virtualization: full, paravirtualized; OSTEP app.~B; Barham et al.\
+\cite{barham2003}.}  The hypervisor must give every VM this illusion while
+dividing the memory of the machine among the VMs, and it should still let
+the hardware MMU and TLB translate addresses.  Three kinds of addresses are
+therefore distinguished:
+\begin{description}
+  \item[Virtual addresses] are used by the software in a VM, as in
+    Lesson~2.
+  \item[Physical addresses] are the addresses that the guest OS believes to
+    be those of physical memory.
+  \item[Machine addresses] are the actual addresses of the memory of the
+    machine.  A \term{machine address}[マシンアドレス] is known only to the
+    hypervisor under full virtualization.
+\end{description}
+Page numbers make the same distinction between virtual page numbers,
+physical frame numbers and machine frame numbers.  The guest OS maintains
+page tables that map virtual to physical addresses, and the hypervisor
+maintains a mapping from physical to machine addresses
+(\cref{fig:l12-memory}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l12-memory}
+  \caption{Memory virtualization.  Translating through the guest page table
+    and then through the hypervisor's mapping takes two steps; the shadow
+    page table combines them into one mapping that the MMU uses directly.
+    Hardware with extended page tables performs the two-step translation
+    itself (\cref{sec:l12-hw}).}
+  \label{fig:l12-memory}
+\end{figure}
+
+A first option translates every address in these two steps.  The MMU,
+however, walks only one page table, and the TLB caches one translation per
+address.  Performing the second translation in software on every memory
+reference is far too expensive.
+
+\begin{definition}[Shadow page table]
+  A \term{shadow page table}[シャドウページテーブル] is a page table
+  maintained by the hypervisor that maps the virtual addresses of a guest
+  process directly to machine addresses.  The hypervisor installs it in the
+  MMU in place of the guest's page table, so that the hardware translates
+  each address in one step and the TLB caches the result.
+\end{definition}
+
+The guest OS continues to create and change its own page tables, which the
+hardware no longer uses, and the hypervisor must keep the shadow page
+tables consistent with them.
+\begin{itemize}
+  \item It write-protects the memory that holds the guest page tables.
+    When the guest OS adds or changes a mapping, the write traps; the
+    hypervisor performs the write and updates the shadow page table with
+    the corresponding machine address.
+  \item When the guest OS switches between its processes, it loads another
+    page table into the page table base register, a privileged operation
+    that traps.  The hypervisor then installs the shadow page table of the
+    new process, or invalidates the current shadow entries and rebuilds
+    them as they are used.
+\end{itemize}
+These traps make page table updates and context switches in a guest far
+more costly than on a physical machine.
+
+\begin{example}
+  A guest process uses virtual pages 2 and~3.  The guest page table maps
+  them to physical frames 5 and~9, which the hypervisor has backed with
+  machine frames 41 and~17, so the shadow page table maps page~2 to
+  machine frame~41 and page~3 to machine frame~17.  The guest OS now maps
+  virtual page~4 to physical frame~12.  Its write to the protected page
+  table traps; the hypervisor finds that frame~12 is backed by machine
+  frame~26, performs the write, adds the entry $4 \to 26$ to the shadow
+  page table and resumes the guest.  \Cref{tab:l12-shadow} shows the
+  resulting mappings.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Mappings of the guest process of the example.  The last shadow
+    entry is added by the hypervisor when the guest's page table update
+    traps.}
+  \label{tab:l12-shadow}
+  \small
+  \begin{tabular}{@{}cccc@{}}
+    \toprule
+    Virtual & Guest page table: & Hypervisor: & Shadow page table: \\
+    page & physical frame & machine frame & machine frame \\
+    \midrule
+    2 & 5  & 41 & 41 \\
+    3 & 9  & 17 & 17 \\
+    4 & 12 & 26 & 26 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Paravirtualization}
+
+With paravirtualization the guest OS knows that it runs in a VM, and memory
+virtualization becomes a cooperation between guest and hypervisor.  The
+strict requirement that physical memory be contiguous and start at
+address~0 disappears.  In Xen the guest OS knows which machine frames it
+has been given, and its page tables map virtual addresses directly to
+machine addresses \cite{barham2003}.  The guest registers its page tables
+with the hypervisor explicitly, and from then on it has only read access to
+them.  To change a page table, the guest issues a hypercall, and the
+hypervisor validates the change---for example, that the new mapping refers
+to a machine frame that belongs to this VM---before applying it.  Because
+every hypercall costs a transition into the hypervisor, the guest
+\emph{batches} page table updates so that many of them share one
+hypercall.  Other optimizations follow the same idea of reducing
+transitions: Xen, for instance, occupies the top \SI{64}{\mega\byte} of
+every guest address space, so that entering the hypervisor requires no
+change of page table and no TLB flush \cite{barham2003}.
+
+\needspace{16\baselineskip}
+\begin{example}
+  A paravirtualized Linux guest on Xen changes three page table entries
+  with a single hypercall.  Each request gives the machine address of a
+  page table entry and the new contents of that entry:
+  \begin{lstlisting}[language=C, numbers=none]
+struct mmu_update req[3];
+int done;
+
+for (int i = 0; i < 3; i++) {
+  /* machine address of the entry to change */
+  req[i].ptr = pte_maddr[i] | MMU_NORMAL_PT_UPDATE;
+  /* new entry: machine frame number and flags */
+  req[i].val = (mfn[i] << PAGE_SHIFT) | flags;
+}
+/* one transition into Xen for all three updates */
+HYPERVISOR_mmu_update(req, 3, &done, DOMID_SELF);
+  \end{lstlisting}
+  Xen checks every request before applying it and reports in
+  \texttt{done} how many updates succeeded.  Issued one by one, the same
+  updates would enter the hypervisor three times.
+\end{example}
+
+On newer platforms, the hardware support of \cref{sec:l12-hw} eliminates
+or greatly reduces the overheads of memory virtualization.
+
+\section{Device virtualization}
+\label{sec:l12-devices}
+
+CPUs and memory show little diversity: the instruction set architecture
+standardizes their interface, so a few techniques suffice for all
+processors of a family.\source{P3L6, device virtualization; passthrough,
+hypervisor-direct and split-device driver models; Silberschatz et al.\
+ch.~18.}  Devices are highly diverse, and there is no standard
+specification of their interface and behaviour; as Lesson~11 showed, each
+type of device needs its own driver.  Three models for virtualizing devices
+have emerged.  They differ in where the driver that controls the physical
+device resides and in how the device accesses of a VM reach it
+(\cref{fig:l12-devices}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l12-devices}
+  \caption{Device virtualization models.  (a) The VM's own driver accesses
+    the device directly.  (b) The hypervisor intercepts device accesses and
+    emulates them with its own I/O stack and driver.  (c) A front-end
+    driver in the guest passes requests to a back-end driver in the service
+    VM, which drives the device.}
+  \label{fig:l12-devices}
+\end{figure}
+
+\needspace{6\baselineskip}
+\subsection{Passthrough model}
+
+\begin{definition}[Passthrough model]
+  In the \term{passthrough model}[パススルーモデル] a VMM-level driver
+  configures the access permissions of a device so that a VM accesses the
+  device directly, with its own driver, bypassing the hypervisor.
+\end{definition}
+
+The VM obtains exclusive access to the device, and its device operations
+follow the same path as on a physical machine.  This \emph{VMM bypass},
+the counterpart of the operating system bypass of
+Lesson~11,\index{operating system bypass} gives the best performance.  The
+model has three drawbacks.
+\begin{itemize}
+  \item Sharing the device is difficult: it must be reassigned from one VM
+    to another.
+  \item The machine must have exactly the type of device that the driver in
+    the VM expects, since that driver operates the hardware directly.
+  \item Migration is tricky, because part of the state of the VM resides
+    in the device, and the destination machine must provide an identical
+    device into which that state can be transferred.
+\end{itemize}
+
+\subsection{Hypervisor-direct model}
+
+\begin{definition}[Hypervisor-direct model]
+  In the \term{hypervisor-direct model}[ハイパーバイザ直接モデル] the
+  hypervisor intercepts every device access of a VM and emulates the device
+  operation: it translates the operation into a generic I/O operation,
+  passes it through the I/O stack that resides in the hypervisor, and
+  invokes the hypervisor's own driver for the physical device.
+\end{definition}
+
+The key benefit is that the VM is decoupled from the physical device.  The
+VM sees an emulated device, which can be the same on every machine,
+independently of the physical device; the device can be shared among VMs;
+migration becomes simpler; and the hypervisor deals with the specifics of
+each device.  VMware ESX uses this model.  The costs are the latency that
+interception and emulation add to every device operation, and the
+complexity of the device driver ecosystem inside the hypervisor, which must
+contain, and remain robust with, drivers for all supported devices.
+
+\subsection{Split-device driver model}
+
+\begin{definition}[Split-device driver model]
+  In the \term{split-device driver model}[分割デバイスドライバモデル]
+  device access is controlled by two cooperating drivers: a
+  \term{front-end driver}[フロントエンドドライバ] in the guest VM, which
+  presents the device interface to the guest OS, and a
+  \term{back-end driver}[バックエンドドライバ] in the service VM or the
+  host OS, which accesses the physical device through the regular driver.
+\end{definition}
+
+The front-end driver does not manipulate device registers that would have
+to be trapped and emulated.  It passes complete requests, such as a packet
+to send, to the back-end driver, in Xen through memory shared between the
+two VMs \cite{barham2003}.  This eliminates the emulation overhead of the
+hypervisor-direct model, and because all requests for a device pass
+through the back-end driver, the service VM can manage how the device is
+shared among the VMs.  The price is a modified guest: the front-end driver
+is written for the hypervisor, which limits the model to paravirtualized
+guests.  \Cref{tab:l12-devices} summarizes the three models.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Device virtualization models compared.}
+  \label{tab:l12-devices}
+  \small
+  \begin{tabular}{@{}>{\raggedright}p{18mm}>{\raggedright}p{19mm}%
+      >{\raggedright}p{20mm}>{\raggedright}p{23mm}%
+      >{\raggedright\arraybackslash}p{23mm}@{}}
+    \toprule
+    Model & Physical device driven by & Driver in the guest & Sharing and
+      migration & Cost per device operation \\
+    \midrule
+    Passthrough & guest VM & native driver & difficult & none beyond native \\
+    \addlinespace
+    Hypervisor-direct & hypervisor & driver for the emulated device
+      & supported & interception and emulation \\
+    \addlinespace
+    Split-device driver & service VM or host OS & modified front-end
+      & supported, managed by back-end & request passed to back-end \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}
+  Devices lack a standard interface, so their virtualization trades
+  performance against flexibility: passthrough is fastest but ties a VM to
+  a device, hypervisor-direct decouples the VM at the cost of emulation,
+  and the split-device driver model avoids emulation by modifying the
+  guest's drivers.
+\end{keypoint}
+
+\section{Hardware support for virtualization}
+\label{sec:l12-hw}
+
+Around 2005, AMD and Intel added support for virtualization to their
+processors: AMD with the technology code-named Pacifica, now AMD-V, and
+Intel with Vanderpool, now Intel VT.\source{P3L6, hardware virtualization,
+x86 VT revolution; Uhlig et al.\ \cite{uhlig2005}; Rosenblum and Garfinkel
+\cite{rosenblum2005}.}
+
+\begin{definition}[Hardware-assisted virtualization]
+  Virtualization in which the processor itself provides the mechanisms
+  needed to virtualize it, so that unmodified guest operating systems run
+  under trap-and-emulate without binary translation or paravirtualization,
+  is called \term{hardware-assisted virtualization}[ハードウェア支援仮想化].
+\end{definition}
+
+The extensions address the problems of the preceding sections.
+\begin{description}
+  \item[Closing the holes in the x86 ISA] In non-root mode the guest OS
+    runs in ring~0, where instructions such as \texttt{POPF} behave as it
+    expects, and every operation that the hypervisor must control, such as
+    sensitive instructions, access to control registers, I/O and
+    interrupts, can be made to cause a VM exit.  The architecture thereby
+    becomes virtualizable by trap-and-emulate.
+  \item[Root and non-root modes] The modes of \cref{sec:l12-rings}, called
+    host and guest mode by AMD, let the guest OS run in ring~0 while the
+    hypervisor keeps control.
+  \item[VM control structure] A data structure per VM, more precisely per
+    virtual CPU, that the hardware reads and updates.  It holds the state
+    of the virtual CPU, saved on a VM exit and restored on a VM entry, and
+    it specifies which instructions and events cause VM exits, so the
+    hypervisor decides for each VM what to trap.
+  \item[Extended page tables] The MMU performs the two-step translation of
+    \cref{fig:l12-memory} itself.  The guest page table maps virtual to
+    physical addresses as before, and an
+    \term{extended page table}[拡張ページテーブル]
+    (EPT)\index{EPT|see{extended page table}}, maintained by the
+    hypervisor, maps physical to machine addresses.  On a TLB miss the MMU
+    walks both tables, and the TLB caches the resulting translation from
+    virtual to machine address.  The guest OS changes and switches its page
+    tables without VM exits, and shadow page tables become unnecessary.
+    AMD's equivalent is called nested page tables.
+  \item[Tagged TLB] A \term{tagged TLB}[タグ付きTLB] marks each entry with
+    an identifier of the VM to which it belongs.  Entries of different VMs
+    coexist in the TLB, so a switch between VMs does not require flushing
+    it.
+  \item[Multiqueue devices and interrupt routing] Devices such as network
+    cards provide several logical interfaces, or queues, each of which can
+    be assigned to a different VM, and interrupts are routed to the core on
+    which the VM that owns the queue runs.
+  \item[Security and management support] Further extensions protect the
+    hypervisor and support the management of VMs.
+\end{description}
+These features are used through new instructions, for example to enter
+non-root mode, to read and write the VM control structure, and to issue
+hypercalls.\margin{Intel's instructions include \texttt{VMLAUNCH} and
+\texttt{VMRESUME} for VM entries, \texttt{VMREAD} and \texttt{VMWRITE} for
+the control structure, and \texttt{VMCALL} for hypercalls.}  Hosted
+hypervisors such as KVM rely on them.
+
+Intel extended its support in stages, from the processor outwards.
+\emph{VT-x} covers the processor: root and non-root modes, VM exits and
+entries, the VM control structure, and, in later processors, extended page
+tables and tagged TLB entries.  \emph{VT-d} (directed I/O) adds to the
+chipset an I/O memory management unit that translates the addresses used
+in DMA (Lesson~11) and remaps interrupts, so that a device can be assigned
+safely to a VM in the passthrough model: the device cannot access the
+memory of other VMs.  \emph{VT-c} (connectivity) brings virtualization
+support to network devices, with multiple queues per device and devices
+that present themselves as several virtual devices, each assignable to a
+different VM.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Approaches to processor virtualization on x86.}
+  \label{tab:l12-cpu}
+  \small
+  \begin{tabular}{@{}>{\raggedright}p{24mm}>{\raggedright}p{16mm}%
+      >{\raggedright}p{27mm}>{\raggedright}p{22mm}%
+      >{\raggedright\arraybackslash}p{14mm}@{}}
+    \toprule
+    Approach & Guest OS & Problematic instructions & Main overhead
+      & Example \\
+    \midrule
+    Trap-and-emulate alone, before 2005 & unmodified & some fail silently:
+      incorrect & traps & --- \\
+    \addlinespace
+    Binary translation & unmodified & rewritten at run time
+      & translation, emulation & VMware \\
+    \addlinespace
+    Paravirtualization & modified & replaced by hypercalls & hypercalls
+      & Xen \\
+    \addlinespace
+    Hardware-assisted & unmodified & cause VM exits & VM exits & KVM \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}[Lesson summary]
+  Virtualization runs several operating systems concurrently on one
+  machine; a hypervisor gives each VM an efficient, isolated duplicate of
+  the machine.  Bare-metal hypervisors run on the hardware, usually with a
+  service VM that owns the drivers; hosted hypervisors extend a host OS.
+  The CPU is virtualized by trap-and-emulate, which x86 processors before
+  2005 did not fully support, hence binary translation for unmodified
+  guests and paravirtualization with hypercalls for modified ones.  Memory
+  virtualization adds machine addresses beneath physical addresses and is
+  handled with shadow page tables or with validated, batched page table
+  updates.  Devices are virtualized by the passthrough, hypervisor-direct
+  or split-device driver model.  Hardware-assisted virtualization, with
+  root and non-root modes, VM exits, extended page tables and tagged TLBs,
+  removes most of the software overhead.
+\end{keypoint}
+
+\end{document}

@@ -1,0 +1,26 @@
+% The cloud as a big data engine: the layers of a big data stack, and the
+% streaming data that enter it continuously.
+% Usage: \input{figures/l16-bigdata}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  ly/.style={draw, fill=ln-box, minimum height=8mm, inner sep=1pt, align=center},
+  top/.style={draw, fill=ln-accent!18, minimum height=8mm, inner sep=1pt, align=center},
+  st/.style={draw, fill=ln-accent!35, minimum height=8mm, inner sep=1pt, align=center},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center}]
+  % users of the engine
+  \node[lab] at (74,49) {\iflangja{アプリケーション，データ分析者}{applications, data analysts}};
+  \draw[<->, thick] (57,46.5) -- (57,42.5);
+  \draw[<->, thick] (95,46.5) -- (95,42.5);
+  % layers
+  \node[top, minimum width=42mm] (lang) at (53,38) {\iflangja{言語フロントエンド}{language front-ends}\\\textcolor{ln-muted}{\iflangja{例: 問い合わせ}{e.g.\ queries}}};
+  \node[top, minimum width=42mm] (lib) at (97,38) {\iflangja{分析ライブラリ}{analytics libraries}\\\textcolor{ln-muted}{\iflangja{例: 機械学習}{e.g.\ machine learning}}};
+  \node[ly, minimum width=86mm] (proc) at (75,27) {\iflangja{データ処理}{data processing}\\\textcolor{ln-muted}{\iflangja{多数のマシンで並列に実行}{in parallel on many machines}}};
+  \node[ly, minimum width=86mm] (cache) at (75,16) {\iflangja{キャッシュ}{caching}\\\textcolor{ln-muted}{\iflangja{頻繁に使うデータをメモリに保持}{frequently used data kept in memory}}};
+  \node[st, minimum width=86mm] (store) at (75,5) {\iflangja{データストレージ}{data storage}\\\textcolor{ln-muted}{\iflangja{多数のマシンに分散して格納}{distributed over many machines}}};
+  % streaming data
+  \node[lab, text=ln-accent, anchor=east] (sd) at (27,27)
+    {\iflangja{連続して到着する}{continuously}\\\iflangja{ストリームデータ}{streaming data}};
+  \draw[->, line width=1.2pt, ln-accent] (sd.east) -- (proc.west);
+  \draw[->, line width=1.2pt, ln-accent] (29.2,27) |- (store.west);
+  \fill[ln-accent] (29.2,27) circle (0.8);
+\end{tikzpicture}

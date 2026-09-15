@@ -1,0 +1,29 @@
+% Interrupt handling split into a top half, executed immediately, and a
+% bottom half, executed later like a thread.
+% Usage: \input{figures/l05-top-bottom}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  >={Stealth[length=1.6mm]}]
+  \def\ltbseg#1#2#3#4#5{%
+    \draw[fill=#4] (#1,#3-2.5) rectangle (#2,#3+2.5);
+    \node[lab] at ({(#1+#2)/2},#3) {#5};}
+  \node[row] at (14,10) {CPU};
+  \ltbseg{16}{44}{10}{white}{\iflangja{スレッド T}{thread T}}
+  \ltbseg{44}{61}{10}{ln-accent!22}{\iflangja{トップハーフ}{top half}}
+  \ltbseg{61}{80}{10}{white}{\iflangja{スレッド T}{thread T}}
+  \ltbseg{80}{104}{10}{ln-box}{\iflangja{ボトムハーフ}{bottom half}}
+  \ltbseg{104}{116}{10}{white}{T}
+  % interrupt arrival
+  \draw[->, thick, ln-caution] (44,20) -- (44,12.5);
+  \node[lab, anchor=south, text=ln-caution] at (44,20) {\iflangja{割り込み}{interrupt}};
+  % top half defers the bottom half
+  \draw[->, ln-accent] (52.5,7.5) .. controls (56,1) and (86,1) .. (92,7.5);
+  \node[lab, text=ln-accent] at (72,4.8) {\iflangja{後で実行するよう登録}{deferred}};
+  % annotations
+  \node[lab, anchor=north] at (52.5,-1)
+    {\iflangja{直ちに実行\\高速・ブロックしない}{runs immediately;\\fast, non-blocking}};
+  \node[lab, anchor=north] at (92,-1)
+    {\iflangja{スレッドとしてスケジュール\\ブロック可能}{scheduled like a thread;\\may block}};
+  \draw[->] (92,20) -- node[lab, above] {\iflangja{時間}{time}} (116,20);
+\end{tikzpicture}

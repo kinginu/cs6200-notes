@@ -1,0 +1,50 @@
+% VFS abstractions: file descriptor, file, dentries and inode in memory;
+% superblock, inode blocks and data blocks on disk.
+% Usage: \input{figures/l11-vfs-objects}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  obj/.style={draw, fill=white, minimum height=8mm, inner sep=1pt, align=center},
+  den/.style={draw, fill=white, minimum height=5mm, inner sep=1.2pt, font=\scriptsize\ttfamily},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  side/.style={font=\scriptsize\sffamily\bfseries, text=ln-accent}]
+  \draw[densely dashed, ln-muted] (0,0) -- (118,0);
+  \node[side, anchor=south east] at (118,0.4) {\iflangja{メモリ}{memory}};
+  \node[side, anchor=north east] at (118,-0.4) {\iflangja{ディスク}{disk}};
+  % file descriptor table of process P
+  \node[lab, anchor=south] at (9,42.2) {\iflangja{P の fd}{fds of P}};
+  \foreach \i/\y in {0/40,1/36,2/32,3/28} {
+    \draw[fill=white] (4,\y-2) rectangle (14,\y+2);
+    \node[font=\scriptsize\ttfamily] at (9,\y) {\i};
+  }
+  \draw[fill=ln-accent!22] (4,26) rectangle (14,30);
+  \node[font=\scriptsize\ttfamily] at (9,28) {3};
+  % file
+  \node[obj, minimum width=26mm] (file) at (36,28)
+    {\iflangja{ファイル\\（オフセット，モード）}{file\\(offset, mode)}};
+  \draw[->] (14,28) -- (file.west);
+  % dentries
+  \draw[densely dotted, ln-muted, fill=ln-box] (3,9) rectangle (70,19);
+  \node[lab, anchor=north west, text=ln-muted] at (3.5,8.6) {\iflangja{dentry キャッシュ（メモリ上のみ）}{dentry cache (in memory only)}};
+  \node[den] (r) at (10,14) {/};
+  \node[den] (u) at (24,14) {users};
+  \node[den] (j) at (39,14) {joe};
+  \node[den] (n) at (58,14) {notes.txt};
+  \draw[->] (r) -- (u);  \draw[->] (u) -- (j);  \draw[->] (j) -- (n);
+  \draw[->] (file.east) -| (n.north);
+  % inode in memory
+  \node[obj, minimum width=32mm, minimum height=15mm] (ino) at (97,20)
+    {\iflangja{iノード\\所有者，権限，サイズ，\\ブロックの一覧}{inode\\owner, permissions, size,\\list of blocks}};
+  \draw[->] (n.east) -- (ino.west |- n.east);
+  % on-disk layout
+  \def\seg#1#2#3#4{\draw[fill=#3] (#1,-15) rectangle (#2,-8);
+    \node[lab] at ({(#1+#2)/2},-11.5) {#4};}
+  \seg{4}{30}{ln-accent!22}{\iflangja{スーパーブロック}{superblock}}
+  \seg{30}{58}{ln-box}{\iflangja{iノードブロック}{inode blocks}}
+  \seg{58}{98}{white}{\iflangja{データブロック}{data blocks}}
+  \seg{98}{118}{black!8}{\iflangja{空きブロック}{free blocks}}
+  \draw[<->, densely dashed] (85,12.5) -- (48,-8);
+  \node[lab, anchor=east] at (64,3.2) {\iflangja{ディスク上の表現}{on-disk copy}};
+  \foreach \x in {66,78,90} \draw[->] (97,12.5) -- (\x,-8);
+  \draw[->, ln-accent] (17,-8) .. controls (22,-4) and (36,-4) .. (44,-8);
+  \node[lab, text=ln-accent, anchor=south] at (30,-3.7) {\iflangja{配置の地図}{map of the layout}};
+\end{tikzpicture}

@@ -1,0 +1,55 @@
+% Message-based IPC: a request-response exchange through a kernel channel.
+% Every numbered crossing is one system call and one data copy.
+% Usage: \input{figures/l09-message-ipc}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  proc/.style={draw, rounded corners=2pt, fill=ln-box, align=center,
+               minimum width=26mm, minimum height=9mm, inner sep=1pt},
+  port/.style={draw, fill=ln-accent!15, minimum width=4mm,
+               minimum height=21mm, inner sep=0pt},
+  cell/.style={draw, fill=white, minimum width=4mm, minimum height=4.5mm,
+               inner sep=0pt},
+  msgc/.style={cell, fill=ln-accent!35},
+  stepn/.style={circle, draw, fill=white, inner sep=0.5pt,
+               minimum size=3.6mm, font=\scriptsize\sffamily\bfseries},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  >={Stealth[length=1.6mm]}]
+  % processes
+  \node[proc] (p1) at (14,28) {P1 (\iflangja{クライアント}{client})};
+  \node[proc] (p2) at (98,28) {P2 (\iflangja{サーバ}{server})};
+  % user/kernel boundary
+  \draw[dashed, ln-rule, thick] (0,19) -- (116,19);
+  \node[lab, anchor=south] at (56,19.5) {\iflangja{ユーザモード}{user mode}};
+  \node[lab, anchor=north] at (56,18.5) {\iflangja{カーネルモード}{kernel mode}};
+  % channel
+  \draw[rounded corners=2pt, fill=ln-box] (26,-20) rectangle (86,10);
+  \node[port] (pt1) at (32,-3.5) {};
+  \node[port] (pt2) at (80,-3.5) {};
+  \node[lab, anchor=north] at (32,-14.6) {\iflangja{ポート}{port}};
+  \node[lab, anchor=north] at (80,-14.6) {\iflangja{ポート}{port}};
+  \foreach \i in {0,...,7} {
+    \pgfmathsetmacro{\x}{42+4*\i}
+    \ifnum\i>5 \node[msgc] at (\x,1.5) {}; \else \node[cell] at (\x,1.5) {}; \fi
+    \ifnum\i<2 \node[msgc] at (\x,-8.5) {}; \else \node[cell] at (\x,-8.5) {}; \fi
+  }
+  \draw[->] (34,1.5) -- (40,1.5);
+  \draw[->] (72,1.5) -- (78,1.5);
+  \draw[->] (78,-8.5) -- (72,-8.5);
+  \draw[->] (40,-8.5) -- (34,-8.5);
+  \node[lab, anchor=south] at (56,4.2) {\iflangja{要求}{requests}};
+  \node[lab, anchor=north] at (56,-11.2) {\iflangja{応答}{responses}};
+  \node[lab, anchor=north] at (56,-20.5)
+    {\iflangja{チャネル（カーネル内のバッファ）}{channel (kernel buffers)}};
+  % the four system calls
+  \draw[->, thick] (22,23.5) -- (22,1.5) -- (30,1.5);
+  \draw[->, thick] (82,1.5) -- (90,1.5) -- (90,23.5);
+  \draw[->, thick] (106,23.5) -- (106,-8.5) -- (82,-8.5);
+  \draw[->, thick] (30,-8.5) -- (6,-8.5) -- (6,23.5);
+  \node[stepn] at (22,19) {1};
+  \node[stepn] at (90,19) {2};
+  \node[stepn] at (106,19) {3};
+  \node[stepn] at (6,19) {4};
+  \node[lab, anchor=west, text=black] at (24.2,13) {\texttt{send}};
+  \node[lab, anchor=east, text=black] at (88,13)   {\texttt{recv}};
+  \node[lab, anchor=east, text=black] at (104,13)  {\texttt{send}};
+  \node[lab, anchor=west, text=black] at (8.2,13)  {\texttt{recv}};
+\end{tikzpicture}

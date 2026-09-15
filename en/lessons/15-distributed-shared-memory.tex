@@ -1,0 +1,782 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Distributed Shared Memory}
+\lessoninfo{
+  video={P4L3},
+  textbook={Nitzberg and Lo \cite{nitzberg1991}; OSTEP \cite{ostep} ch.~48; Tanenbaum and Bos \cite{tanenbaum2015} ch.~8; Tanenbaum and van Steen \cite{tanenbaum2007} ch.~7},
+  keywords={distributed shared memory, RDMA, sharing granularity, false sharing, access algorithm, migration, replication, consistency management, page fault, consistency model, strict consistency, sequential consistency, causal consistency, weak consistency},
+}
+
+Lesson~14 studied distributed file systems, in which servers own the files
+and serve them to clients that cache parts of them.  In many distributed
+applications, however, every node both owns a part of the state and serves
+it to the others.  This lesson examines distributed shared memory, which
+lets processes on different machines share memory as if they ran on a
+single shared memory multiprocessor, as an example of how such distributed
+state is managed.  It discusses the design choices of a DSM
+system---granularity, access patterns, migration versus replication and
+consistency management---how a DSM locates its pages and uses the MMU to
+intercept accesses, and the consistency models that define what processes
+observe when they share memory.
+
+\section{Peer distributed applications}
+\label{sec:l15-peer}
+
+In the distributed file systems of Lesson~14 the roles of the machines are
+clearly divided.\source{P4L3, lesson preview, visual metaphor, reviewing
+distributed file systems, peer distributed applications.}  Servers own and
+manage the state, the files, and provide the service, file access; clients
+send requests to the servers.  Clients cache parts of the state, which
+lowers the latency of their accesses and lets a server support more
+clients, but the state itself belongs to the servers.
+
+In many distributed applications no such division exists.  In big data
+analytics, web search or content sharing, the state of the application is
+distributed over all of its nodes: every node owns a portion of the state
+and provides service on that portion to the other nodes, while it also
+uses the state owned by others.  Every node is thus both a client and a
+server, and all nodes are peers; we call such applications \emph{peer
+distributed applications}.  The word \enquote{peer} is used loosely here.
+In a peer-to-peer system (Lesson~14)\index{peer-to-peer} even the control
+and management of the overall system are carried out by all peers, whereas
+a peer distributed application may assign management tasks, such as
+keeping track of which node holds which part of the state, to designated
+nodes.
+
+Managing state that is spread over peers raises three questions, which
+recur throughout this lesson:
+\begin{description}
+  \item[Placement] On which node should each part of the state reside?
+    Access is fastest when the state resides on the node of the processes
+    that access it most.
+  \item[Migration] When a process accesses state that resides on another
+    node, how and when is the state brought to the process's node, by
+    moving it or by copying it?
+  \item[Sharing rules] When several nodes access the same state, which
+    rules determine the order in which their operations take effect, and
+    when each node observes the updates made by the others?
+\end{description}
+Distributed shared memory, a peer distributed application whose state is
+memory, is the example on which the lesson studies these questions.
+
+\section{Distributed shared memory}
+\label{sec:l15-dsm}
+
+A shared memory multiprocessor (Lesson~7)\index{shared memory
+multiprocessor} lets threads on different CPUs cooperate through memory
+that all of them access, but its memory is limited to what one machine can
+hold.\source{P4L3, distributed shared memory; Nitzberg and Lo
+\cite{nitzberg1991}; OSTEP ch.~48; Tanenbaum and Bos ch.~8.}  Distributed
+shared memory extends the model to many machines.
+
+\begin{definition}[Distributed shared memory]
+  A service that manages memory across the nodes of a network, so that the
+  applications running on top of it have the illusion of running on a
+  single shared memory machine, is called
+  \term{distributed shared memory}[分散共有メモリ]%
+  \index{DSM|see{distributed shared memory}} (DSM).  Processes on any node
+  read and write one shared address space, whose contents reside in the
+  physical memories of the different nodes.
+\end{definition}
+
+Like every peer distributed application, each node of a DSM system
+(\cref{fig:l15-dsm})
+\begin{itemize}
+  \item owns state: a portion of the physical memory of the system, namely
+    the part of its own memory that it contributes to the DSM;
+  \item provides service on that state: read and write operations on its
+    memory, which may be issued by processes on any node;
+  \item takes part in consistency protocols with the other nodes, which
+    ensure that accesses to the shared memory remain meaningful when
+    several nodes access the same memory---for example, that a read returns
+    the value of the most recent write.
+\end{itemize}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l15-dsm}
+  \caption{Distributed shared memory.  Every page $p_i$ of the shared
+    address space resides in memory contributed by one of the nodes; the
+    DSM layer of each node serves accesses to local pages and obtains
+    remote pages over the network.}
+  \label{fig:l15-dsm}
+\end{figure}
+
+DSM permits applications to scale beyond the memory limits of a single
+machine: an application that needs more memory than one machine holds
+obtains it from other machines.  It also provides shared memory at a lower
+cost, because a single machine with a very large memory is
+disproportionately more expensive than several commodity machines with
+moderate memories.  The price is latency.  An access to memory that
+resides on another node crosses the network, which is orders of magnitude
+slower than an access to local memory.  Commodity interconnects reduce this
+cost by supporting remote direct memory access.
+
+\begin{definition}[Remote direct memory access]
+  With \term{remote direct memory access}[RDMA]%
+  \index{RDMA|see{remote direct memory access}} (RDMA), a network interface
+  transfers data directly between the memory of its own machine and the
+  memory of a remote machine, without involving the CPU or the operating
+  system of the remote machine in the transfer.
+\end{definition}
+
+RDMA extends direct memory access\index{direct memory access} (Lesson~11)
+across the network.  It is typically combined with operating system
+bypass\index{operating system bypass} (Lesson~11), so that the kernel of
+neither machine lies on the data path.\margin{InfiniBand, RoCE and iWARP
+are interconnects that provide RDMA.}
+
+\section{Hardware and software DSM}
+\label{sec:l15-hwsw}
+
+DSM can be provided by hardware, by software, or by a combination of
+both.\source{P4L3, hardware vs.\ software DSM, DSM quiz; Nitzberg and Lo
+\cite{nitzberg1991}.}
+\begin{description}
+  \item[Hardware-supported DSM] relies on a special-purpose interconnect.
+    The operating system of each node is given the impression that it
+    manages a physical memory much larger than the node's own, spanning
+    several nodes.  An access to an address that resides on another node is
+    translated by the network interface card (NIC) into a message to that
+    node, and the NICs take part in all aspects of managing the shared
+    memory.  Such hardware is expensive; it is used in high-end systems
+    where performance is paramount, as in high-performance computing.
+  \item[Software-supported DSM] performs everything in software: locating
+    the node that holds the memory, fetching it, detecting accesses and
+    keeping copies consistent.  The software is part of the operating
+    system or of the runtime of a programming language; the two share
+    different units of memory (\cref{sec:l15-granularity}).
+  \item[Hybrid DSM] divides the work between the two.  Hardware, the MMU in
+    particular, performs what must happen on every access: it translates
+    addresses and raises an exception when an access is not permitted by
+    the current mapping.  Software makes the decisions that require
+    knowledge of the system as a whole, for example which pages to
+    prefetch\index{prefetching}, that is, to obtain from other nodes before
+    they are accessed.
+\end{description}
+
+\section{Sharing granularity}
+\label{sec:l15-granularity}
+
+The first design decision of a DSM is the unit of sharing: the unit of
+memory that the DSM transfers between nodes, replicates and keeps
+consistent as a whole.\source{P4L3, DSM design: sharing granularity;
+Nitzberg and Lo; Tanenbaum and Bos ch.~8.}  On a shared memory
+multiprocessor the hardware keeps the CPU caches coherent at the
+granularity of cache lines (Lesson~10),\index{cache coherence} units of a
+few tens of bytes; this is affordable because the hardware coordinates the
+caches within nanoseconds.  In a DSM every act of coordination costs
+messages over the network, which makes such a fine granularity far too
+expensive.  The candidates are:
+\begin{description}
+  \item[Variables] Sharing individual variables is too fine as well.  A
+    variable occupies only a few bytes, so the messages needed to
+    coordinate each access would cost far more than the data are worth.
+  \item[Pages] A page, commonly \SI{4}{\kibi\byte}, is the unit that the
+    operating system already manages.  A page-based DSM is implemented by
+    the operating system in cooperation with the MMU
+    (\cref{sec:l15-implementing}); it is transparent to applications and
+    independent of the language they are written in.
+  \item[Objects] A language runtime knows the objects that a program
+    creates.  An object-based DSM, implemented in the runtime, shares units
+    that correspond to the program's data structures and needs no change
+    to the operating system, but only programs that use that runtime
+    benefit from it.
+\end{description}
+
+A coarser granularity amortizes the cost of a transfer or of an act of
+coordination over more data, but it also places unrelated data in the same
+unit.
+
+\begin{definition}[False sharing]
+  The situation in which data that are not shared---each accessed by
+  processes on a different node---reside in the same unit of sharing, so
+  that the DSM coordinates the accesses to that unit as if the data were
+  shared, is called \term{false sharing}[偽共有].
+\end{definition}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l15-false-sharing}
+  \caption{False sharing.  (a) Node 1 writes \texttt{x} and node 2 writes
+    \texttt{y}; since both reside on page $p$, the page moves back and
+    forth.  (b) On separate pages $p$ and $q$, both accesses remain local.}
+  \label{fig:l15-false-sharing}
+\end{figure}
+
+\begin{example}
+  Variables \texttt{x} and \texttt{y} reside on the same page $p$.  A
+  process on node~1 writes only \texttt{x}, a process on node~2 writes
+  only \texttt{y}; each writes its variable every \SI{10}{\milli\second},
+  and the writes of the two processes alternate.  The processes share no
+  data, yet a page-based DSM sees two nodes writing page $p$
+  (\cref{fig:l15-false-sharing}a).  Every write finds the current contents
+  of $p$ on the other node, so $p$ is transferred every
+  \SI{5}{\milli\second}, 200 times per second, which amounts to
+  $200\times\SI{4}{\kibi\byte} = \SI{800}{\kibi\byte}$ of network traffic
+  per second.  If a transfer takes \SI{0.5}{\milli\second}, each process
+  waits \SI{0.5}{\milli\second} of every \SI{10}{\milli\second},
+  \SI{5}{\percent} of its time.  With \texttt{x} and \texttt{y} on
+  different pages (\cref{fig:l15-false-sharing}b), no page is transferred
+  after the first access.
+\end{example}
+
+False sharing is avoided by placing data that different nodes access in
+different units, which the programmer, the compiler or a memory allocator
+can do when the access pattern is known.
+
+\section{Access algorithms}
+\label{sec:l15-access}
+
+What a DSM must provide depends on the access algorithm of the applications
+that run on it.\source{P4L3, DSM design: access algorithm; Nitzberg and Lo.}
+The access algorithm describes how many nodes read and write the same unit
+of memory at the same time; three algorithms are distinguished.
+\begin{description}
+  \item[SRSW] Under
+    \term{single reader/single writer}[単一リーダ単一ライタ]%
+    \index{SRSW|see{single reader/single writer}} (SRSW) access, only one
+    node at a time reads and writes a unit.  The main task of the DSM is to
+    make memory that resides on other nodes accessible; since no two nodes
+    use a unit at the same time, there are no concurrent accesses to
+    coordinate.
+  \item[MRSW] Under
+    \term{multiple readers/single writer}[複数リーダ単一ライタ]%
+    \index{MRSW|see{multiple readers/single writer}} (MRSW) access, several
+    nodes may read a unit at the same time, but only one node writes it.
+    The DSM must ensure that every read returns the value of the most
+    recent write.
+  \item[MRMW] Under
+    \term{multiple readers/multiple writers}[複数リーダ複数ライタ]%
+    \index{MRMW|see{multiple readers/multiple writers}} (MRMW) access,
+    several nodes may both read and write a unit.  In addition, the DSM
+    must order the writes correctly, so that all nodes observe them in the
+    same order and reads return the most recent write.
+\end{description}
+
+\section{Migration and replication}
+\label{sec:l15-migration}
+
+The key performance metric of a DSM is access latency, the time that a
+read or write of shared memory takes.\source{P4L3, DSM design: migration
+vs.\ replication, migration vs.\ replication quiz; Nitzberg and Lo.}  Since
+a remote access is orders of magnitude slower than a local one, even a
+small fraction of remote accesses dominates the average.
+
+\begin{example}
+  \label{ex:l15-latency}
+  A local memory access takes \SI{100}{\nano\second}, and an access to a
+  page that must first be obtained from another node takes
+  \SI{0.5}{\milli\second}.  If a fraction $f$ of the accesses are remote,
+  the average access latency is
+  \begin{equation}
+    \bar{t} = (1-f)\times\SI{100}{\nano\second} + f\times\SI{0.5}{\milli\second} .
+    \label{eq:l15-latency}
+  \end{equation}
+  For $f=10^{-4}$, $\bar{t} \approx \SI{100}{\nano\second} +
+  \SI{50}{\nano\second} = \SI{150}{\nano\second}$, 1.5 times the latency of
+  local memory; for $f=10^{-2}$, $\bar{t} = \SI{99}{\nano\second} +
+  \SI{5000}{\nano\second} \approx \SI{5.1}{\micro\second}$, about 51 times.
+\end{example}
+
+Low latency therefore requires locality: the memory that a process accesses
+should reside on the process's own node.  Two techniques bring memory to
+the processes that access it (\cref{fig:l15-migration}).
+\begin{description}
+  \item[Migration] The DSM keeps a single copy of each unit and moves it to
+    the node that accesses it.  With one copy there is nothing to keep
+    consistent.  Migration suits SRSW access, where one node uses a unit
+    for a stretch of accesses before another node needs it.  It transfers
+    the unit whenever a different node accesses it, which is expensive when
+    nodes take turns for short periods, and it cannot serve several nodes at
+    the same time.
+  \item[Replication] The DSM copies a unit to several nodes, each of which
+    accesses its local replica; caching is a form of
+    replication\index{replication}.
+    Replication is the more general technique: it lets several nodes read,
+    or even write, a unit at the same time, as MRSW and MRMW access
+    require.  Its price is consistency management
+    (\cref{sec:l15-management}): when one replica is written, the others
+    must be invalidated or updated.  This overhead grows with the number of
+    replicas, and the DSM can control it by limiting the number of replicas
+    of each unit.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l15-migration}
+  \caption{Bringing page $p$ to the nodes that access it.  (a) Migration
+    moves the single copy.  (b) Replication keeps copies on several nodes;
+    a write by the owner A invalidates the replicas on B and C.}
+  \label{fig:l15-migration}
+\end{figure}
+
+\begin{example}
+  Page $p$ initially resides on node~A, and nodes A, B and C access it in
+  the sequence of \cref{tab:l15-migration}.  A page transfer takes
+  \SI{0.5}{\milli\second} and an invalidation message
+  \SI{0.05}{\milli\second}.  Migration moves $p$ on every access by a node
+  that does not hold it: 7 transfers, \SI{3.5}{\milli\second}.  With
+  replication, B and C fetch replicas once and read them locally until A's
+  write in step~6 invalidates them: 4 transfers and 2 invalidations,
+  \SI{2.1}{\milli\second}.  Had A made all eight accesses, neither technique
+  would transfer anything.  Had A and B instead alternated writes, every
+  write would invalidate the other node's replica and every next access
+  would fetch it again, so that replication would cost as many transfers as
+  migration plus the invalidations.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Accesses to page $p$ under migration and under replication with
+    invalidation on write.}
+  \label{tab:l15-migration}
+  \small
+  \begin{tabular}{@{}rl ll ll@{}}
+    \toprule
+    & & \multicolumn{2}{c}{Migration} & \multicolumn{2}{c@{}}{Replication} \\
+    \cmidrule(lr){3-4}\cmidrule(l){5-6}
+    Step & Access & $p$ at & Transfer & Copies at & Messages \\
+    \midrule
+    0 & (initial) & A & --- & A & --- \\
+    1 & A writes & A & --- & A & --- \\
+    2 & B reads & B & A$\to$B & A, B & fetch from A \\
+    3 & C reads & C & B$\to$C & A, B, C & fetch from A \\
+    4 & B reads & B & C$\to$B & A, B, C & --- \\
+    5 & C reads & C & B$\to$C & A, B, C & --- \\
+    6 & A writes & A & C$\to$A & A & invalidate B, C \\
+    7 & B reads & B & A$\to$B & A, B & fetch from A \\
+    8 & C reads & C & B$\to$C & A, B, C & fetch from A \\
+    \midrule
+    \multicolumn{2}{@{}l}{Total} & & 7 transfers & & 4 fetches, 2 invalidations \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Neither technique is best for every workload.  Migration is appropriate
+when a unit is used by one node at a time for long stretches.  Replication
+is necessary when several nodes access a unit concurrently, and it pays off
+when reads dominate.  When replicated units are written often, the
+consistency management that every write triggers can cost more than the
+locality of the replicas saves.
+
+\begin{keypoint}
+  DSM performance is governed by access latency, and low latency requires
+  locality.  Migration moves a single copy and suits SRSW access;
+  replication keeps several copies, supports concurrent access, and pays
+  for it with consistency management that grows with the number of
+  replicas and the frequency of writes.
+\end{keypoint}
+
+\section{Consistency management}
+\label{sec:l15-management}
+
+Once memory is replicated, the DSM must keep the replicas
+consistent.\source{P4L3, DSM design: consistency management; Nitzberg and
+Lo.}  On a shared memory multiprocessor, software orders its accesses with
+locks, and the hardware keeps the copies of memory in the CPU caches
+coherent (Lesson~10).  A DSM has no such hardware; its mechanisms resemble
+those with which a distributed file system keeps client caches consistent
+(Lesson~14):
+\begin{description}
+  \item[Push] When a replica is written, the DSM immediately pushes
+    invalidations to the nodes that hold other replicas of the same unit.
+    This approach is \emph{proactive} and \emph{eager}; it is also
+    \emph{pessimistic}, because it assumes that a stale replica would be
+    read and cause harm, and removes stale replicas as soon as they arise.
+  \item[Pull] Nodes pull information about modifications from the owner of
+    a unit, periodically or when they need it.  This approach is
+    \emph{reactive} (on demand) and \emph{lazy}; it is also
+    \emph{optimistic}, because it hopes that using a stale replica for a
+    while does no harm, and it saves the messages of eager propagation.
+\end{description}
+When the DSM actually triggers these mechanisms---on every write, on every
+access, periodically, or only at points that the application
+designates---is determined by the consistency model that the DSM provides
+for the shared state (\cref{sec:l15-models}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l15-push-pull}
+  \caption{Node A writes page $p$ at \SI{0.5}{\second}; node B holds a
+    replica.  (a) A pushes an invalidation, and B fetches the new contents
+    on its next read.  (b) B polls every \SI{2}{\second}, and its replica is
+    stale until the next poll.}
+  \label{fig:l15-push-pull}
+\end{figure}
+
+\begin{example}
+  Node~A owns page $p$, and node~B holds a replica.  A writes $p$ at
+  $t=\SI{0.5}{\second}$, and B reads $p$ at \SI{1}{\second} and at
+  \SI{3}{\second} (\cref{fig:l15-push-pull}).  With push, A sends B an
+  invalidation at \SI{0.5}{\second}; B's read at \SI{1}{\second} finds no
+  valid replica and fetches the new contents.  With pull, B asks A every
+  \SI{2}{\second} whether $p$ has changed.  B's read at \SI{1}{\second}
+  returns the stale contents; the poll at \SI{2}{\second} reveals the
+  modification, and the read at \SI{3}{\second} returns the new contents.
+  A replica may thus remain stale for up to one polling period.  In
+  exchange, pulling costs messages at a fixed rate: 10 replicas that poll
+  every \SI{2}{\second} send 5 messages per second, whether $p$ is written
+  a hundred times per second or not at all.  Pushing sends no message while
+  $p$ is not written, and at most one invalidation per replica for each
+  write.
+\end{example}
+
+\section{DSM architecture}
+\label{sec:l15-architecture}
+
+We now consider a page-based DSM implemented by the operating
+system.\source{P4L3, DSM architecture, indexing distributed state;
+Nitzberg and Lo.}  Its organization follows from the
+preceding design choices.
+\begin{itemize}
+  \item Every node contributes part of its main memory, a number of page
+    frames, to the DSM.  The contributed pages form a system-wide pool of
+    shared memory, accessible from all nodes.
+  \item Every node keeps local copies of pages that its processes access, a
+    cache of replicas, to lower the access latency.
+  \item Management is distributed as well: every node is responsible for
+    part of the shared memory.
+\end{itemize}
+For each page the DSM distinguishes the following roles.
+\begin{description}
+  \item[Home node] The node that manages the page, also called its
+    \emph{manager}.  It maintains the state of the page: which nodes access
+    it, whether it has been modified, whether caching of it is enabled,
+    whether it is locked, and where its replicas reside.
+  \item[Owner] The node that currently holds the authoritative copy of the
+    page and controls its updates, for example the node that most recently
+    obtained the right to write it.  Ownership changes as the page is
+    accessed, so the owner need not be the home node; the home node keeps
+    track of the current owner.
+  \item[Explicit replicas] Copies that the DSM creates deliberately, rather
+    than as a side effect of access, for load balancing, for performance,
+    or for reliability; in datacenters, for instance, data are commonly
+    kept in three copies.  The home node controls where these replicas are
+    placed and how they are managed.
+\end{description}
+
+\subsection{Indexing distributed state}
+
+To serve an access, a node must find the metadata of the page, which is
+maintained by the page's manager.  A DSM organizes this metadata as
+follows (\cref{fig:l15-indexing}).
+\begin{itemize}
+  \item Every page is identified by an address composed of a node ID and a
+    page frame number\index{page frame number} (PFN); the node ID names the
+    page's home node, and the PFN the frame on that node.
+  \item A global map from page ID to the ID of the manager node is
+    replicated on every node, so that any node finds the manager of any
+    page locally, without exchanging messages.
+  \item The metadata of the pages themselves are partitioned: each manager
+    keeps the metadata of the pages it manages.
+\end{itemize}
+Rather than deriving the manager directly from bits of the page ID, the
+global map can be implemented as a \emph{mapping table}: part of the page
+ID serves as an index into the table, and the entry names the manager
+node.  The manager of a set of pages can then be changed, for load
+balancing or after a failure, by updating a table entry on all nodes, while
+the page IDs, and every reference that uses them, remain unchanged.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l15-indexing}
+  \caption{Indexing distributed state.  The node-ID field of the page ID
+    indexes the global mapping table, which names the manager of the page;
+    the manager keeps the metadata of its pages.}
+  \label{fig:l15-indexing}
+\end{figure}
+
+\begin{example}
+  A DSM identifies each page by a 32-bit address: an 8-bit node ID followed
+  by a 24-bit PFN, so that each of up to 256 nodes can contribute up to
+  $2^{24}$ frames of \SI{4}{\kibi\byte}, \SI{64}{\gibi\byte} of memory.
+  Page \texttt{0x050012A3} is frame \texttt{0x0012A3} of home node~5.  The
+  mapping table is indexed by the node ID field and initially maps each
+  index $i$ to node~$i$.  When node~5 becomes overloaded, the management of
+  its pages is handed to node~9 by setting entry~5 to 9 on all nodes and
+  moving the page metadata from node~5 to node~9
+  (\cref{fig:l15-indexing}).  No page ID changes.  Had the manager been
+  taken directly from the node ID field, every one of these pages would
+  have needed a new ID, and every reference to it would have had to be
+  updated.
+\end{example}
+
+\section{Implementing DSM}
+\label{sec:l15-implementing}
+
+A DSM must intercept accesses to the shared memory for two
+reasons.\source{P4L3, implementing DSM; Nitzberg and Lo; OSTEP ch.~48.}
+When a process accesses memory that is not present on its node, the DSM
+must send messages to the node that holds it, requesting access.  When a
+process updates memory of which other nodes hold replicas, the DSM must
+detect the update and perform the consistency operations it requires.  At
+the same time, accesses to memory that is present locally and needs no
+coordination must involve neither the DSM nor the operating system: an
+intervention by software in every memory access would forfeit the
+performance that locality is meant to provide.
+
+A page-based DSM resolves this conflict with the hardware support of the
+MMU (\cref{fig:l15-mmu}).  The MMU traps into the operating system with a
+page fault\index{page fault} (Lesson~8) whenever a virtual address has no
+valid mapping, or the mapping does not permit the kind of access attempted;
+every other access completes in hardware.  The DSM sets up the mappings so
+that exactly the accesses it must intercept fault.
+\begin{itemize}
+  \item A page that is not present on the node has no valid mapping.  An
+    access to it traps, and the operating system passes the fault to the
+    DSM, which requests the page from its owner, installs a mapping for the
+    received copy and resumes the process.
+  \item A page of which the node holds a replica is mapped read-only
+    through its protection bits\index{protection bits} (Lesson~8).  Reads
+    proceed without traps.  A write traps, and the DSM performs the
+    consistency operations---it invalidates the other replicas and takes
+    over ownership---before it enables writing and resumes the process.
+\end{itemize}
+Other information recorded by the MMU is useful as well.  The dirty
+bit\index{dirty bit} of a page shows whether the page has been modified, and
+hence whether modifications must be propagated; the access
+bit\index{access bit} shows whether a local replica has been used recently,
+which helps to decide which replicas to evict when memory runs short, as
+in page replacement (Lesson~8).  An object-based DSM intercepts accesses in
+the language runtime instead, which mediates the program's operations on
+shared objects.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l15-mmu}
+  \caption{Intercepting accesses in a page-based DSM.  Accesses permitted by
+    the current mapping never leave the hardware; the others fault, and the
+    DSM fetches the page or performs consistency operations before the
+    access is repeated.}
+  \label{fig:l15-mmu}
+\end{figure}
+
+\begin{example}
+  Page $p$ initially resides only on node~1, its owner, which maps it
+  read-write.  \Cref{tab:l15-mmu} traces accesses by three nodes under MRSW
+  access with invalidation on write.  When node~2 obtains a replica in
+  step~1, node~1's mapping is downgraded to read-only, so that a later write
+  by node~1 would fault and invalidate the replica.  Of the seven accesses,
+  four fault; the reads in steps~2 and~3 and the write in step~5 complete
+  in hardware, because the mappings already permit them.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Accesses to page $p$ and the faults they cause.  The last column
+    shows the mappings of $p$ on nodes 1/2/3 after each step (RW
+    read-write, RO read-only, --- none).}
+  \label{tab:l15-mmu}
+  \small
+  \begin{tabular}{@{}rll>{\raggedright\arraybackslash}p{0.34\linewidth}l@{}}
+    \toprule
+    Step & Access & Fault & DSM action & Maps \\
+    \midrule
+    0 & (initial) & --- & --- & RW/---/--- \\
+    1 & node 2 reads & page fault & fetch $p$ from owner node~1; downgrade
+      node~1 to RO & RO/RO/--- \\
+    2 & node 2 reads & none & --- & RO/RO/--- \\
+    3 & node 1 reads & none & --- & RO/RO/--- \\
+    4 & node 2 writes & protection & invalidate node~1's copy; node~2
+      becomes owner & ---/RW/--- \\
+    5 & node 2 writes & none & --- & ---/RW/--- \\
+    6 & node 3 reads & page fault & fetch $p$ from owner node~2; downgrade
+      node~2 to RO & ---/RO/RO \\
+    7 & node 2 writes & protection & invalidate node~3's copy & ---/RW/--- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}
+  A page-based DSM places the shared pages in memory contributed by all
+  nodes, finds each page's manager through a replicated global map, and
+  uses the MMU to intercept exactly the accesses that need it: accesses to
+  pages that are not present, and writes to replicated pages.  All other
+  accesses proceed at hardware speed.
+\end{keypoint}
+
+\needspace{10\baselineskip}
+\section{Consistency models}
+\label{sec:l15-models}
+
+The mechanisms of \cref{sec:l15-management} can be triggered at different
+times, and the resulting guarantees differ.\source{P4L3, consistency
+model; strict, sequential, causal and weak consistency; Tanenbaum and van
+Steen \cite{tanenbaum2007} ch.~7.}  For a
+distributed file system these guarantees are the file sharing semantics of
+Lesson~14; for memory, and for shared state in general, they are stated by
+a consistency model.
+
+\begin{definition}[Consistency model]
+  A \term{consistency model}[一貫性モデル] is an agreement between memory,
+  or any shared state, and the software layers above it: the memory
+  guarantees to behave correctly---with respect to the ordering of
+  accesses and to the propagation and visibility of updates---provided
+  that the software follows specific rules.
+\end{definition}
+
+File sharing semantics are thus consistency models for files.  To describe
+consistency models for memory we write $R_{m}(v)$ for a read
+that returns the value $v$ from memory location $m$, and $W_{m}(v)$ for a
+write of $v$ to $m$.  Operations are drawn on one timeline per process,
+with time increasing to the right; all locations initially hold 0.
+
+\subsection{Strict consistency}
+
+\begin{definition}[Strict consistency]
+  Under \term{strict consistency}[厳密一貫性] every update is visible
+  everywhere immediately: every read, on any node, returns the value of the
+  write to that location that is the most recent in real time, and all
+  nodes observe the updates in the order in which they were made.
+\end{definition}
+
+Strict consistency is what programmers intuitively expect of memory, but it
+is a theoretical model.  Even on a single shared memory multiprocessor,
+concurrent updates on different CPUs take effect in no guaranteed order
+unless the software adds locking and synchronization.  In a distributed
+system, updates travel over a network with non-zero latency, messages may
+be reordered or lost, and no global clock defines which of two writes on
+different nodes is the more recent; strict consistency cannot be
+guaranteed.
+
+\subsection{Sequential consistency}
+
+\begin{definition}[Sequential consistency]
+  Under \term{sequential consistency}[逐次一貫性] the result of every
+  execution is the same as if the operations of all processes were executed
+  in some sequential order, in which the operations of each process appear
+  in the order in which the process issued them, every read returns the
+  most recent write to its location, and all processes observe this same
+  order \cite{lamport1979}.
+\end{definition}
+
+Updates from different processes may thus be interleaved arbitrarily, and
+the interleaving need not match the real-time order, but all processes
+must see the same interleaving.
+
+\subsection{Causal consistency}
+
+A write \emph{causally depends} on an earlier write if the process that
+issued it had observed the earlier write before---for instance by reading
+the value it wrote---directly or through a chain of such dependencies.
+Writes of which neither depends on the other are \emph{concurrent}.
+
+\begin{definition}[Causal consistency]
+  Under \term{causal consistency}[因果一貫性] all processes observe causally
+  related writes in their causal order, and the operations of each process
+  in the order in which the process issued them; concurrent writes may be
+  observed in different orders by different processes.
+\end{definition}
+
+To provide causal consistency, the DSM must detect possible causal
+relationships, that is, record which updates a process had observed before
+each of its writes.\margin{Vector timestamps are a common way to record
+these dependencies.}  In exchange, it needs to coordinate only the order of
+causally related updates.
+
+\subsection{Weak consistency}
+
+Weak consistency introduces \emph{synchronization points}: operations, such
+as \texttt{sync}, that the DSM makes available to the software above it.
+
+\begin{definition}[Weak consistency]
+  Under \term{weak consistency}[弱一貫性] every update made before a
+  synchronization point is visible to all nodes after it; between
+  synchronization points no guarantee is given about which updates a node
+  observes.
+\end{definition}
+
+A DSM may offer a single synchronization operation for the entire shared
+state, or separate operations for subsets of the state, such as individual
+pages or objects, so that an application synchronizes only the state it
+needs.  Weak consistency limits data movement and coordination to the
+synchronization points, at which the updates made since the previous point
+can be propagated together.  In exchange, the DSM must maintain extra state
+to record and aggregate these updates, and between synchronization points
+processes may observe stale data.
+
+\subsection{Comparing the models}
+
+Strict, sequential and causal consistency form a hierarchy: every strictly
+consistent execution is sequentially consistent, and every sequentially
+consistent execution is causally consistent.  A weaker model admits more
+executions and therefore requires less coordination, but it gives the
+applications fewer guarantees.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l15-models}
+  \caption{Operations of \cref{ex:l15-models}.  P2's read of $m_1$ (grey)
+    occurs only in the variant in which P2's write depends on P1's.  The
+    dashed line is a synchronization point.}
+  \label{fig:l15-models}
+\end{figure}
+
+\begin{example}
+  \label{ex:l15-models}
+  In \cref{fig:l15-models}, P1 writes 1 to $m_1$ at $t_1$ and P2 writes 2 to
+  $m_2$ at $t_2$.  P3 and P4 read both locations at $t_3$ and $t_4$, in
+  opposite orders.  \Cref{tab:l15-models} lists three possible outcomes of
+  these reads and the models they satisfy.
+  \begin{itemize}
+    \item Outcome (a) is strictly consistent: every read returns the most
+      recent write in real time.
+    \item Outcome (b) is not: P4 reads 0 from $m_2$ at $t_3$, after 2 was
+      written at $t_2$.  It is sequentially consistent, because the order
+      $R_{m_1}(0)$ by P3, $R_{m_2}(0)$ by P4, $W_{m_1}(1)$, $W_{m_2}(2)$,
+      $R_{m_2}(2)$ by P3, $R_{m_1}(1)$ by P4 explains every read and
+      preserves the order of each process's operations.
+    \item Outcome (c) is not sequentially consistent: P3 observes
+      $W_{m_1}(1)$ before $W_{m_2}(2)$, P4 observes them the other way
+      round, and no single order explains both.  If the two writes are
+      concurrent, (c) is causally consistent.  If P2 read 1 from $m_1$
+      before writing $m_2$, however, $W_{m_2}(2)$ causally depends on
+      $W_{m_1}(1)$, and P4, which reads 2 from $m_2$ and afterwards 0 from
+      $m_1$, observes the effect before its cause.
+  \end{itemize}
+  With a synchronization point at $t_5$, all three outcomes are weakly
+  consistent, because no guarantee applies before $t_5$; the read of $m_1$
+  by P4 at $t_6$, however, must return 1.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Outcomes of the reads at $t_3$ and $t_4$ in \cref{ex:l15-models}.
+    The causal column gives the result for concurrent writes / for P2
+    reading $m_1$ before writing $m_2$.}
+  \label{tab:l15-models}
+  \small
+  \begin{tabular}{@{}lllcccc@{}}
+    \toprule
+    & P3 & P4 & Strict & Sequential & Causal & Weak \\
+    \midrule
+    (a) & $R_{m_1}(1)$, $R_{m_2}(2)$ & $R_{m_2}(2)$, $R_{m_1}(1)$ & yes & yes
+      & yes / yes & yes \\
+    (b) & $R_{m_1}(0)$, $R_{m_2}(2)$ & $R_{m_2}(0)$, $R_{m_1}(1)$ & no & yes
+      & yes / yes & yes \\
+    (c) & $R_{m_1}(1)$, $R_{m_2}(0)$ & $R_{m_2}(2)$, $R_{m_1}(0)$ & no & no
+      & yes / no & yes \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}[Lesson summary]
+  Distributed shared memory is a peer distributed application in which every
+  node contributes memory, serves accesses to it, and takes part in
+  consistency protocols, so that processes on many machines share one
+  address space.  Its design is determined by the granularity of sharing
+  (pages or objects, with the risk of false sharing), the access algorithm
+  (SRSW, MRSW, MRMW), the choice between migration and replication to
+  achieve locality, and consistency management by pushing invalidations or
+  pulling modifications.  A page-based DSM finds each page's manager through
+  a replicated mapping table and relies on MMU faults to intercept only the
+  accesses that need coordination.  Consistency models state what processes
+  observe: strict consistency is unattainable in practice; sequential
+  consistency requires one common order of all operations; causal
+  consistency orders only causally related writes; and weak consistency
+  guarantees visibility only at synchronization points.
+\end{keypoint}
+
+\end{document}

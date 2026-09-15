@@ -1,0 +1,40 @@
+% Segmentation combined with paging (x86): the selector indexes the segment
+% descriptor table; the offset is checked against the limit and added to
+% the base, giving a linear address that the page tables translate.
+% Usage: \input{figures/l08-segmentation}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  cell/.style={draw, minimum height=6mm, inner sep=0pt, anchor=south west},
+  box/.style={draw, fill=white, align=center, inner sep=1.5pt, minimum height=9mm},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  hd/.style={font=\scriptsize\sffamily\bfseries, anchor=south west}]
+  % logical address
+  \node[hd] at (0,44.5) {\iflangja{論理アドレス}{logical address}};
+  \node[cell, minimum width=16mm, fill=ln-source!16] at (0,38) {\iflangja{セレクタ}{selector}};
+  \node[cell, minimum width=16mm, fill=ln-box] at (16,38) {\iflangja{オフセット}{offset}};
+  % descriptor table
+  \draw[fill=white] (0,28) rectangle (28,33);
+  \draw[fill=ln-source!16] (0,22) rectangle (28,28) node[midway] {\iflangja{リミット}{limit}};
+  \draw[fill=ln-source!16] (0,16) rectangle (28,22) node[midway] {\iflangja{ベース}{base}};
+  \draw[fill=white] (0,11) rectangle (28,16);
+  \draw[fill=white] (0,6) rectangle (28,11);
+  \node[lab, anchor=north] at (14,5.5) {\iflangja{セグメント記述子表\\（GDT/LDT）}{segment descriptor\\table (GDT/LDT)}};
+  \draw[->] (8,38) -- (8,33) node[pos=0.5, right, font=\scriptsize\sffamily, text=ln-muted] {\iflangja{索引}{index}};
+  % limit check
+  \node[box, minimum width=20mm] (chk) at (48,31) {\iflangja{オフセット\\$<$ リミット？}{offset\\$<$ limit?}};
+  \draw[->] (32,41) -| (chk.north);
+  \draw[->] (28,25) -- (34,25) |- (chk.west);
+  \node[lab, anchor=west, text=ln-caution] (flt) at (64,31) {\iflangja{いいえ：フォールト}{no: fault}};
+  \draw[->, ln-caution] (chk.east) -- (flt.west);
+  % adder
+  \node[draw, circle, inner sep=0.5pt, fill=white, font=\footnotesize] (add) at (48,13) {$+$};
+  \draw[->] (chk.south) -- (add.north) node[pos=0.5, right, font=\scriptsize\sffamily] {\iflangja{はい}{yes}};
+  \draw[->] (28,19) -| (40,13) -- (add.west);
+  % linear -> paging -> physical
+  \node[box, minimum width=18mm, fill=ln-accent!10] (lin) at (68,13) {\iflangja{リニア\\アドレス}{linear\\address}};
+  \node[box, minimum width=18mm, fill=ln-accent!22] (pg) at (91,13) {\iflangja{ページ\\テーブル}{page\\tables}};
+  \node[box, minimum width=16mm] (pa) at (111,13) {\iflangja{物理\\アドレス}{physical\\address}};
+  \draw[->] (add.east) -- (lin.west);
+  \draw[->] (lin.east) -- (pg.west);
+  \draw[->] (pg.east) -- (pa.west);
+\end{tikzpicture}

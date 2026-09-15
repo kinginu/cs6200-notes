@@ -1,0 +1,37 @@
+% Context switches between two processes over time.
+% Usage: \input{figures/l02-context-switch}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  ex/.style={draw, fill=ln-accent!22, minimum height=7mm, inner sep=0pt},
+  os/.style={draw, fill=ln-box, minimum height=7mm, inner sep=1pt, font=\scriptsize\sffamily, align=center},
+  idle/.style={densely dashed, ln-rule, thick},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted}]
+  % row labels
+  \node[anchor=east] at (11,24) {P1};
+  \node[anchor=east] at (11,12) {OS};
+  \node[anchor=east] at (11,0)  {P2};
+  % P1 executing
+  \node[ex, minimum width=24mm] at (24,24) {\iflangja{実行中}{executing}};
+  \draw[idle] (36,24) -- (100,24);
+  \node[ex, minimum width=16mm] at (108,24) {\iflangja{実行中}{executing}};
+  % P2
+  \draw[idle] (12,0) -- (56,0);
+  \node[ex, minimum width=24mm] at (68,0) {\iflangja{実行中}{executing}};
+  \draw[idle] (80,0) -- (116,0);
+  % OS work
+  \node[os, minimum width=20mm] (s1) at (46,12)
+    {\iflangja{PCB\textsubscript{1} へ退避\\PCB\textsubscript{2} から復元}{save into PCB\textsubscript{1}\\restore PCB\textsubscript{2}}};
+  \node[os, minimum width=20mm] (s2) at (90,12)
+    {\iflangja{PCB\textsubscript{2} へ退避\\PCB\textsubscript{1} から復元}{save into PCB\textsubscript{2}\\restore PCB\textsubscript{1}}};
+  % transfers of control
+  \draw[->] (36,20.5) -- (36,15.5);
+  \draw[->] (56,8.5)  -- (56,3.5);
+  \draw[->] (80,3.5)  -- (80,8.5);
+  \draw[->] (100,15.5) -- (100,20.5);
+  \node[lab, anchor=east] at (35.5,18) {\iflangja{割り込み}{interrupt}};
+  \node[lab, anchor=east] at (79.5,6)  {\iflangja{割り込み}{interrupt}};
+  % context switch marks and time axis
+  \node[lab, anchor=north] at (46,-5) {\iflangja{コンテキストスイッチ}{context switch}};
+  \node[lab, anchor=north] at (90,-5) {\iflangja{コンテキストスイッチ}{context switch}};
+  \draw[->, ln-muted] (12,-11) -- (116,-11) node[lab, anchor=north east] at (116,-11.5) {\iflangja{時間}{time}};
+\end{tikzpicture}

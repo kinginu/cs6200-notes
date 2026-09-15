@@ -1,0 +1,48 @@
+% Co-scheduling two threads on the two hardware threads of an SMT CPU.
+% One instruction per cycle on the shared pipeline; a memory access takes
+% 4 cycles; switching between hardware threads is instantaneous.
+% Usage: \input{figures/l07-smt}   (width ~104 mm)
+\begin{tikzpicture}[x=8mm, y=1mm, font=\scriptsize\sffamily,
+  ex/.style={draw, fill=ln-accent!30},
+  mw/.style={draw, fill=ln-box},
+  rd/.style={draw, fill=white},
+  lab/.style={anchor=east, font=\scriptsize\sffamily},
+  ttl/.style={anchor=south west, font=\footnotesize\sffamily\bfseries, inner sep=1pt}]
+  % cycle numbers
+  \node[lab] at (-0.1,60) {\iflangja{サイクル}{cycle}};
+  \foreach \c in {1,...,10} \node at (\c-0.5,60) {\c};
+  % cells: \cell{row y}{cycle}{style}{text}
+  \def\cell#1#2#3#4{\draw[#3] (#2-1,#1) rectangle (#2,#1+5); \node at (#2-0.5,#1+2.5) {#4};}
+  % ---------- (a) two CPU-bound threads
+  \node[ttl] at (0,51.5) {\iflangja{(a) CPU バウンド 2 つ}{(a) two CPU-bound threads}};
+  \node[lab] at (-0.1,48.5) {HT\,0: C};
+  \node[lab] at (-0.1,42.5) {HT\,1: C};
+  \foreach \c in {1,3,5,7,9} { \cell{46}{\c}{ex}{C} \cell{40}{\c}{rd}{} }
+  \foreach \c in {2,4,6,8,10} { \cell{46}{\c}{rd}{} \cell{40}{\c}{ex}{C} }
+  % ---------- (b) two memory-bound threads
+  \node[ttl] at (0,32.5) {\iflangja{(b) メモリバウンド 2 つ}{(b) two memory-bound threads}};
+  \node[lab] at (-0.1,29.5) {HT\,0: M};
+  \node[lab] at (-0.1,23.5) {HT\,1: M};
+  \foreach \c in {1,6} { \cell{27}{\c}{ex}{M} }
+  \foreach \c in {2,3,4,5,7,8,9,10} { \cell{27}{\c}{mw}{} }
+  \foreach \c in {2,7} { \cell{21}{\c}{ex}{M} }
+  \foreach \c in {1,3,4,5,6,8,9,10} { \cell{21}{\c}{mw}{} }
+  \foreach \c in {3,4,5,8,9,10} { \node[text=ln-caution] at (\c-0.5,18.6) {\iflangja{空き}{idle}}; }
+  % ---------- (c) one CPU-bound and one memory-bound thread
+  \node[ttl] at (0,9.5) {\iflangja{(c) CPU バウンドとメモリバウンド}{(c) one CPU-bound, one memory-bound thread}};
+  \node[lab] at (-0.1,6.5) {HT\,0: M};
+  \node[lab] at (-0.1,0.5) {HT\,1: C};
+  \foreach \c in {1,6} { \cell{4}{\c}{ex}{M} }
+  \foreach \c in {2,3,4,5,7,8,9,10} { \cell{4}{\c}{mw}{} }
+  \foreach \c in {1,6} { \cell{-2}{\c}{rd}{} }
+  \foreach \c in {2,3,4,5,7,8,9,10} { \cell{-2}{\c}{ex}{C} }
+  % ---------- legend
+  \begin{scope}[yshift=-9mm]
+    \draw[ex] (0,-1.5) rectangle (0.5,1.5);
+    \node[anchor=west] at (0.55,0) {\iflangja{命令を実行}{executes an instruction}};
+    \draw[mw] (3.9,-1.5) rectangle (4.4,1.5);
+    \node[anchor=west] at (4.45,0) {\iflangja{メモリを待つ}{waits for memory}};
+    \draw[rd] (7.2,-1.5) rectangle (7.7,1.5);
+    \node[anchor=west] at (7.75,0) {\iflangja{実行可能だが待つ}{ready, not executing}};
+  \end{scope}
+\end{tikzpicture}

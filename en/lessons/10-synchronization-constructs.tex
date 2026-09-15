@@ -1,0 +1,767 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Synchronization Constructs}
+\lessoninfo{
+  video={P3L4},
+  textbook={OSTEP \cite{ostep} ch.~28, 31; Silberschatz et al.\ \cite{silberschatz2018} ch.~6--7},
+  keywords={spinlock, busy waiting, semaphore, reader-writer lock, monitor, serializer, path expression, barrier, wait-free synchronization, RCU, atomic instruction, test-and-set, cache coherence, test-and-test-and-set},
+}
+
+Lesson~3 introduced mutexes and condition variables, and Lesson~9 showed
+that processes communicating through shared memory need synchronization
+just as threads do.  This lesson surveys further synchronization
+constructs---spinlocks, semaphores, reader-writer locks, monitors and
+several less common ones---that are either simpler or more expressive than
+mutexes and condition variables.  It then turns to what every such
+construct ultimately rests on: atomic instructions provided by the
+hardware, and their interaction with the caches of a shared memory
+multiprocessor.
+
+\section{Beyond mutexes and condition variables}
+\label{sec:l10-limits}
+
+Mutexes and condition variables can express the synchronization policies
+of Lesson~3, but they have three limitations that motivate other
+constructs.\source{P3L4, more about synchronization; OSTEP ch.~28.}
+\begin{description}
+  \item[Error-prone use] Correctness rests entirely on the programmer.
+    Every access to shared state must lock the right mutex and release it
+    on every path, and every change of state must signal or broadcast the
+    right condition variable.  Most pitfalls listed in Lesson~3, such as
+    unlocking the wrong mutex or signalling the wrong condition variable,
+    violate these rules, and the constructs themselves detect none of
+    them.
+  \item[Limited expressive power] A mutex enforces exactly one policy: one
+    thread at a time.  A richer policy, such as admitting several readers
+    or one writer, or giving waiting writers precedence, must be encoded
+    with helper variables and explicit checks, like the proxy variable of
+    the readers-writers solution in Lesson~3.
+  \item[Dependence on low-level support] A mutex is itself shared state.
+    Its lock operation must find the mutex free and mark it as owned in one
+    indivisible step, which ordinary instructions cannot guarantee; it
+    needs atomic instructions from the hardware (\cref{sec:l10-hw}).
+\end{description}
+The first two limitations motivate the constructs of
+\cref{sec:l10-spinlock,sec:l10-semaphore,sec:l10-rwlock,sec:l10-monitor,sec:l10-other};
+the third is the subject of the second half of the lesson.
+
+\section{Spinlocks}
+\label{sec:l10-spinlock}
+
+The simplest construct beyond the mutex is the spinlock.\source{P3L4,
+spinlocks; OSTEP ch.~28.}
+
+\begin{definition}[Spinlock]
+  A \term{spinlock}[スピンロック] is a lock that provides mutual exclusion
+  through lock and unlock operations, like a mutex, except that a thread
+  which finds the lock held does not block.  The thread keeps running and
+  repeatedly checks the lock until the lock becomes free or the thread is
+  preempted.
+\end{definition}
+
+Checking a condition over and over in a loop, instead of giving up the CPU
+until the condition holds, is called \term{busy waiting}[ビジーウェイト]; a
+thread that busy-waits on a spinlock is said to \emph{spin}.  A spinlock is
+used exactly like a mutex:
+\begin{lstlisting}[language=C, numbers=none]
+spinlock_lock(s);
+// critical section
+spinlock_unlock(s);
+\end{lstlisting}
+
+The two constructs differ only in what a thread does while the lock is held
+by another thread, and they incur different costs
+(\cref{fig:l10-spin-block}).  A thread that blocks on a mutex consumes no
+CPU time while it waits, but it pays for a context switch away from it and,
+once the mutex is released, for a wake-up and a context switch back.  A
+spinning thread avoids both context switches, but it occupies its CPU for
+as long as the lock remains held.\margin{POSIX threads provide spinlocks
+as \texttt{pthread\_spinlock\_t} with \texttt{pthread\_spin\_lock} and
+\texttt{pthread\_spin\_unlock}.}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l10-spin-block}
+  \caption{Thread T2 requests a lock held by T1 on another CPU.  (a) On a
+    mutex, T2 blocks, the CPU runs another thread, and T2 is switched back
+    in after the unlock.  (b) On a spinlock, T2 busy-waits and enters the
+    critical section as soon as T1 unlocks.}
+  \label{fig:l10-spin-block}
+\end{figure}
+
+Spinning therefore pays off only when the lock is held for less time than
+it takes to block and resume a thread, and only when the owner is running
+on another CPU at the same time.  On a single CPU the owner cannot release
+the lock while the spinning thread occupies the CPU, so spinning merely
+wastes the remainder of the timeslice.  The adaptive mutexes of Lesson~5
+combine both behaviours: they spin when the owner is running on another
+CPU and block otherwise.\index{adaptive mutex}
+
+\begin{example}
+  Suppose blocking a thread and later resuming it costs \SI{8}{\micro\second}
+  in total.  If the owner holds a lock for at most
+  \SI{0.5}{\micro\second}, a waiting thread spins for at most
+  \SI{0.5}{\micro\second}, one sixteenth of the cost of blocking.  If
+  instead the owner performs a \SI{5}{\milli\second} disk read while
+  holding the lock, a spinning thread burns \SI{5}{\milli\second} of CPU
+  time, $5000/8 = 625$ times the cost of blocking.
+\end{example}
+
+Because a spinlock needs nothing but a shared word and an atomic
+instruction, it is the basic construct from which more complex constructs
+are built.  An operating system kernel, for example, protects the short
+critical sections that update the state of a mutex and its queue of
+blocked threads with a spinlock.
+
+\section{Semaphores}
+\label{sec:l10-semaphore}
+
+Semaphores, proposed by Dijkstra \cite{dijkstra1965}, are a common
+synchronization construct in operating system kernels.\source{P3L4,
+semaphores, POSIX semaphores API; Dijkstra \cite{dijkstra1965}; OSTEP
+ch.~31.}  They generalize the mutex from one thread at a time to a bounded
+number of threads.
+
+\begin{definition}[Semaphore]
+  A \term{semaphore}[セマフォ] is a synchronization construct represented
+  by an integer count, initialized with a non-negative integer, and two
+  operations.  \emph{Wait}: if the count is positive, decrement it and
+  proceed; if it is zero, block until it becomes positive.  \emph{Post}:
+  increment the count and, if threads are blocked, wake one of them.
+\end{definition}
+
+The count records how many more threads may pass.  A thread decrements it
+with wait when it enters and increments it with post when it leaves, so
+the initial value is the maximum number of threads that can be inside at
+the same time.  Dijkstra named the two operations P and V, after the Dutch
+\emph{proberen} (to test) and \emph{verhogen} (to increase).
+
+Semaphores are distinguished by the range of the count.  A
+\term{counting semaphore}[計数セマフォ] may take any non-negative value and
+admits as many threads at once as its initial value.  A
+semaphore whose count takes only the values 0 and 1 is a
+\term{binary semaphore}[バイナリセマフォ].  Initialized to 1, it admits
+one thread at a time and behaves like a mutex.
+
+\begin{example}
+  A counting semaphore initialized to 2 guards two identical devices, and
+  three threads use them.  \Cref{tab:l10-sem-trace} traces the count and
+  the blocked threads.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{A counting semaphore with initial value 2 used by three
+    threads.  T3 blocks while the count is zero and proceeds after T1's
+    post.}
+  \label{tab:l10-sem-trace}
+  \small
+  \begin{tabular}{@{}clcl@{}}
+    \toprule
+    Step & Event & Count & Blocked \\
+    \midrule
+    1 & T1 waits: count $>0$, decrements, proceeds & 1 & --- \\
+    2 & T2 waits: count $>0$, decrements, proceeds & 0 & --- \\
+    3 & T3 waits: count $=0$, blocks               & 0 & T3 \\
+    4 & T1 posts: increments, wakes T3             & 1 & --- \\
+    5 & T3 re-tests: count $>0$, decrements, proceeds & 0 & --- \\
+    6 & T2 posts                                    & 1 & --- \\
+    7 & T3 posts                                    & 2 & --- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{POSIX semaphores}
+
+\needspace{9\baselineskip}
+POSIX defines semaphores in \texttt{<semaphore.h>}:
+\begin{lstlisting}[language=C, numbers=none]
+#include <semaphore.h>
+
+sem_t sem;
+int sem_init(sem_t *sem, int pshared,
+             unsigned int value);
+int sem_wait(sem_t *sem);
+int sem_post(sem_t *sem);
+\end{lstlisting}
+\texttt{sem\_init} sets the initial count to \texttt{value}.  The flag
+\texttt{pshared} states whether the semaphore is used only by the threads of
+one process (zero) or shared among processes (non-zero); in the latter case
+the \texttt{sem\_t} itself must reside in memory that those processes share,
+such as a shared memory segment of Lesson~9.  \texttt{sem\_wait} and
+\texttt{sem\_post} are the wait and post operations.%
+\caution{A semaphore has no owner: any thread may post, including one that
+never waited.  A mutex is released by the thread that owns it.}
+
+\needspace{14\baselineskip}
+\begin{example}
+  A server allows at most four requests at a time to reach its back-end
+  database:
+  \begin{lstlisting}[language=C, numbers=none]
+#include <semaphore.h>
+
+#define MAX_BACKEND 4
+sem_t backend_slots;
+
+void init_slots(void) {
+  sem_init(&backend_slots, 0, MAX_BACKEND);
+}
+
+void handle_request(struct request *r) {
+  sem_wait(&backend_slots);   /* take a slot */
+  forward_to_backend(r);      /* at most 4 here */
+  sem_post(&backend_slots);   /* free the slot */
+}
+  \end{lstlisting}
+  A fifth thread that calls \texttt{handle\_request} while four requests
+  are in progress blocks in \texttt{sem\_wait} until one of them posts.
+\end{example}
+
+\section{Reader-writer locks}
+\label{sec:l10-rwlock}
+
+Lesson~3 built the readers-writers policy---any number of readers or a
+single writer---from a mutex, two condition variables and a proxy
+variable.\source{P3L4, reader/writer locks, using reader/writer locks;
+OSTEP ch.~31.}  Because the policy is so common, operating systems and
+thread libraries offer it as a construct of its own.
+
+\begin{definition}[Reader-writer lock]
+  A \term{reader-writer lock}[リーダ・ライタロック] is a lock with two
+  modes: \emph{read} (shared) mode, which any number of threads may hold at
+  the same time, and \emph{write} (exclusive) mode, which one thread may
+  hold only while no other thread holds the lock in either mode.
+\end{definition}
+
+\needspace{12\baselineskip}
+A thread states in which mode it needs the lock, and the construct
+enforces the policy.  In the Linux kernel the type is
+\texttt{rwlock\_t}:\margin{Linux's \texttt{rwlock\_t} spins; the blocking
+variant is \texttt{struct rw\_semaphore}.}
+\begin{lstlisting}[language=C, numbers=none]
+#include <linux/spinlock.h>
+
+rwlock_t m;
+
+read_lock(&m);
+/* critical section: read shared state */
+read_unlock(&m);
+
+write_lock(&m);
+/* critical section: read and modify */
+write_unlock(&m);
+\end{lstlisting}
+POSIX threads, Java and the .NET framework of Windows provide the same
+construct; in POSIX threads it reads:
+\begin{lstlisting}[language=C, numbers=none]
+pthread_rwlock_t m;
+pthread_rwlock_rdlock(&m);   /* acquire in read mode */
+pthread_rwlock_wrlock(&m);   /* acquire in write mode */
+pthread_rwlock_unlock(&m);   /* release either mode */
+\end{lstlisting}
+
+Implementations agree on the basic policy but differ in details that affect
+program behaviour:
+\begin{itemize}
+  \item \textbf{Recursive read locking.}  When a thread acquires the read
+    lock twice, implementations differ in whether one
+    \texttt{read\_unlock} releases both acquisitions or only one of them.
+  \item \textbf{Upgrading and downgrading.}  Some implementations let a
+    reader convert its lock into a write lock, or a writer convert its lock
+    into a read lock, without releasing it; they differ in whether this is
+    allowed and in the priority such a request has over threads already
+    waiting.
+  \item \textbf{Interaction with scheduling.}  An implementation may block
+    an arriving reader while a writer, possibly of higher priority, is
+    waiting, even though the lock is currently held only in read mode.
+\end{itemize}
+
+\begin{example}
+  Readers arrive every \SI{3}{\milli\second} and each holds the lock in
+  read mode for \SI{5}{\milli\second}.  Every reader arrives before its
+  predecessor leaves, so the lock is never free.  An implementation that
+  always admits a reader while the lock is held in read mode therefore
+  starves a waiting writer indefinitely.  An implementation that blocks new
+  readers once a writer waits admits the writer at most
+  \SI{5}{\milli\second} after it starts waiting, as soon as the readers
+  already inside have left.
+\end{example}
+
+\section{Monitors}
+\label{sec:l10-monitor}
+
+The constructs so far still leave it to the programmer to lock and unlock
+at the right places.\source{P3L4, monitors; Hoare \cite{hoare1974};
+Lampson and Redell \cite{lampson1980}; Silberschatz et al.\ ch.~6.}
+Monitors move this responsibility into the construct.
+
+\begin{definition}[Monitor]
+  A \term{monitor}[モニタ] is a high-level synchronization construct that
+  encapsulates a shared resource.  It specifies the resource, the
+  procedures through which alone the resource may be accessed---each an
+  \term{entry procedure}[エントリ手続き]---and the condition variables on
+  which threads inside the monitor may wait.
+\end{definition}
+
+Mutual exclusion is implicit (\cref{fig:l10-monitor}).  When a thread calls
+an entry procedure, the monitor's lock is acquired automatically, and
+threads that find the monitor occupied wait on its entry queue; when the
+procedure returns, the lock is released automatically.  A thread that waits
+on a condition variable inside the monitor releases the lock, and when it
+is woken it re-acquires the lock before it continues, again without any
+explicit lock operation.  In the monitors of Hoare and of Mesa, the
+conditions on which threads wait and the signal and broadcast operations
+that wake them remain the programmer's responsibility; monitor designs with
+automatic signalling go further and re-evaluate the waiting conditions
+themselves whenever a thread leaves the monitor.
+
+\begin{example}
+  A bounded buffer of capacity \texttt{N} as a monitor, in C-like
+  pseudocode:
+  \begin{lstlisting}[language=C, numbers=none]
+monitor BoundedBuffer {
+  item buf[N];
+  int count = 0, in = 0, out = 0;
+  condition not_full, not_empty;
+
+  entry void put(item x) {
+    while (count == N)
+      wait(not_full);
+    buf[in] = x;  in = (in + 1) % N;  count++;
+    signal(not_empty);
+  }
+
+  entry item get(void) {
+    while (count == 0)
+      wait(not_empty);
+    item x = buf[out];  out = (out + 1) % N;
+    count--;
+    signal(not_full);
+    return x;
+  }
+}
+  \end{lstlisting}
+  No lock operation appears in the code, so none can be forgotten or
+  applied to the wrong lock.
+\end{example}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l10-monitor}
+  \caption{A monitor.  Threads enter only through entry procedures, which
+    acquire the monitor's lock implicitly; a thread that waits on a
+    condition variable releases the lock and must re-acquire it after being
+    woken.}
+  \label{fig:l10-monitor}
+\end{figure}
+
+Monitors were part of the Mesa language developed at Xerox PARC
+\cite{lampson1980}.\margin{In Mesa and Java a signalled thread only becomes
+eligible to re-enter the monitor, so it must re-test its condition in a
+\texttt{while} loop.}  Java supports them today: every object has an
+internal lock, and a method declared \texttt{synchronized} is an entry
+procedure whose locking and unlocking the language runtime performs.
+Notifications, however, remain explicit calls to \texttt{notify} and
+\texttt{notifyAll}.
+
+The term \emph{monitor} also denotes a programming style.  Structuring
+every critical section with explicit enter and exit code built from a mutex
+and condition variables, as in Lesson~3, applies the discipline of a
+monitor without support from the language.
+
+\section{Other synchronization constructs}
+\label{sec:l10-other}
+
+Several further constructs aim at making synchronization policies easier to
+state, or at avoiding waiting altogether.\source{P3L4, more synchronization
+constructs.}
+\begin{description}
+  \item[Serializers] A \term{serializer}[シリアライザ] \cite{hewitt1979}
+    guards a resource like a monitor, but it makes priorities easy to
+    define and hides explicit signalling.  A thread waits in a queue
+    together with the condition under which it may proceed; the serializer
+    resumes it automatically when the condition holds and the thread is at
+    the head of its queue, so neither condition variables nor signal calls
+    appear in the program, and the order of the queues expresses priority.
+  \item[Path expressions] A \term{path expression}[パス式]
+    \cite{campbell1974} states, as a regular expression over the names of
+    the operations on a resource, the orders in which the operations may
+    execute; the run-time system then interleaves the operations only in
+    ways the expression allows.  The policy \enquote{many reads or a single
+    write} is written \texttt{path \{read\}, write end}: the braces allow
+    any number of simultaneous reads, the comma selects one of the
+    alternatives, and the path repeats indefinitely.
+  \item[Barriers] A \term{barrier}[バリア] is the reverse of a semaphore.
+    A semaphore lets up to $n$ threads proceed and blocks those that come
+    after them; a barrier blocks threads until $n$ of them have arrived and
+    then lets all of them proceed together (\cref{fig:l10-barrier}).  POSIX
+    threads provide \texttt{pthread\_barrier\_t} with
+    \texttt{pthread\_barrier\_wait}.
+  \item[Rendezvous points] A \term{rendezvous point}[ランデブーポイント] is
+    a point in the execution of two or more specific threads at which each
+    waits until the others have reached their corresponding points; the
+    threads then continue, typically after exchanging data.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l10-barrier}
+  \caption{A barrier for three threads.  T1 and T2 block when they reach
+    the barrier; the arrival of T3 releases all three.}
+  \label{fig:l10-barrier}
+\end{figure}
+
+\subsection{Wait-free synchronization and RCU}
+
+All the constructs above make threads wait.  An optimistic alternative lets
+threads proceed without locks, betting that concurrent operations will not
+conflict, and designs the data structure so that concurrent readers remain
+safe while it is being modified.
+
+\begin{definition}[Wait-free synchronization]
+  Synchronization is \term{wait-free synchronization}[ウェイトフリー同期]
+  when every thread completes each of its operations in a bounded number of
+  its own steps, regardless of how fast or slow the other threads are
+  \cite{herlihy1991}.  No thread ever waits for another.
+\end{definition}
+
+The \term{read-copy-update}[RCU]\index{RCU|see{read-copy-update}} (RCU)
+mechanism of the Linux kernel \cite{mckenney1998} applies this idea to data
+that is read far more often than it is written.  Readers access the data
+without taking any lock.  A writer does not modify the data in place: it
+copies the current version, modifies the copy, and publishes it by
+atomically replacing the pointer through which readers find the data.
+Readers that started before the replacement continue to see the old,
+consistent version; readers that start afterwards see the new one.  The old
+version is freed only after all readers that could still hold a reference
+to it have finished.  RCU readers never wait, whereas writers still
+coordinate among themselves with an ordinary lock.
+
+\Cref{tab:l10-constructs} compares the constructs of this lesson with the
+mutex.  Each of them, whether it makes threads wait or not, depends on
+updating a memory location atomically---setting a lock word, adjusting a
+count or replacing a pointer---and this requires support from the hardware.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Synchronization constructs compared.}
+  \label{tab:l10-constructs}
+  \small
+  \begin{tabular}{@{}lp{32mm}p{30mm}l@{}}
+    \toprule
+    Construct & Admitted at once & Waiting thread & Locking \\
+    \midrule
+    Mutex              & one                         & blocks            & explicit \\
+    Spinlock           & one                         & spins             & explicit \\
+    Counting semaphore & up to the initial count     & blocks            & explicit \\
+    Reader-writer lock & any readers or one writer   & blocks or spins   & explicit \\
+    Monitor            & one                         & blocks            & implicit \\
+    Barrier            & $n$, once $n$ have arrived  & blocks            & explicit \\
+    RCU                & any readers; one writer     & readers never wait & writers only \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}
+  Spinlocks trade CPU time for context switches; semaphores admit a bounded
+  number of threads; reader-writer locks package the readers-writers
+  policy; monitors make locking implicit.  Serializers, path expressions,
+  barriers and rendezvous points express further policies, and wait-free
+  schemes such as RCU avoid waiting altogether.
+\end{keypoint}
+
+\section{Hardware support for synchronization}
+\label{sec:l10-hw}
+
+We first try to implement a spinlock with ordinary
+instructions.\source{P3L4, sync building block: spinlock, need for
+hardware support, atomic instructions; OSTEP ch.~28; Silberschatz et al.\
+ch.~6.}
+\needspace{10\baselineskip}
+\begin{lstlisting}[language=C, numbers=none]
+#define FREE 0
+#define BUSY 1
+
+void naive_lock(int *lock) {
+  while (*lock == BUSY)
+    ;                /* spin */
+  *lock = BUSY;      /* separate from the test */
+}
+\end{lstlisting}
+The test and the update are separate instructions, and between them
+another thread can observe the same free lock.  \Cref{tab:l10-naive-race}
+shows two threads on different CPUs that both enter the critical section.
+Protecting the two steps with another lock only moves the problem into that
+lock.  Mutual exclusion requires that checking the lock and setting it
+happen as one indivisible step, and only the hardware can provide such a
+step.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Two threads executing \texttt{naive\_lock} on different CPUs.
+    Both read the lock before either writes it, and both enter the
+    critical section.}
+  \label{tab:l10-naive-race}
+  \small
+  \begin{tabular}{@{}clll@{}}
+    \toprule
+    Step & T1 on CPU 1 & T2 on CPU 2 & \texttt{*lock} \\
+    \midrule
+    1 & reads \texttt{FREE}, leaves loop &                          & \texttt{FREE} \\
+    2 &                         & reads \texttt{FREE}, leaves loop  & \texttt{FREE} \\
+    3 & writes \texttt{BUSY}, enters    &                          & \texttt{BUSY} \\
+    4 &                         & writes \texttt{BUSY}, enters      & \texttt{BUSY} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{definition}[Atomic instruction]
+  An \term{atomic instruction}[アトミック命令] is a processor instruction
+  that performs several operations, typically reading a memory location and
+  writing it, as one indivisible step.  The hardware guarantees atomicity
+  (the operations take effect together), mutual exclusion (no other
+  execution of an atomic instruction interleaves with it), and that of
+  several concurrent executions on the same location all but one are made
+  to wait.
+\end{definition}
+
+An atomic instruction is thus a critical section protected by the hardware.
+Common examples are:
+\begin{description}
+  \item[\texttt{test\_and\_set}] The \term{test-and-set}[テストアンドセット]
+    instruction returns the current value of a lock word and sets the word
+    to \texttt{BUSY}.
+  \item[\texttt{read\_and\_increment}] returns the value of a memory
+    location and increments it.
+  \item[\texttt{compare\_and\_swap}] The
+    \term{compare-and-swap}[コンペアアンドスワップ] instruction compares a
+    memory location with an expected value and, only if they are equal,
+    writes a new value; it reports whether the write took place.
+\end{description}
+
+\needspace{14\baselineskip}
+Written as C functions that the processor executes atomically, the first
+and the last are:
+\begin{lstlisting}[language=C, numbers=none]
+/* each function executes as one atomic step */
+int test_and_set(int *lock) {
+  int old = *lock;
+  *lock = BUSY;
+  return old;
+}
+
+int compare_and_swap(int *p, int expected,
+                     int new_val) {
+  if (*p != expected)
+    return 0;            /* value has changed */
+  *p = new_val;
+  return 1;
+}
+\end{lstlisting}
+
+\needspace{9\baselineskip}
+With \texttt{test\_and\_set} the spinlock becomes correct:
+\begin{lstlisting}[language=C, numbers=none]
+void spinlock_lock(int *lock) {
+  while (test_and_set(lock) == BUSY)
+    ;   /* spin */
+}
+
+void spinlock_unlock(int *lock) {
+  *lock = FREE;
+}
+\end{lstlisting}
+If the lock is free, \texttt{test\_and\_set} returns \texttt{FREE} and has
+already marked the lock busy, so the thread leaves the loop as the owner.
+If the lock is busy, it returns \texttt{BUSY} after writing \texttt{BUSY}
+over \texttt{BUSY}, which changes nothing, and the thread tries again.  Of
+several threads that execute \texttt{test\_and\_set} on a free lock at the
+same time, exactly one obtains \texttt{FREE}.
+
+\begin{example}
+  Compare-and-swap updates shared data without any lock.  A counter is
+  incremented by re-reading it until the swap succeeds:
+  \begin{lstlisting}[language=C, numbers=none]
+void increment(int *counter) {
+  int old;
+  do {
+    old = *counter;
+  } while (!compare_and_swap(counter, old, old + 1));
+}
+  \end{lstlisting}
+  The swap fails exactly when another thread changed the counter between
+  the read and the swap; the loop then re-reads and retries, so no
+  increment is lost.
+\end{example}
+
+\caution{The retry loop never blocks, but under contention a thread may
+fail repeatedly, so it is not wait-free in the sense of
+\cref{sec:l10-other}.}
+
+\subsection{Portability}
+
+Atomic instructions are specific to the processor architecture: which ones
+exist and how efficient they are differ between platforms.  On x86, for
+example, \texttt{xchg} with a memory operand serves as test-and-set and
+\texttt{lock cmpxchg} as compare-and-swap.  Software that implements
+synchronization constructs, such as a kernel or a thread library, must
+therefore be ported to every architecture it runs on.  It is also
+specialized for each platform: conditional compilation selects, among
+several implementations of the same construct, the one built on the most
+efficient instructions the platform offers.
+
+\section{Shared memory multiprocessors and caches}
+\label{sec:l10-smp}
+
+Synchronization constructs matter most on machines with several CPUs,
+where threads really do run at the same time.\source{P3L4, shared memory
+multiprocessors, cache coherence, cache coherence and atomic instructions;
+Silberschatz et al.\ ch.~1.}  A shared memory multiprocessor
+(Lesson~7)\index{shared memory multiprocessor} has several CPUs and memory
+that all of them can access; such systems are also called symmetric
+multiprocessors (SMP).  \Cref{fig:l10-smp} shows two configurations.  In a
+bus-based configuration, typical of older systems, the CPUs and a single
+memory component are attached to one shared bus, which carries only one
+memory access at a time.  In an interconnect-based configuration, common
+today, the CPUs and possibly several memory components are connected
+through an interconnect on which several memory accesses can be in
+progress at the same time.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l10-smp}
+  \caption{Shared memory multiprocessor configurations.  In both, every CPU
+    has its own cache and all CPUs can access all memory.}
+  \label{fig:l10-smp}
+\end{figure}
+
+Every CPU has its own cache.  Memory is slower to reach than the cache,
+both because it is physically farther away and because the CPUs contend
+for the bus or interconnect that leads to it; the caches hide this latency.
+
+When several CPUs work on the same data, however, copies of one memory
+location may reside in several caches at once.  If one CPU writes the
+location, the copies held by the other CPUs become stale, and a thread that
+read such a copy would see an outdated value (\cref{fig:l10-coherence}).
+The property that every CPU observes the most recent value of a memory
+location, even though copies of it may be cached on several CPUs, is called
+\term{cache coherence}[キャッシュ一貫性].
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l10-coherence}
+  \caption{CPU 1 sets \texttt{lock} to \texttt{BUSY}.  The copies in the
+    caches of CPU 2 and CPU 3 become stale; on a cache-coherent platform
+    the hardware updates or invalidates them.}
+  \label{fig:l10-coherence}
+\end{figure}
+
+Platforms differ in who is responsible for cache coherence.  On a
+non-cache-coherent (NCC) platform the hardware does not propagate a write
+to the copies in other caches, and software must deal with stale copies.
+On a cache-coherent (CC) platform the hardware keeps the caches coherent:
+it updates the other copies or invalidates them so that the next access
+fetches the value from memory.  Even then the cost of the coherence
+mechanism is incurred by software that writes shared locations.
+
+\subsection{Atomic instructions on multiprocessors}
+
+On a multiprocessor an atomic instruction must be atomic across all CPUs:
+its execution on one CPU must exclude executions on the same location on
+every other CPU.  It therefore cannot work on a private cached copy; it
+must act on the shared memory location and leave every cache coherent.
+Atomic instructions consequently take longer than ordinary instructions on
+the same data: they must reach memory, contending with the other CPUs for
+the bus or interconnect, and they set off the coherence mechanism.
+
+Spinlocks make this worse.  \texttt{test\_and\_set} always writes, even
+when it only replaces \texttt{BUSY} with \texttt{BUSY}, and every write
+starts the cache coherence mechanism.  A spinning thread executes
+\texttt{test\_and\_set} continuously, so a spinlock that several threads
+wait for generates a steady stream of coherence updates on every CPU that
+holds a copy of the lock word.
+
+\begin{keypoint}
+  Every synchronization construct rests on atomic instructions such as
+  test-and-set and compare-and-swap.  On a shared memory multiprocessor
+  they must be atomic across all CPUs and keep all caches coherent, which
+  makes them, and especially repeated writes to a contended lock word,
+  expensive.
+\end{keypoint}
+
+\section{Spinlock performance}
+\label{sec:l10-spin-perf}
+
+The cost of atomic instructions on multiprocessors affects how a spinlock
+should be written, a question studied by Anderson et
+al.\ \cite{anderson1989}.\source{P3L4, spinlock performance comparisons;
+Anderson et al.\ \cite{anderson1989}.}  Three metrics characterize a
+spinlock implementation:
+\begin{description}
+  \item[Latency] the time a thread needs to acquire a lock that is free.
+    Ideally the thread executes the atomic instruction immediately.
+  \item[Delay] the time between the release of the lock and its
+    acquisition by a spinning thread.  Ideally a spinning thread notices
+    the release immediately, which requires it to test the lock
+    continuously.
+  \item[Contention] the overhead caused by
+    \term{lock contention}[ロック競合], the situation in which several
+    threads try to acquire the same lock at the same time; above all, the
+    cache coherence traffic caused by their atomic instructions.  Ideally a
+    spinning thread writes nothing while the lock is held.
+\end{description}
+
+The \texttt{test\_and\_set} loop of \cref{sec:l10-hw} is ideal in latency
+and delay but poor in contention, because it writes on every iteration.
+The
+\term{test-and-test-and-set}[テストアンドテストアンドセット] technique
+first reads the lock with an ordinary instruction and executes
+\texttt{test\_and\_set} only when the lock appears free:
+\needspace{5\baselineskip}
+\begin{lstlisting}[language=C, numbers=none]
+void spinlock_lock(int *lock) {
+  while (*lock == BUSY || test_and_set(lock) == BUSY)
+    ;   /* spin */
+}
+\end{lstlisting}
+The short-circuit \texttt{||} evaluates \texttt{test\_and\_set} only when
+the read found \texttt{FREE}.  The read alone does not decide
+anything---another thread may acquire the lock between the read and the
+\texttt{test\_and\_set}---but in that case the atomic
+\texttt{test\_and\_set} returns \texttt{BUSY} and the loop continues, so
+the lock remains correct.  While the lock is held, a spinning thread
+performs only reads, which cause no coherence traffic; writes occur only
+around the moment of a release.  The price is one extra read when the lock
+is free, a slight increase in latency, while delay is unchanged because
+the loop still tests continuously.
+
+\begin{example}
+  On four CPUs, a thread on CPU~1 holds a lock for \SI{1}{\milli\second}
+  while threads on CPUs 2--4 spin, each iteration of a spin loop taking
+  \SI{50}{\nano\second}.  Each spinning thread performs
+  $\SI{1}{\milli\second}/\SI{50}{\nano\second} = \num{20000}$ iterations.
+  With the plain \texttt{test\_and\_set} loop these are $3\times\num{20000}
+  = \num{60000}$ writes to the lock word, each of which forces the other
+  caches to be updated or invalidated.  With test-and-test-and-set the
+  \num{60000} iterations are reads; when the lock is released each of the
+  three threads issues about one \texttt{test\_and\_set}, one of which
+  succeeds, so only about three writes result.
+\end{example}
+
+\begin{keypoint}[Lesson summary]
+  Mutexes and condition variables are error-prone, limited in expressive
+  power and dependent on hardware support.  Spinlocks busy-wait instead of
+  blocking and pay off only for short critical sections on multiple CPUs;
+  semaphores admit up to a given number of threads, and a binary semaphore
+  acts as a mutex; reader-writer locks provide shared and exclusive modes;
+  monitors acquire and release their lock implicitly in entry procedures.
+  Serializers, path expressions, barriers, rendezvous points and wait-free
+  schemes such as RCU complete the picture.  All of them depend on atomic
+  instructions such as test-and-set and compare-and-swap, which on a shared
+  memory multiprocessor must also keep the CPUs' caches coherent; reading a
+  lock before attempting test-and-set avoids most of the resulting write
+  traffic under contention.
+\end{keypoint}
+
+\end{document}

@@ -1,0 +1,46 @@
+% Typical interconnect: CPU and memory behind a bridge/memory controller,
+% device controllers on PCIe, and further buses behind their controllers.
+% Usage: \input{figures/l11-interconnect}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  box/.style={draw, fill=white, minimum height=6mm, inner sep=1pt, align=center},
+  ctl/.style={draw, fill=ln-box, minimum height=8.5mm, minimum width=25mm,
+              inner sep=1pt, align=center},
+  bus/.style={line width=1.6pt},
+  blab/.style={font=\scriptsize\sffamily\itshape, text=ln-muted}]
+  % top row
+  \node[box, fill=ln-accent!22, minimum width=18mm, minimum height=8.5mm]
+    (cpu) at (16,27) {CPU};
+  \node[ctl, minimum width=34mm] (br) at (58,27)
+    {\iflangja{ブリッジ／\\メモリコントローラ}{bridge /\\memory controller}};
+  \node[box, minimum width=22mm, minimum height=8.5mm] (mem) at (100,27)
+    {\iflangja{メモリ}{memory}};
+  \draw[thick] (cpu) -- (br);
+  \draw[thick] (br) -- (mem);
+  % PCIe
+  \draw[bus] (3,14) -- (113,14);
+  \node[blab, anchor=south west] at (3,14.6) {PCIe};
+  \draw[thick] (br.south) -- (58,14);
+  % controllers
+  \node[ctl] (gc) at (16,3) {\iflangja{グラフィックス\\コントローラ}{graphics\\controller}};
+  \node[ctl] (ni) at (44,3) {\iflangja{ネットワーク\\インタフェース}{network\\interface}};
+  \node[ctl] (sc) at (72,3) {\iflangja{SCSI\\コントローラ}{SCSI\\controller}};
+  \node[ctl] (ex) at (100,3) {\iflangja{拡張バス\\インタフェース}{expansion bus\\interface}};
+  \foreach \n in {gc,ni,sc,ex} \draw[thick] (\n.north) -- (\n.north |- 0,14);
+  % below the controllers
+  \node[box, minimum width=18mm] (disp) at (16,-15) {\iflangja{ディスプレイ}{display}};
+  \draw (gc.south) -- (disp.north);
+  \node[box, minimum width=18mm] (net) at (44,-15) {\iflangja{ネットワーク}{network}};
+  \draw (ni.south) -- (net.north);
+  \draw[bus] (59.5,-9) -- (84.5,-9);
+  \node[blab, anchor=south west] at (59.5,-8.6) {\iflangja{SCSI バス}{SCSI bus}};
+  \draw (80,-1.25) -- (80,-9);
+  \node[box, minimum width=10mm] (d1) at (66,-17) {\iflangja{ディスク}{disk}};
+  \node[box, minimum width=10mm] (d2) at (78,-17) {\iflangja{ディスク}{disk}};
+  \draw (d1.north) -- (66,-9);  \draw (d2.north) -- (78,-9);
+  \draw[bus] (87.5,-9) -- (112.5,-9);
+  \node[blab, anchor=south west] at (87.5,-8.6) {\iflangja{拡張バス}{expansion bus}};
+  \draw (109,-1.25) -- (109,-9);
+  \node[box, minimum width=13mm] (kb) at (94,-17) {\iflangja{キーボード}{keyboard}};
+  \node[box, minimum width=10mm] (ms) at (107,-17) {\iflangja{マウス}{mouse}};
+  \draw (kb.north) -- (94,-9);  \draw (ms.north) -- (107,-9);
+\end{tikzpicture}

@@ -1,0 +1,44 @@
+% Layers of Java RMI: stub and skeleton, remote reference layer, transport;
+% the RMI registry maps names to remote object references.
+% Usage: \input{figures/l13-rmi}   (width ~110 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  jvm/.style={draw=ln-rule, rounded corners=2pt, fill=ln-box},
+  layer/.style={draw, fill=white, align=center, minimum width=36mm,
+                minimum height=6.5mm, inner sep=1pt},
+  stubl/.style={layer, fill=ln-accent!15},
+  refl/.style={layer, fill=ln-accent!25},
+  trl/.style={layer, fill=ln-accent!35},
+  reg/.style={draw, rounded corners=2pt, fill=white, align=center,
+              minimum width=26mm, minimum height=6.5mm, inner sep=1pt},
+  hdr/.style={font=\scriptsize\sffamily\bfseries, text=ln-muted},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted}]
+  \draw[jvm] (0,0) rectangle (42,44);
+  \draw[jvm] (68,0) rectangle (110,44);
+  \node[hdr] at (21,2.6) {\iflangja{クライアント JVM}{client JVM}};
+  \node[hdr] at (89,2.6) {\iflangja{サーバ JVM}{server JVM}};
+  % client side
+  \node[layer] (c0) at (21,37) {\iflangja{クライアント}{client object}};
+  \node[stubl] (c1) at (21,28) {\iflangja{スタブ}{stub}};
+  \node[refl]  (c2) at (21,19) {\iflangja{リモート参照層}{remote reference layer}};
+  \node[trl]   (c3) at (21,10) {\iflangja{トランスポート層}{transport layer}};
+  % server side
+  \node[layer] (s0) at (89,37) {\iflangja{リモートオブジェクト}{remote object}};
+  \node[stubl] (s1) at (89,28) {\iflangja{スケルトン}{skeleton}};
+  \node[refl]  (s2) at (89,19) {\iflangja{リモート参照層}{remote reference layer}};
+  \node[trl]   (s3) at (89,10) {\iflangja{トランスポート層}{transport layer}};
+  \draw[->] (c0) -- (c1);
+  \draw[->] (c1) -- (c2);
+  \draw[->] (c2) -- (c3);
+  \draw[->] (s3) -- (s2);
+  \draw[->] (s2) -- (s1);
+  \draw[->] (s1) -- (s0);
+  \draw[<->, thick, ln-accent] (c3) -- (s3)
+    node[midway, below=1mm, lab] {\iflangja{ネットワーク}{network}};
+  % registry
+  \node[reg] (reg) at (55,52) {\iflangja{RMI レジストリ}{RMI registry}};
+  \draw[->] ([xshift=10mm]s0.north) |- (reg.east)
+    node[pos=0.25, right, lab] {\texttt{bind}};
+  \draw[<->] ([xshift=-10mm]c0.north) |- (reg.west)
+    node[pos=0.25, left, lab] {\texttt{lookup}};
+\end{tikzpicture}

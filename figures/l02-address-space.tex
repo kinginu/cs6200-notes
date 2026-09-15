@@ -1,0 +1,30 @@
+% Layout of the address space of a process.
+% Usage: \input{figures/l02-address-space}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.8mm]},
+  ann/.style={font=\scriptsize\sffamily, anchor=west, align=left, text width=62mm},
+  brk/.style={thin, ln-muted}]
+  % regions
+  \draw[fill=ln-box] (12,0)  rectangle (42,10) node[midway] {\iflangja{テキスト（コード）}{text (code)}};
+  \draw[fill=ln-box] (12,10) rectangle (42,20) node[midway] {\iflangja{データ}{data}};
+  \draw[fill=ln-box] (12,20) rectangle (42,30) node[midway] {\iflangja{ヒープ}{heap}};
+  \draw[fill=white]  (12,30) rectangle (42,50);
+  \draw[fill=ln-box] (12,50) rectangle (42,62) node[midway] {\iflangja{スタック}{stack}};
+  \node[font=\scriptsize\sffamily, text=ln-muted] at (27,40) {\iflangja{未割り当て}{unallocated}};
+  % growth directions
+  \draw[->, thick, ln-accent] (19,30) -- (19,36);
+  \draw[->, thick, ln-accent] (35,50) -- (35,44);
+  % address labels
+  \node[anchor=east] at (11,0.8)  {$V_0$};
+  \node[anchor=east] at (11,61.2) {$V_{\max}$};
+  % annotations
+  \draw[brk] (44,0.5) -- (46,0.5) -- (46,19.5) -- (44,19.5);
+  \node[ann] at (47,10) {\iflangja{静的な状態：プロセスのロード時から存在する}%
+    {static state: present from the moment the process is loaded}};
+  \draw[brk] (44,20.5) -- (46,20.5) -- (46,29.5) -- (44,29.5);
+  \node[ann] at (47,25) {\iflangja{実行中に動的に確保される；上位アドレスへ伸びる}%
+    {allocated dynamically during execution; grows toward higher addresses}};
+  \draw[brk] (44,50.5) -- (46,50.5) -- (46,61.5) -- (44,61.5);
+  \node[ann] at (47,56) {\iflangja{手続き呼び出しとともに後入れ先出しで伸縮する；下位アドレスへ伸びる}%
+    {grows and shrinks last-in first-out with procedure calls; grows toward lower addresses}};
+\end{tikzpicture}

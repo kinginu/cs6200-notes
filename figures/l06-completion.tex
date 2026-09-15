@@ -1,0 +1,35 @@
+% Completion times of nine requests: boss-workers with four workers
+% (100 ms per request) and a five-stage pipeline (20 ms per stage).
+% Usage: \input{figures/l06-completion}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  lab/.style={font=\scriptsize\sffamily},
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  done/.style={draw, circle, fill=ln-accent!20, minimum size=4.2mm,
+    inner sep=0pt, font=\scriptsize\sffamily},
+  mean/.style={ln-caution, densely dashed, thick}]
+  % x = 24 + 0.3 t, with t in ms
+  % boss-workers
+  \node[row] at (22,18) {\iflangja{ボス・ワーカー}{boss-workers}};
+  \draw[ln-rule] (24,18) -- (114,18);
+  \draw[mean] (74,15) -- (74,23);
+  \node[lab, anchor=south, text=ln-caution] at (74,23.1)
+    {\iflangja{平均 167\,ms}{mean 167\,ms}};
+  \node[done] at (54,18) {4};
+  \node[done] at (84,18) {4};
+  \node[done] at (114,18) {1};
+  % pipeline
+  \node[row] at (22,4) {\iflangja{パイプライン}{pipeline}};
+  \draw[ln-rule] (24,4) -- (114,4);
+  \draw[mean] (78,-0.5) -- (78,8.5);
+  \node[lab, anchor=south, text=ln-caution] at (78,8.6)
+    {\iflangja{平均 180\,ms}{mean 180\,ms}};
+  \foreach \t in {100,120,...,260} { \node[done] at (24+0.3*\t,4) {1}; }
+  % time axis
+  \draw[->] (24,-4) -- (116,-4);
+  \foreach \t in {0,50,...,300} {
+    \draw (24+0.3*\t,-4) -- (24+0.3*\t,-5);
+    \node[lab, anchor=north] at (24+0.3*\t,-5.2) {\t};
+  }
+  \node[row] at (22,-4) {\iflangja{時間 (ms)}{time (ms)}};
+\end{tikzpicture}

@@ -1,0 +1,38 @@
+% Registration and binding in Sun RPC through the rpcbind daemon.
+% 1 register, 2 query, 3 port number, 4 calls sent to the server's port.
+% Usage: \input{figures/l13-rpcbind}   (width ~120 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  machine/.style={draw=ln-rule, rounded corners=2pt, fill=ln-box},
+  proc/.style={draw, fill=white, align=center, inner sep=1pt},
+  daemon/.style={proc, fill=ln-accent!20},
+  stepn/.style={circle, draw, fill=white, inner sep=0pt,
+                minimum size=4.2mm, font=\scriptsize\sffamily\bfseries},
+  hdr/.style={font=\scriptsize\sffamily\bfseries, text=ln-muted},
+  msg/.style={font=\scriptsize\sffamily, inner sep=1pt}]
+  \draw[machine] (0,0) rectangle (40,34);
+  \draw[machine] (64,0) rectangle (120,34);
+  \node[hdr] at (20,31) {\iflangja{クライアントマシン}{client machine}};
+  \node[hdr] at (92,31) {\iflangja{サーバマシン}{server machine}};
+  \node[proc, minimum width=32mm, minimum height=22mm] (cli) at (20,15)
+    {\iflangja{クライアント}{client}\\[0.5ex]\texttt{clnt\_create()}\\[0.5ex]
+     \texttt{sum\_proc\_1()}};
+  \node[daemon, minimum width=40mm, minimum height=9mm] (rb) at (92,22)
+    {\texttt{rpcbind}\\[-0.3ex]\iflangja{ポート}{port} 111};
+  \node[proc, minimum width=40mm, minimum height=9mm] (srv) at (92,7)
+    {\iflangja{\texttt{sum} サーバ}{\texttt{sum} server}\\[-0.3ex]\iflangja{ポート}{port} 40123};
+  % 1 register
+  \draw[->] ([xshift=12mm]srv.north) -- ([xshift=12mm]rb.south);
+  \node[stepn] at (108.5,14.5) {1};
+  % 2 query, 3 reply
+  \draw[->] (36,24) -- (72,24) node[pos=0.6, above, msg]
+    {\texttt{(SUM\_PROG, 1, tcp)}};
+  \draw[<-] (36,20) -- (72,20) node[pos=0.6, below, msg]
+    {\iflangja{ポート}{port} 40123};
+  \node[stepn] at (40,27) {2};
+  \node[stepn] at (40,17) {3};
+  % 4 calls
+  \draw[->, thick, ln-accent] (36,7) -- (72,7) node[pos=0.6, above, msg, text=black]
+    {\iflangja{RPC 呼び出し}{RPC calls}};
+  \node[stepn] at (40,3.5) {4};
+\end{tikzpicture}

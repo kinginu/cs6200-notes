@@ -1,0 +1,33 @@
+% Cache coherence: a write by one CPU makes the cached copies of the same
+% memory location on the other CPUs stale; the hardware must update or
+% invalidate them.
+% Usage: \input{figures/l10-coherence}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  cpu/.style={draw, fill=white, minimum width=30mm, minimum height=6mm, inner sep=1pt},
+  cache/.style={draw, fill=ln-box, minimum width=30mm, minimum height=6mm,
+                inner sep=1pt, font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  >={Stealth[length=1.8mm]}]
+  \node[cpu] (c1) at (17,14) {CPU 1: \texttt{test\_and\_set}};
+  \node[cpu] (c2) at (58,14) {CPU 2};
+  \node[cpu] (c3) at (99,14) {CPU 3};
+  \node[cache, anchor=north, fill=white, thick] (k1) at (c1.south)
+    {\texttt{lock = BUSY}};
+  \node[cache, anchor=north] (k2) at (c2.south)
+    {\texttt{lock = FREE}\ \iflangja{（古い）}{(stale)}};
+  \node[cache, anchor=north] (k3) at (c3.south)
+    {\texttt{lock = FREE}\ \iflangja{（古い）}{(stale)}};
+  \draw[line width=1.6pt] (0,-6) -- (116,-6);
+  \foreach \k in {1,2,3} { \draw (k\k.south) -- (k\k.south |- 0,-6); }
+  \node[draw, fill=ln-box, minimum width=40mm, minimum height=6mm] (m) at (58,-15)
+    {\iflangja{メモリ}{memory}: \texttt{lock = BUSY}};
+  \draw (m.north) -- (58,-6);
+  % write path
+  \draw[->, thick, ln-accent] ([xshift=-6mm]k1.south) -- ++(0,-12) |- (m.west)
+    node[lab, pos=0.25, left, text=ln-accent] {\iflangja{(1) 書き込み}{(1) write}};
+  % coherence
+  \draw[->, thick, ln-caution, densely dashed] (m.east) -| ([xshift=6mm]k3.south);
+  \node[lab, text=ln-caution] at (89,-9.5)
+    {\iflangja{(2) 更新または無効化}{(2) update or invalidate}};
+  \draw[->, thick, ln-caution, densely dashed] ([xshift=8mm]m.north) -- ([xshift=8mm]k2.south);
+\end{tikzpicture}

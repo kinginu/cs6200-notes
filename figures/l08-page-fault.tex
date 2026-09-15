@@ -1,0 +1,52 @@
+% Demand paging: the steps taken when a process references a page that is
+% in the swap partition.
+% Usage: \input{figures/l08-page-fault}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  box/.style={draw, fill=white, align=center, inner sep=1pt},
+  stp/.style={draw, circle, fill=ln-accent, text=white, inner sep=0.4pt,
+               font=\scriptsize\sffamily\bfseries, minimum size=4mm},
+  lab/.style={font=\scriptsize\sffamily, align=left},
+  hd/.style={font=\scriptsize\sffamily\bfseries, anchor=south}]
+  % process
+  \node[box, minimum width=22mm, minimum height=13mm] (proc) at (11,38.5)
+    {\iflangja{プロセス}{process}\\[1pt]\texttt{x = a[i];}};
+  % page table
+  \node[hd, anchor=north] at (46,25.5) {\iflangja{ページテーブル}{page table}};
+  \foreach \r in {0,...,4} { \draw[fill=white] (38,26+5*\r) rectangle ++(16,5); }
+  \draw[fill=ln-caution!15] (38,36) rectangle ++(16,5) node[midway] {\iflangja{無効}{invalid}};
+  % OS
+  \node[box, minimum width=44mm, minimum height=8mm, fill=ln-source!12] (os) at (46,62)
+    {\iflangja{OS（ページフォールトハンドラ）}{OS (page fault handler)}};
+  % physical memory
+  \node[hd] at (104,50.5) {\iflangja{物理メモリ}{physical memory}};
+  \foreach \r in {0,...,4} { \draw[fill=ln-box] (92,26+5*\r) rectangle ++(24,5); }
+  \draw[fill=ln-accent!25] (92,26) rectangle ++(24,5) node[midway] {\iflangja{空きフレーム}{free frame}};
+  % swap partition
+  \node[box, minimum width=28mm, minimum height=8mm, fill=ln-box, rounded corners=3pt] (swap) at (104,6)
+    {\iflangja{スワップ領域}{swap partition}};
+  % 1 reference
+  \draw[->] (proc.east) -- (38,38.5);
+  \node[stp] at (30,41) {1};
+  % 2 trap
+  \draw[->] (42,51) -- (42,58);
+  \node[stp] at (39,54.5) {2};
+  \node[lab, anchor=east] at (37,54.5) {\iflangja{トラップ}{trap}};
+  % 3 locate page in swap
+  \draw[->] (68.5,62) -- (80,62) |- (swap.west);
+  \node[stp] at (77,58) {3};
+  \node[lab, anchor=east] at (79,46) {\iflangja{スワップ上の\\位置を特定}{locate page\\in swap}};
+  % 4 read page into free frame
+  \draw[->, very thick, ln-accent] (104,10) -- (104,26);
+  \node[stp] at (107.5,17) {4};
+  \node[lab, anchor=east] at (101,17) {\iflangja{読み込み}{read page in}};
+  % 5 update page table entry
+  \draw[->] (50,58) -- (50,51);
+  \node[stp] at (53,54.5) {5};
+  \node[lab, anchor=west] at (55,54.5) {\iflangja{PTE を更新}{update PTE}};
+  \draw[->, densely dashed] (54,38.5) -- (92,28.5);
+  % 6 restart
+  \draw[->] (os.west) -| (11,44.5);
+  \node[stp] at (14,58) {6};
+  \node[lab, anchor=west] at (16,54) {\iflangja{命令を再実行}{restart}};
+\end{tikzpicture}

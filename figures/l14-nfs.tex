@@ -1,0 +1,48 @@
+% NFS architecture: the VFS on the client passes operations on NFS files to
+% the NFS client, which sends RPC requests to the NFS server; the server
+% performs them through its own VFS and local file system.
+% Usage: \input{figures/l14-nfs}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  machine/.style={draw, rounded corners=0.8mm, fill=white},
+  box/.style={draw, fill=white, minimum height=6mm, inner sep=1pt, align=center},
+  kbox/.style={draw, fill=ln-box, minimum height=6mm, inner sep=1pt, align=center},
+  nfs/.style={draw, fill=ln-accent!18, minimum height=6mm, inner sep=1pt, align=center},
+  dev/.style={draw, fill=ln-accent!35, minimum height=5mm, inner sep=1pt, align=center},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  who/.style={font=\footnotesize\sffamily\bfseries, anchor=north west}]
+  % ---------------- client machine
+  \draw[machine] (0,0) rectangle (56,68);
+  \node[who] at (1,67.5) {\iflangja{クライアントマシン}{client machine}};
+  \node[box, minimum width=44mm] (app) at (28,56) {\iflangja{アプリケーション}{applications}};
+  \draw[densely dashed, ln-muted] (1,50.5) -- (55,50.5);
+  \node[kbox, minimum width=44mm] (sc) at (28,45) {\iflangja{システムコール層}{system call layer}};
+  \node[kbox, minimum width=44mm] (vfs) at (28,35) {VFS};
+  \node[kbox, minimum width=20mm] (lfs) at (16,24) {\iflangja{ローカル FS}{local FS}};
+  \node[nfs, minimum width=20mm] (nc) at (40,24) {\iflangja{NFS クライアント}{NFS client}};
+  \node[dev, minimum width=20mm] (d1) at (16,12) {\iflangja{ディスク}{disk}};
+  \node[nfs, minimum width=20mm] (cs) at (40,12) {\iflangja{RPC スタブ}{RPC stub}};
+  \draw[<->, thick] (app) -- (sc);
+  \draw[<->, thick] (sc) -- (vfs);
+  \draw[<->, thick] (lfs.north |- vfs.south) -- (lfs.north);
+  \draw[<->, thick] (nc.north |- vfs.south) -- (nc.north);
+  \draw[<->, thick] (lfs) -- (d1);
+  \draw[<->, thick] (nc) -- (cs);
+  % ---------------- server machine
+  \draw[machine] (62,0) rectangle (118,68);
+  \node[who] at (63,67.5) {\iflangja{サーバマシン}{server machine}};
+  \node[nfs, minimum width=44mm] (ss) at (90,56) {\iflangja{RPC スタブ}{RPC stub}};
+  \node[nfs, minimum width=44mm] (ns) at (90,45) {\iflangja{NFS サーバ}{NFS server}};
+  \node[kbox, minimum width=44mm] (svfs) at (90,35) {VFS};
+  \node[kbox, minimum width=44mm] (slfs) at (90,24) {\iflangja{ローカル FS}{local FS}};
+  \node[dev, minimum width=44mm] (d2) at (90,12) {\iflangja{ディスク}{disk}};
+  \draw[<->, thick] (ss) -- (ns);
+  \draw[<->, thick] (ns) -- (svfs);
+  \draw[<->, thick] (svfs) -- (slfs);
+  \draw[<->, thick] (slfs) -- (d2);
+  % ---------------- network
+  \draw[<->, line width=1.4pt, ln-accent] (cs.east) -- (59,12) |- (ss.west);
+  \node[lab, rotate=90, fill=white, inner sep=0.8pt, text=ln-accent] at (59,34) {\iflangja{ネットワーク（RPC）}{network (RPC)}};
+  \node[lab, text=ln-muted, align=left, anchor=west] at (66,4.2)
+    {\iflangja{要求はファイルハンドルで対象ファイルを指定}{requests name files by their file handles}};
+\end{tikzpicture}

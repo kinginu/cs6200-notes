@@ -1,0 +1,21 @@
+% Process life cycle: states and transitions.
+% Usage: \input{figures/l02-states}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  st/.style={draw, rounded corners=6pt, fill=ln-box, minimum width=22mm,
+             minimum height=8mm, inner sep=2pt},
+  >={Stealth[length=1.8mm]},
+  lab/.style={font=\scriptsize\sffamily, align=center}]
+  \node[st] (new)  at (11,32)  {\iflangja{新規}{new}};
+  \node[st] (term) at (105,32) {\iflangja{終了}{terminated}};
+  \node[st] (rdy)  at (32,12)  {\iflangja{実行可能}{ready}};
+  \node[st, fill=ln-accent!22] (run) at (84,12) {\iflangja{実行}{running}};
+  \node[st] (wait) at (58,-12) {\iflangja{待ち}{waiting}};
+  \draw[->] (new) -- node[lab, left, pos=0.45] {\iflangja{受け入れ}{admitted}} (rdy);
+  \draw[->] (rdy.north east) to[bend left=18]
+    node[lab, above] {\iflangja{スケジューラによるディスパッチ}{scheduler dispatch}} (run.north west);
+  \draw[->] (run.south west) to[bend left=18]
+    node[lab, below] {\iflangja{割り込み}{interrupt}} (rdy.south east);
+  \draw[->] (run) -- node[lab, right, pos=0.55] {\iflangja{終了（exit）}{exit}} (term);
+  \draw[->] (run) -- node[lab, right, pos=0.6] {\iflangja{I/O・イベント待ち}{I/O or event wait}} (wait);
+  \draw[->] (wait) -- node[lab, left, pos=0.4] {\iflangja{I/O・イベント完了}{I/O or event completion}} (rdy);
+\end{tikzpicture}

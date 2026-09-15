@@ -1,0 +1,75 @@
+% Device virtualization models: (a) passthrough, (b) hypervisor-direct,
+% (c) split-device driver with front-end and back-end drivers.
+% Usage: \input{figures/l12-devices}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  dev/.style={draw, fill=white},
+  band/.style={draw, fill=ln-accent!22},
+  vm/.style={draw=ln-rule, rounded corners=2pt, fill=ln-box},
+  svm/.style={draw=ln-accent, rounded corners=2pt, fill=ln-accent!8},
+  gos/.style={draw, fill=ln-accent!12},
+  box/.style={draw, fill=white, align=center, inner sep=0.5pt,
+              font=\scriptsize\sffamily},
+  hdr/.style={font=\scriptsize\sffamily\bfseries},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  io/.style={->, thick, ln-accent},
+  pcap/.style={font=\footnotesize\sffamily, anchor=north}]
+  % ================= (a) passthrough
+  \draw[dev] (0,0) rectangle (36,6) node[midway] {\iflangja{デバイス}{device}};
+  \draw[band] (0,8.5) rectangle (22,29);
+  \node[hdr] at (11,26.5) {\iflangja{ハイパーバイザ}{hypervisor}};
+  \node[box, minimum width=18mm, minimum height=8mm] (vd) at (11,16.5)
+    {\iflangja{VMM レベル\\ドライバ}{VMM-level\\driver}};
+  \draw[->, densely dashed] (vd.south) -- (11,6);
+  \draw[vm] (0,31) rectangle (36,55);
+  \node[hdr] at (18,52.5) {\iflangja{ゲスト VM}{guest VM}};
+  \draw[gos] (2,33) rectangle (34,49.5);
+  \node[lab, text=black] at (18,47.2) {\iflangja{ゲスト OS}{guest OS}};
+  \node[box, minimum width=24mm, minimum height=7mm] at (18,39.5)
+    {\iflangja{デバイスドライバ}{device driver}};
+  \draw[io] (29,36) -- (29,6);
+  \node[lab, rotate=90, text=ln-accent] at (32.2,19) {\iflangja{直接アクセス}{direct access}};
+  \node[pcap] at (18,-2) {\iflangja{(a) パススルー}{(a) passthrough}};
+  % ================= (b) hypervisor-direct
+  \begin{scope}[xshift=41mm]
+  \draw[dev] (0,0) rectangle (36,6) node[midway] {\iflangja{デバイス}{device}};
+  \draw[band] (0,8.5) rectangle (36,29);
+  \node[hdr, anchor=west] at (1.2,26.5) {\iflangja{ハイパーバイザ}{hypervisor}};
+  \node[box, minimum width=30mm, minimum height=4.3mm] (em) at (18,21.7)
+    {\iflangja{デバイスエミュレーション}{device emulation}};
+  \node[box, minimum width=30mm, minimum height=4.3mm] (st) at (18,16.6)
+    {\iflangja{I/O スタック}{I/O stack}};
+  \node[box, minimum width=30mm, minimum height=4.3mm] (dd) at (18,11.5)
+    {\iflangja{デバイスドライバ}{device driver}};
+  \draw[vm] (0,31) rectangle (36,55);
+  \node[hdr] at (18,52.5) {\iflangja{ゲスト VM}{guest VM}};
+  \draw[gos] (2,33) rectangle (34,49.5);
+  \node[lab, text=black] at (18,47.2) {\iflangja{ゲスト OS}{guest OS}};
+  \node[box, minimum width=26mm, minimum height=7mm] (gd) at (18,39.5)
+    {\iflangja{エミュレートされた\\デバイスのドライバ}{driver for the\\emulated device}};
+  \draw[io] (gd.south) -- (em.north);
+  \node[lab, text=ln-accent, anchor=west] at (19,34.3) {\iflangja{トラップ}{trap}};
+  \draw[io, shorten >=0pt] (dd.south) -- (18,6);
+  \end{scope}
+  \node[pcap] at (59,-2) {\iflangja{(b) ハイパーバイザ直接}{(b) hypervisor-direct}};
+  % ================= (c) split-device driver
+  \begin{scope}[xshift=82mm]
+  \draw[dev] (0,0) rectangle (36,6) node[midway] {\iflangja{デバイス}{device}};
+  \draw[band] (0,8.5) rectangle (36,29);
+  \node[hdr, anchor=west] at (1.2,26.5) {\iflangja{ハイパーバイザ}{hypervisor}};
+  \draw[vm] (0,31) rectangle (17,55);
+  \node[hdr] at (8.5,52.5) {\iflangja{ゲスト VM}{guest VM}};
+  \node[box, fill=ln-accent!12, minimum width=14mm, minimum height=8mm] (fe)
+    at (8.5,44) {\iflangja{フロント\\エンド}{front-end\\driver}};
+  \draw[svm] (19,31) rectangle (36,55);
+  \node[hdr] at (27.5,52.5) {\iflangja{サービス VM}{service VM}};
+  \node[box, fill=ln-accent!12, minimum width=14mm, minimum height=8mm] (be)
+    at (27.5,44) {\iflangja{バック\\エンド}{back-end\\driver}};
+  \node[box, minimum width=14mm, minimum height=6mm] (nd) at (27.5,35.5)
+    {\iflangja{ドライバ}{driver}};
+  \draw[<->, thick, ln-accent] (fe.east) -- (be.west);
+  \draw[->] (be.south) -- (nd.north);
+  \draw[io] (nd.south) -- (27.5,6);
+  \end{scope}
+  \node[pcap] at (100,-2) {\iflangja{(c) 分割デバイスドライバ}{(c) split-device driver}};
+\end{tikzpicture}

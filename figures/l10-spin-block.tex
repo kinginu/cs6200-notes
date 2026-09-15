@@ -1,0 +1,47 @@
+% Blocking on a mutex versus spinning on a spinlock: timelines of two CPUs.
+% Usage: \input{figures/l10-spin-block}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west},
+  >={Stealth[length=1.6mm]}]
+  % \ltenseg{x1}{x2}{y}{fill}{text}
+  \def\ltenseg#1#2#3#4#5{%
+    \draw[fill=#4] (#1,#3-2.5) rectangle (#2,#3+2.5);
+    \node[lab] at ({(#1+#2)/2},#3) {#5};}
+  % event lines
+  \draw[densely dashed, ln-muted] (50,33) -- (50,-12);
+  \draw[densely dashed, ln-muted] (76,33) -- (76,-12);
+  \node[lab, anchor=south, fill=white, inner sep=1pt] at (50,33)
+    {\iflangja{T2 が lock を呼ぶ}{T2 calls lock}};
+  \node[lab, anchor=south, fill=white, inner sep=1pt] at (76,33)
+    {\iflangja{T1 が unlock する}{T1 unlocks}};
+  % (a) mutex
+  \node[ttl] at (0,29) {\iflangja{(a) ミューテックス：T2 はブロック}{(a) mutex: T2 blocks}};
+  \node[row] at (22,22) {CPU 1};
+  \ltenseg{24}{36}{22}{white}{T1}
+  \ltenseg{36}{76}{22}{ln-box}{\iflangja{T1：クリティカルセクション}{T1: critical section}}
+  \ltenseg{76}{116}{22}{white}{T1}
+  \node[row] at (22,15) {CPU 2};
+  \ltenseg{24}{50}{15}{white}{T2}
+  \ltenseg{50}{55}{15}{black!35}{}
+  \ltenseg{55}{76}{15}{white}{\iflangja{T3（別のスレッド）}{T3 (another thread)}}
+  \ltenseg{76}{81}{15}{black!35}{}
+  \ltenseg{81}{116}{15}{ln-box}{\iflangja{T2：クリティカルセクション}{T2: critical section}}
+  % (b) spinlock
+  \node[ttl] at (0,6) {\iflangja{(b) スピンロック：T2 はスピン}{(b) spinlock: T2 spins}};
+  \node[row] at (22,-1) {CPU 1};
+  \ltenseg{24}{36}{-1}{white}{T1}
+  \ltenseg{36}{76}{-1}{ln-box}{\iflangja{T1：クリティカルセクション}{T1: critical section}}
+  \ltenseg{76}{116}{-1}{white}{T1}
+  \node[row] at (22,-8) {CPU 2};
+  \ltenseg{24}{50}{-8}{white}{T2}
+  \ltenseg{50}{76}{-8}{ln-caution!20}{\iflangja{ビジーウェイト}{busy waiting}}
+  \ltenseg{76}{116}{-8}{ln-box}{\iflangja{T2：クリティカルセクション}{T2: critical section}}
+  % legend
+  \draw[fill=black!35] (24,-18) rectangle (28,-15);
+  \node[lab, anchor=west] at (29,-16.5) {\iflangja{コンテキストスイッチ}{context switch}};
+  \draw[fill=ln-box] (64,-18) rectangle (68,-15);
+  \node[lab, anchor=west] at (69,-16.5) {\iflangja{ロックを保持}{lock held}};
+  \draw[->] (92,-16.5) -- node[lab, above] {\iflangja{時間}{time}} (116,-16.5);
+\end{tikzpicture}

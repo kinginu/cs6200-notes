@@ -1,0 +1,53 @@
+% Copy-on-write after fork: (a) parent and child map the same write-
+% protected frames; (b) the child's write to page 1 faults, and the OS
+% copies only that page.
+% Usage: \input{figures/l08-cow}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.4mm]},
+  ro/.style={draw, fill=ln-caution!12},
+  rw/.style={draw, fill=ln-accent!22},
+  oth/.style={draw, fill=ln-box},
+  hd/.style={font=\scriptsize\sffamily\bfseries, anchor=base},
+  capt/.style={font=\footnotesize\sffamily},
+  lab/.style={font=\scriptsize\sffamily}]
+  % \panel{x0}{child page-1 frame}{copy?}
+  \def\panel#1#2{%
+    \begin{scope}[shift={(#1,0)}]
+      \node[hd] at (6,37.5) {\iflangja{親}{parent}};
+      \node[hd] at (28,37.5) {\iflangja{メモリ}{memory}};
+      \node[hd] at (50,37.5) {\iflangja{子}{child}};
+      % frames 0..4, height 7, centres 3.5 + 7 i
+      \foreach \i in {0,...,4} { \draw[oth] (22,7*\i) rectangle ++(12,7); }
+      \foreach \i/\n in {3/0, 1/1, 4/2} {
+        \draw[ro] (22,7*\i) rectangle ++(12,7) node[midway, lab] {\iflangja{ページ}{page} \n};
+      }
+      % parent pages 0..2 (centres 10, 18, 26)
+      \foreach \j/\i in {0/3, 1/1, 2/4} {
+        \draw[ro] (0,6+8*\j) rectangle ++(12,8) node[midway, lab] {\j};
+        \draw[->] (12,10+8*\j) -- (22,3.5+7*\i);
+      }
+      #2
+    \end{scope}}
+  % (a) after fork: child maps the same frames
+  \panel{0}{%
+    \foreach \j/\i in {0/3, 1/1, 2/4} {
+      \draw[ro] (44,6+8*\j) rectangle ++(12,8) node[midway, lab] {\j};
+      \draw[->] (44,10+8*\j) -- (34,3.5+7*\i);
+    }}
+  \node[capt] at (28,-5) {\iflangja{(a) fork 直後}{(a) after \texttt{fork}}};
+  % (b) after the child writes page 1
+  \panel{62}{%
+    \foreach \j/\i in {0/3, 2/4} {
+      \draw[ro] (44,6+8*\j) rectangle ++(12,8) node[midway, lab] {\j};
+      \draw[->] (44,10+8*\j) -- (34,3.5+7*\i);
+    }
+    \draw[rw] (44,14) rectangle ++(12,8) node[midway, lab] {1};
+    \draw[rw] (22,0) rectangle ++(12,7) node[midway, lab] {\iflangja{コピー}{copy}};
+    \draw[->, very thick, ln-accent] (44,18) -- (34,3.5);}
+  \node[capt] at (90,-5) {\iflangja{(b) 子がページ 1 に書き込んだ後}{(b) after the child writes page 1}};
+  % legend
+  \draw[ro] (0,-12) rectangle ++(4,3);
+  \node[lab, anchor=west] at (5,-10.5) {\iflangja{書き込み禁止}{write-protected}};
+  \draw[rw] (32,-12) rectangle ++(4,3);
+  \node[lab, anchor=west] at (37,-10.5) {\iflangja{書き込み可能}{writable}};
+\end{tikzpicture}
