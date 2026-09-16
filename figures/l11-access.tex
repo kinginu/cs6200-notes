@@ -1,0 +1,44 @@
+% (a) Typical device access through the kernel; (b) operating system bypass
+% with a user-level driver.
+% Usage: \input{figures/l11-access}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  box/.style={draw, fill=white, minimum height=7mm, inner sep=1pt, align=center},
+  kbox/.style={draw, fill=ln-box, minimum height=7mm, inner sep=1pt, align=center},
+  dev/.style={draw, fill=ln-accent!22, minimum height=7mm, inner sep=1pt, align=center},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  side/.style={font=\scriptsize\sffamily\itshape, text=ln-muted},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % boundaries
+  \draw[densely dashed, ln-muted] (0,23) -- (118,23);
+  \draw[densely dashed, ln-muted] (0,-11) -- (118,-11);
+  \node[side, anchor=south west] at (0,23.3) {\iflangja{ユーザ}{user}};
+  \node[side, anchor=north west] at (0,22.7) {\iflangja{カーネル}{kernel}};
+  \node[side, anchor=north west] at (0,-11.3) {\iflangja{デバイス}{device}};
+  % ---------------- (a) typical access
+  \node[ttl] at (12,40) {\iflangja{(a) カーネルを経由するアクセス}{(a) access through the kernel}};
+  \node[box, minimum width=34mm] (p) at (34,31) {\iflangja{ユーザプロセス}{user process}};
+  \node[kbox, minimum width=34mm] (st) at (34,11)
+    {\iflangja{カーネル内スタック\\（TCP/IP，ファイルシステム）}{in-kernel stack\\(TCP/IP, file system)}};
+  \node[kbox, minimum width=34mm] (dr) at (34,-2) {\iflangja{デバイスドライバ}{device driver}};
+  \node[dev, minimum width=34mm] (d) at (34,-21) {\iflangja{デバイス}{device}};
+  \draw[->, thick] ([xshift=-6mm]p.south) -- node[lab, left, pos=0.72] {\iflangja{システムコール}{system call}} ([xshift=-6mm]st.north);
+  \draw[->, thick] ([xshift=-6mm]st.south) -- ([xshift=-6mm]dr.north);
+  \draw[->, thick] ([xshift=-6mm]dr.south) -- node[lab, left, pos=0.22] {PIO/DMA} ([xshift=-6mm]d.north);
+  \draw[->] ([xshift=6mm]d.north) -- node[lab, right, pos=0.78] {\iflangja{割り込み}{interrupt}} ([xshift=6mm]dr.south);
+  \draw[->] ([xshift=6mm]dr.north) -- ([xshift=6mm]st.south);
+  \draw[->] ([xshift=6mm]st.north) -- node[lab, right, pos=0.28] {\iflangja{結果}{result}} ([xshift=6mm]p.south);
+  % ---------------- (b) OS bypass
+  \node[ttl] at (66,40) {\iflangja{(b) OS バイパス}{(b) operating system bypass}};
+  \draw[fill=white] (66,25.5) rectangle (100,37);
+  \node[lab] at (83,34.5) {\iflangja{ユーザプロセス}{user process}};
+  \node[kbox, minimum width=30mm, minimum height=5mm] (ud) at (83,29.5)
+    {\iflangja{ユーザレベルドライバ}{user-level driver}};
+  \node[kbox, minimum width=26mm] (kd) at (104,5)
+    {\iflangja{カーネルの\\ドライバ}{kernel driver}};
+  \node[dev, minimum width=46mm] (d2) at (90,-21) {\iflangja{デバイス}{device}};
+  \draw[<->, line width=1.4pt, ln-accent] (77,27) -- node[lab, fill=white, text=black, inner sep=0.8pt]
+    {\iflangja{レジスタと\\メモリに\\直接アクセス}{direct access\\to registers\\and memory}} (77,-17.5);
+  \draw[->, densely dashed] (kd.south) -- node[lab, right, pos=0.3] {\iflangja{設定}{configure}} (kd.south |- d2.north);
+  \draw[->, densely dashed] (kd.north) |- node[lab, pos=0.15, right] {\iflangja{許可}{grant}} (100,31);
+\end{tikzpicture}

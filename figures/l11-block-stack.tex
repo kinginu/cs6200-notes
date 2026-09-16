@@ -1,0 +1,30 @@
+% The block device stack: file system, generic block layer and device driver
+% between a process and a block device.
+% Usage: \input{figures/l11-block-stack}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  box/.style={draw, fill=white, minimum width=38mm, minimum height=7mm, inner sep=1pt},
+  kbox/.style={draw, fill=ln-box, minimum width=38mm, minimum height=7mm, inner sep=1pt},
+  dev/.style={draw, fill=ln-accent!22, minimum width=38mm, minimum height=7mm, inner sep=1pt},
+  ifc/.style={font=\scriptsize\sffamily, anchor=west, align=left},
+  side/.style={font=\scriptsize\sffamily\itshape, text=ln-muted, anchor=west}]
+  \node[box]  (p)  at (34,40) {\iflangja{ユーザプロセス}{user process}};
+  \node[kbox] (fs) at (34,27) {\iflangja{ファイルシステム}{file system}};
+  \node[kbox] (gb) at (34,14) {\iflangja{汎用ブロック層}{generic block layer}};
+  \node[kbox] (dd) at (34,1)  {\iflangja{デバイスドライバ}{device driver}};
+  \node[dev]  (bd) at (34,-12) {\iflangja{ブロックデバイス}{block device}};
+  \foreach \a/\b in {p/fs, fs/gb, gb/dd, dd/bd} \draw[<->, thick] (\a.south) -- (\b.north);
+  \node[ifc] at (40,33.5) {\iflangja{POSIX API：open, read, write, close}{POSIX API: open, read, write, close}};
+  \node[ifc] at (40,20.5) {\iflangja{汎用ブロックインタフェース：ブロックの読み書き}{generic block interface: read or write blocks}};
+  \node[ifc] at (40,7.5)  {\iflangja{プロトコル固有のインタフェース}{protocol-specific interface}};
+  \node[ifc] at (40,-5.5) {\iflangja{デバイスのプロトコル（SCSI, ATA など）}{device protocol (e.g.\ SCSI, ATA)}};
+  % boundaries
+  \draw[densely dashed, ln-muted] (0,33.5) -- (15,33.5);
+  \draw[densely dashed, ln-muted] (0,-5.5) -- (15,-5.5);
+  \node[side, anchor=south west] at (0,33.8) {\iflangja{ユーザ}{user}};
+  \node[side, anchor=north west] at (0,33.2) {\iflangja{カーネル}{kernel}};
+  \node[side, anchor=north west] at (0,-5.8) {\iflangja{ハードウェア}{hardware}};
+  % ioctl
+  \draw[->, densely dashed, ln-accent] (p.west) .. controls (10,34) and (10,7) .. (dd.west);
+  \node[font=\scriptsize\ttfamily, text=ln-accent, fill=white, inner sep=0.8pt] at (11.2,20.5) {ioctl};
+\end{tikzpicture}

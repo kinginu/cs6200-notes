@@ -1,0 +1,32 @@
+% A basic I/O device: an interface of device registers that the CPU reads
+% and writes, and device-specific internals hidden behind it.
+% Usage: \input{figures/l11-device}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  reg/.style={draw, fill=white, minimum width=24mm, minimum height=6mm,
+              inner sep=1pt},
+  part/.style={draw, fill=white, minimum width=44mm, minimum height=6mm,
+               inner sep=1pt, font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  hdr/.style={font=\scriptsize\sffamily\bfseries, text=ln-accent}]
+  % device outline
+  \draw[fill=ln-box] (30,-13) rectangle (118,19.5);
+  \node[hdr] at (50,15.5) {\iflangja{インタフェース（デバイスレジスタ）}{interface (device registers)}};
+  \node[hdr] at (94,15.5) {\iflangja{内部構成}{internals}};
+  \draw[densely dashed, ln-muted] (69,-10.5) -- (69,12);
+  \node[reg] (st) at (50,7) {\iflangja{ステータス}{status}};
+  \node[reg] (cm) at (50,0) {\iflangja{コマンド}{command}};
+  \node[reg] (dt) at (50,-7) {\iflangja{データ}{data}};
+  \node[part] (mc) at (94,7) {\iflangja{マイクロコントローラ（デバイスの CPU）}{microcontroller (the device's CPU)}};
+  \node[part] (mm) at (94,0) {\iflangja{デバイス上のメモリ}{on-device memory}};
+  \node[part] (ch) at (94,-7) {\iflangja{その他の回路（A/D 変換器など）}{other chips (e.g.\ A/D converter)}};
+  \draw[<->] (cm.east) -- (mm.west);
+  % CPU side
+  \node[draw, fill=ln-accent!22, minimum width=12mm, minimum height=8mm]
+    (cpu) at (7,0) {CPU};
+  \draw[<->, thick] (cpu.east) -- (34,0);
+  \node[lab, anchor=south] at (22,0.6) {\iflangja{読み書き}{read /}};
+  \node[lab, anchor=north] at (22,-0.6) {\iflangja{}{write}};
+  \draw (34,7) -- (34,-7);
+  \foreach \y in {7,0,-7} \draw[->] (34,\y) -- (38,\y);
+\end{tikzpicture}

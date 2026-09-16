@@ -1,0 +1,898 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{I/O Management}
+\lessoninfo{
+  video={P3L5},
+  textbook={OSTEP \cite{ostep} ch.~36--37, 39--42; Silberschatz et al.\ \cite{silberschatz2018} ch.~12; Kerrisk \cite{kerrisk2010} ch.~13--14},
+  keywords={device register, device driver, block device, character device, memory-mapped I/O, polling, programmed I/O, DMA, operating system bypass, virtual file system, inode, ext2, buffer cache, journaling},
+}
+
+Besides the CPU and memory, whose management Lessons~7 and~8 described, an
+operating system manages the devices through which a computer receives
+input, produces output and stores data persistently.  This lesson examines
+how the operating system represents and controls such devices: the
+interface a device presents, the drivers that encapsulate device-specific
+knowledge, and the ways in which the CPU and a device exchange commands,
+data and notifications.  It then follows a file access down the block
+device stack and studies how file systems---the virtual file system and ext2
+in particular---organize data on disk and reduce the cost of accessing it.
+
+\section{I/O devices}
+\label{sec:l11-devices}
+
+Input/output (I/O) devices connect a computer to its environment.\source{P3L5,
+lesson preview, I/O devices, basic I/O device features; OSTEP ch.~36;
+Silberschatz et al.\ ch.~12.}  They differ widely in function---some only
+deliver input to the computer, some only accept output from it, many do
+both---and in speed, from a device that produces a few characters per second
+to a network interface that transfers gigabits per second.  The I/O
+management of an operating system follows three principles:
+\begin{itemize}
+  \item it defines \emph{protocols}, standard interfaces through which
+    devices are accessed;
+  \item it provides \emph{dedicated handlers}, the device drivers and
+    interrupt handlers, for the device-specific work;
+  \item it \emph{decouples} the details of individual devices from the rest
+    of the system, so that applications use abstractions such as files
+    rather than device operations.
+\end{itemize}
+
+\begin{definition}[Device register]
+  A \term{device register}[デバイスレジスタ] is a register of a device that
+  the CPU reads or writes to interact with the device.  Devices typically
+  provide \emph{command} registers, which the CPU writes to tell the device
+  what to do; \emph{data} registers, through which data are transferred to
+  and from the device; and \emph{status} registers, which the CPU reads to
+  learn what the device is doing.
+\end{definition}
+
+The registers form the interface of the device (\cref{fig:l11-device}).
+Behind it lie the device internals: a microcontroller, which is the device's
+own CPU, on-device memory, and other device-specific chips, such as the
+analog-to-digital converters of a microphone.  Only the interface is
+visible to the operating system; how the device uses its internals to carry
+out a command is hidden from it.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-device}
+  \caption{A basic I/O device.  The CPU interacts with the device only
+    through its command, status and data registers; the internals that carry
+    out the commands are device-specific.}
+  \label{fig:l11-device}
+\end{figure}
+
+\section{CPU--device interconnect}
+\label{sec:l11-interconnect}
+
+Devices are attached to the CPU and memory through controllers on an
+interconnect.\source{P3L5, CPU device interconnect; OSTEP ch.~36;
+Silberschatz et al.\ ch.~12.}  The interconnect limits how fast data can
+move between a device and the rest of the system and how many devices can
+be attached.  A standard family of such interconnects is the \term{Peripheral Component Interconnect}[PCI]%
+\index{PCI|see{Peripheral Component Interconnect}} (PCI).  Its original form
+is a shared parallel bus, which PCI-X (PCI eXtended) made faster.  Current
+platforms use PCI Express (PCIe), which remains compatible with the software
+interface of PCI but offers more bandwidth, faster and lower-latency access,
+and connections for more devices.\margin{Although commonly called a bus,
+PCIe connects each device through a point-to-point serial link and
+switches.}
+
+Not every device is connected to PCIe directly (\cref{fig:l11-interconnect}).
+A SCSI controller attached to PCIe connects disks on its own SCSI bus, and
+an expansion bus interface connects slower peripherals such as keyboards on
+an expansion (peripheral) bus.  Bridging controllers handle the differences
+between the buses, and the bridge that connects the CPU to memory also
+connects both to PCIe.  An access from the CPU to a device may therefore
+cross several interconnects.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-interconnect}
+  \caption{A typical platform interconnect.  Device controllers are attached
+    to PCIe; disks and keyboards are attached to further buses behind their
+    own controllers.  PCIe is drawn as a bus for simplicity; each controller
+    is in fact attached through its own point-to-point link.}
+  \label{fig:l11-interconnect}
+\end{figure}
+
+\section{Device drivers}
+\label{sec:l11-drivers}
+
+The operating system does not itself contain the knowledge of how to operate
+each device.\source{P3L5, device drivers; OSTEP ch.~36; Silberschatz et
+al.\ ch.~12.}
+
+\begin{definition}[Device driver]
+  A \term{device driver}[デバイスドライバ] is a device-specific software
+  component of the operating system that is responsible for all access to,
+  management of and control of the devices of one type.
+\end{definition}
+
+There is one driver per device type, and drivers are typically provided by
+the manufacturers of the devices; in a modular operating system they are
+loaded as kernel modules (Lesson~1).  The operating system in turn
+standardizes the interfaces that drivers implement, the \emph{device driver
+framework}.  This standardization yields two properties:
+\begin{description}
+  \item[Device independence] the operating system does not have to be
+    specialized for particular devices, since it uses every device of a type
+    through the same interface.
+  \item[Device diversity] the operating system can support arbitrarily
+    different devices, including new ones: a device can be used as soon as
+    a driver implements the interface for it.
+\end{description}
+
+\section{Types of devices}
+\label{sec:l11-types}
+
+Operating systems group devices into classes.\source{P3L5, types of
+devices; Silberschatz et al.\ ch.~12; Kerrisk ch.~14.}  The members of a
+class are used in the same way, and each class has its own driver
+interface.  Three classes are distinguished:
+\begin{itemize}
+  \item A \term{block device}[ブロックデバイス], such as a disk, stores data
+    in fixed-size blocks, and every individual block can be read or written
+    directly by its number.
+  \item A \term{character device}[キャラクタデバイス], such as a keyboard,
+    delivers or accepts a sequential stream of characters; its basic
+    operations get or put one character.
+  \item A \term{network device}[ネットワークデバイス], such as an Ethernet
+    interface, lies between the two: it delivers a stream of data, but in
+    chunks of varying size rather than in fixed-size blocks or single
+    characters.
+\end{itemize}
+
+\subsection{Devices as files}
+
+Operating systems represent devices in the file system.
+
+\begin{definition}[Device file]
+  A \term{device file}[デバイスファイル], also called a \emph{special file},
+  is a file that represents a device.  The operations that a process
+  applies to it---open, read, write, close---are carried out on the device
+  by the device's driver.
+\end{definition}
+
+In UNIX-like systems device files reside in the directory \texttt{/dev},
+which is managed by a special file system such as devfs or, on current
+Linux, a tmpfs-based one (tmpfs was the home of POSIX shared memory in
+Lesson~9).  A long listing with \texttt{ls -l} marks a block device file
+with the type \texttt{b} and a character device file with
+\texttt{c}.\margin{On Linux, network devices are the exception: they have no
+device files and are used through sockets.}  Because a device looks like a
+file, programs that know nothing about devices can use it.
+
+\begin{example}
+  The command
+  \begin{lstlisting}[numbers=none]
+dd if=/dev/sda of=head.img bs=512 count=1
+\end{lstlisting}
+  copies the first 512~bytes of the first disk into an ordinary file.  The
+  program \texttt{dd} uses only open, read and write; that its input is a
+  block device, and the disk protocol that retrieves the block, are handled
+  by the operating system and the disk's driver.
+\end{example}
+
+Not every device file corresponds to hardware.
+
+\begin{definition}[Pseudo device]
+  A \term{pseudo device}[疑似デバイス] is a device, represented by a device
+  file like any other, that corresponds to no physical hardware; its driver
+  implements the device's functionality entirely in software.
+\end{definition}
+
+For example, reading \texttt{/dev/zero} returns an endless stream of zero
+bytes, which is convenient for creating a file of a given size filled with
+zeros.
+
+\begin{keypoint}
+  A device is operated through its command, data and status registers, by a
+  device driver that hides the device behind an interface the operating
+  system standardizes for the whole class of devices.  The classes are block,
+  character and network devices, and the first two are represented as device
+  files, so that ordinary file operations reach them.
+\end{keypoint}
+
+\section{CPU--device interactions}
+\label{sec:l11-interactions}
+
+To use a device, the CPU must be able to address its registers, and the
+device must be able to tell the CPU when it needs attention.\source{P3L5,
+CPU device interactions; OSTEP ch.~36; Silberschatz et al.\ ch.~12.}  There
+are two ways to address the registers.
+
+\begin{definition}[Memory-mapped I/O]
+  With \term{memory-mapped I/O}[メモリマップドI/O] the device registers
+  appear to the CPU as memory locations at specific physical addresses.  A
+  part of the physical address space is dedicated to device interactions,
+  and the CPU accesses a register with an ordinary load or store instruction
+  on its address, which the platform directs to the device instead of to
+  memory.
+\end{definition}
+
+For a PCI device, the base address registers (BARs) in the device's
+configuration space determine how large its region of the physical address
+space is and where the region lies; they are configured during the boot
+process.  Memory-mapped I/O must not be confused with a memory-mapped file
+(Lesson~9), which maps the contents of a file into the virtual address
+space of a process.
+
+The second way uses dedicated CPU instructions, such as \texttt{in} and
+\texttt{out} on x86.  An \term{I/O port}[I/Oポート] is an address, separate
+from the memory addresses, that designates a device register; the
+instruction specifies the target port and the value to be written to the
+register, or receives the value read from it.
+
+\subsection{Interrupts and polling}
+
+In the other direction, a device must inform the CPU that it has completed
+a request or that data have arrived.  It can raise an interrupt (Lesson~5),
+or the operating system can find out by polling.
+
+\begin{definition}[Polling]
+  The technique in which the operating system reads the status register of
+  a device, at times of its own choosing, to find out whether the device
+  requires attention, instead of waiting for the device to raise an
+  interrupt, is called \term{polling}[ポーリング].
+\end{definition}
+
+\Cref{tab:l11-int-poll} compares the two.  An interrupt reaches the CPU as
+soon as the device generates it, but every interrupt incurs the handling
+overhead: executing the interrupt handler, setting and resetting interrupt
+masks, and indirect effects such as the eviction of the interrupted
+thread's data from the CPU caches.  Polling happens when it is convenient
+for the operating system, but if it happens rarely, events wait until the
+next poll; if it happens often, most polls find nothing and waste CPU time.
+Which method is preferable depends on the type of device and on the
+objectives, such as how frequent the events are and how quickly they must be
+handled.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Interrupts and polling.}
+  \label{tab:l11-int-poll}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.2\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}@{}}
+    \toprule
+    & Interrupt & Polling \\
+    \midrule
+    Initiated by & the device & the operating system \\
+    Event noticed & as soon as it is generated & at the next poll \\
+    Cost & handling overhead per interrupt, cache pollution & one status
+      read per poll, including polls that find nothing \\
+    Drawback & overhead when events are frequent & delay if polls are rare,
+      CPU overhead if they are frequent \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{example}
+  Suppose that taking an interrupt costs \SI{4}{\micro\second} of CPU time
+  beyond the processing of the event itself, and that one poll, which
+  collects all events pending since the previous poll, costs
+  \SI{0.5}{\micro\second}.  A device that reports 50 events per second costs
+  \SI{200}{\micro\second} of CPU time per second with interrupts; polling
+  every \SI{1}{\milli\second} would cost \SI{500}{\micro\second} per second
+  and delay each event by up to \SI{1}{\milli\second}.  A network interface
+  that receives \num{100000} packets per second, however, costs
+  \SI{400}{\milli\second} per second---\SI{40}{\percent} of a CPU---with one
+  interrupt per packet, while polling every \SI{1}{\milli\second} still costs
+  only \SI{500}{\micro\second} per second.
+\end{example}
+
+\section{Device access: programmed I/O and DMA}
+\label{sec:l11-pio-dma}
+
+The CPU and a device can exchange data in two ways, which differ in whether
+the data pass through the CPU.\source{P3L5, device access PIO, device access
+DMA; OSTEP ch.~36.}  Both ways use the device registers of
+\cref{sec:l11-devices} to issue commands.
+
+\begin{definition}[Programmed I/O]
+  With \term{programmed I/O}[プログラム制御I/O]%
+  \index{PIO|see{programmed I/O}} (PIO) the CPU performs every step of the
+  interaction through the device registers: it writes the command register
+  to request an operation, and it moves the data by writing or reading the
+  data register, one register-sized piece at a time.
+\end{definition}
+
+PIO requires no hardware support beyond the registers.  To send a network
+packet with PIO, the CPU writes a command requesting transmission into the
+command register, copies the first part of the packet into the data
+register, and repeats the copy until the whole packet has been transferred
+(\cref{fig:l11-pio-dma}a).  The number of CPU accesses grows with the size of
+the data.
+
+\begin{definition}[Direct memory access]
+  With \term{direct memory access}[DMA]\index{DMA|see{direct memory access}}
+  (DMA) the CPU still issues commands through the command register, but the
+  data do not pass through the CPU.  The CPU places the data in a buffer in
+  main memory and passes the address and size of the buffer to the device;
+  a DMA controller then copies the data between memory and the device on its
+  own.
+\end{definition}
+
+To send the packet with DMA, the CPU writes the command, places the packet
+in a memory buffer, and configures the DMA controller with the buffer's
+address and size (\cref{fig:l11-pio-dma}b).  The number of CPU accesses no
+longer depends on the size of the data.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-pio-dma}
+  \caption{Sending a packet.  (a) With programmed I/O the CPU copies the
+    packet into the data register piece by piece.  (b) With DMA the CPU only
+    writes the command and configures DMA; the device reads the packet from
+    memory.}
+  \label{fig:l11-pio-dma}
+\end{figure}
+
+\begin{example}
+  A network interface with an 8-byte data register sends a 9000-byte frame.
+  With PIO the CPU performs 1 access for the command and $9000/8 = 1125$
+  accesses for the data, 1126 accesses in total.  With DMA it performs 2: one
+  for the command and one for the DMA configuration.
+\end{example}
+
+DMA needs fewer steps, but configuring DMA is a more complex operation than
+a single register write.  For small transfers, a few register writes with
+PIO can therefore cost less than one DMA configuration: PIO is cheaper
+whenever the data accesses it needs cost less than the configuration of
+DMA.\tip{DMA pays off when a transfer spans many register widths; for
+transfers of a few bytes PIO is cheaper.}  A further requirement arises
+because the device accesses the buffer by its physical address: the buffer must remain in physical memory until
+the transfer completes.  Its pages are therefore pinned
+(Lesson~8)\index{pinned page}, that is, excluded from swapping; otherwise
+the device could read or overwrite whatever page had replaced the buffer.
+
+\begin{keypoint}
+  The CPU reaches device registers through memory-mapped I/O or I/O ports;
+  a device reaches the CPU through interrupts, or the operating system polls
+  it.  Data move either through the CPU register by register (PIO), or
+  directly between a memory buffer and the device (DMA), which saves CPU
+  accesses at the price of a more complex configuration and pinned memory.
+\end{keypoint}
+
+\section{Typical device access}
+\label{sec:l11-access}
+
+An application does not normally interact with a device by itself; its
+request passes through several layers of the operating
+system.\source{P3L5, typical device access, OS bypass; OSTEP ch.~36.}  The
+typical path of a device access is as follows (\cref{fig:l11-access}a):
+\begin{enumerate}
+  \item The process performs a system call that requests an operation, for
+    example to send data over a socket or to read from a file.
+  \item The kernel executes the in-kernel stack associated with the device:
+    the TCP/IP stack forms a packet, or the file system determines which
+    block holds the requested data.
+  \item The kernel invokes the appropriate device driver, here the network
+    driver or the block device driver.
+  \item The driver configures the request on the device, with PIO register
+    writes or a DMA configuration.
+  \item The device performs the request: it transmits the packet or reads
+    the blocks from the disk.
+\end{enumerate}
+Results and completion notifications travel back the same way: the device
+raises an interrupt or is polled, the driver passes the data up the stack,
+and the system call returns to the process.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-access}
+  \caption{(a) A typical device access passes through the system call, the
+    in-kernel stack and the device driver.  (b) With operating system bypass
+    the process accesses the device through a user-level driver; the kernel
+    only configures and controls the access.}
+  \label{fig:l11-access}
+\end{figure}
+
+\subsection{Operating system bypass}
+
+Going through the kernel is not strictly necessary.
+
+\begin{definition}[Operating system bypass]
+  A method of device access in which the registers and memory of a device
+  are made directly accessible to a user process is called
+  \term{operating system bypass}[OSバイパス].  The operating system configures the access and then stays
+  out of the way, so that the process performs device operations without
+  executing kernel code (\cref{fig:l11-access}b).
+\end{definition}
+
+The code that would otherwise run in the kernel driver is then provided by a
+\emph{user-level driver}, a library linked into the application.  The
+operating system retains coarse-grained control: it can, for example,
+enable or disable the device, or grant additional processes access to it.
+Bypass relies on features of the device:
+\begin{itemize}
+  \item The device must have sufficient registers, so that some of them can
+    be mapped into a user process while those needed for control remain
+    accessible only to the kernel.
+  \item If several processes use the device, the device must be able to
+    \emph{demultiplex}, that is, determine to which process data belong.  In
+    a typical device access the kernel does this: its network stack, for
+    example, inspects the headers of an arriving packet to find the
+    receiving process.  With bypass the device itself must do so.
+\end{itemize}
+
+\section{Synchronous and asynchronous access}
+\label{sec:l11-sync}
+
+While a device carries out a request, the thread that issued it can either
+wait or continue.\source{P3L5, sync vs.\ async access; Silberschatz et al.\
+ch.~12.}
+
+\begin{definition}[Synchronous I/O]
+  With \term{synchronous I/O}[同期I/O] a thread that issues an I/O request
+  is blocked until the request completes.  The operating system places the
+  thread on the wait queue associated with the device, the I/O queue of
+  Lesson~2, and makes it runnable again when the device reports completion.
+\end{definition}
+
+With \term*{asynchronous I/O}\index{asynchronous I/O} (Lesson~6) the call
+returns at once and the thread continues executing
+(\cref{fig:l11-sync-async}).  It learns the outcome later in one of two
+ways: either the thread itself checks whether the operation has completed
+and then retrieves the results, or the operating system notifies it that
+the operation has completed and that the results are available.  When the
+kernel does not support asynchronous access to a device, it can be emulated
+in user space with helper threads or processes that issue the blocking
+calls on behalf of the main thread, as the Flash web server of Lesson~6
+does.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-sync-async}
+  \caption{(a) With synchronous I/O the thread blocks until the device
+    completes the operation.  (b) With asynchronous I/O the thread continues
+    and retrieves the result after being notified or after checking.}
+  \label{fig:l11-sync-async}
+\end{figure}
+
+\begin{keypoint}
+  A device access normally passes from the system call through the
+  in-kernel stack and the driver to the device, and the result returns the
+  same way.  Operating system bypass removes the kernel from this path when
+  the device can protect and demultiplex its own resources.  Independently
+  of the path, the requesting thread either blocks (synchronous I/O) or
+  continues and collects the result later (asynchronous I/O).
+\end{keypoint}
+
+\section{Block device stack}
+\label{sec:l11-block-stack}
+
+Processes rarely address a block device by block numbers.\source{P3L5,
+block device stack; OSTEP ch.~36, 39.}  They use files, the logical storage
+units, through the POSIX API with operations such as \texttt{open},
+\texttt{read}, \texttt{write} and \texttt{close}.
+Beneath the API the kernel is organized in layers, each of which uses the
+interface of the layer below it (\cref{fig:l11-block-stack}).
+
+\begin{definition}[File system]
+  A \term{file system}[ファイルシステム] is the kernel component that
+  organizes the blocks of a storage device into files and directories: it
+  determines where the data of each file reside, and how a file is found and
+  accessed.
+\end{definition}
+
+The operating system specifies the interface that every file system
+implements.  Below the file systems lies a layer that hides the differences
+between block devices.
+
+\begin{definition}[Generic block layer]
+  The \term{generic block layer}[汎用ブロック層] is the kernel layer that
+  provides a single, operating-system-standardized interface for reading
+  and writing blocks on any block device, and that translates each request
+  into the interface of the driver of the particular device.
+\end{definition}
+
+The same file system therefore works on every kind of block device: the
+generic block layer adapts each request to the driver of the device, and the
+driver speaks the protocol of its device, such as SCSI or ATA, towards the
+hardware.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-block-stack}
+  \caption{The block device stack.  Each layer uses the interface shown
+    below it; \texttt{ioctl} carries device-specific requests to the
+    driver.}
+  \label{fig:l11-block-stack}
+\end{figure}
+
+Some operations on a device fit neither \texttt{read} nor \texttt{write}.
+Linux and other UNIX-like systems provide the system call
+\term[ioctl]{\texttt{ioctl}}[ioctl] (\enquote{I/O control}) through which a
+process accesses and manipulates device-specific information.  It takes a
+file descriptor (\cref{sec:l11-vfs-abs}) of an open device file, a request
+code defined for the device class or driver, and, depending on the request,
+a pointer to request-specific data.
+
+\needspace{11\baselineskip}
+\begin{example}
+  A program opens the tray of the first optical drive:
+  \begin{lstlisting}[language=C, numbers=none]
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/cdrom.h>
+
+int fd = open("/dev/sr0", O_RDONLY | O_NONBLOCK);
+if (fd >= 0) {
+  ioctl(fd, CDROMEJECT);   /* no read/write equivalent */
+  close(fd);
+}
+\end{lstlisting}
+  The flag \texttt{O\_NONBLOCK} allows the device file to be opened even
+  when no disc is inserted.
+\end{example}
+
+\section{The virtual file system}
+\label{sec:l11-vfs}
+
+A single file system on a single local device is not enough for most
+systems.\source{P3L5, virtual file system; OSTEP ch.~39; Kerrisk
+ch.~14.}  The files may reside on more than one device; different devices
+may be served best by different file system implementations; and files may
+not reside on a local device at all, but on a remote server that is accessed
+over the network (Lesson~14).
+
+\begin{definition}[Virtual file system]
+  A \term{virtual file system}[仮想ファイルシステム]%
+  \index{VFS|see{virtual file system}} (VFS) is a kernel layer that presents
+  one file system interface to applications, and that maps each operation to
+  the concrete file system in which the file resides.
+\end{definition}
+
+The VFS hides all details of the underlying file systems from applications
+(\cref{fig:l11-vfs}).  Applications use the same API regardless of where a
+file resides, and the VFS forwards each operation to the file system
+concerned, such as a local ext2 file system on a disk or a remote file
+system such as NFS.
+
+\begin{figure}[tb]
+  \centering
+  \input{figures/l11-vfs}
+  \caption{The virtual file system maps the operations of the file system
+    interface to the concrete local and remote file systems.}
+  \label{fig:l11-vfs}
+\end{figure}
+
+\section{VFS abstractions}
+\label{sec:l11-vfs-abs}
+
+Every concrete file system implements a small set of abstractions defined
+by the VFS.\source{P3L5, virtual file system abstractions, VFS on disk;
+OSTEP ch.~39--40; Kerrisk ch.~14.}  The \emph{file} is the element
+on which the VFS operates.  A process refers to an open file through a file
+descriptor (\cref{fig:l11-vfs-objects}).
+
+\begin{figure}[tb]
+  \centering
+  \input{figures/l11-vfs-objects}
+  \caption{VFS abstractions.  File descriptor~3 of process~P refers to an
+    open file, whose dentry leads to the inode; the dentries of the path
+    exist only in memory.  On disk, the superblock maps the blocks that hold
+    inodes, data and free space.}
+  \label{fig:l11-vfs-objects}
+\end{figure}
+
+\begin{definition}[File descriptor]
+  A \term{file descriptor}[ファイルディスクリプタ] is the operating system's
+  representation of an open file for a process: a small integer that the
+  process obtains from \texttt{open} and passes to the operations on the
+  file, such as \texttt{read}, \texttt{write}, \texttt{sendfile},
+  locking and \texttt{close}.
+\end{definition}
+
+The properties of the file itself, and the locations of its data blocks,
+are recorded in its inode.
+
+\begin{definition}[Inode]
+  An \term{inode}[iノード] is the persistent representation of a file: an
+  index that lists all the data blocks of the file, together with metadata
+  such as the device, the permissions and the size of the file.
+\end{definition}
+
+A directory is a file, too; its data consist of information about the files
+it contains and their inodes.  File names therefore appear in directories,
+not in inodes.  The components of a path are represented by further objects.
+
+\begin{definition}[Directory entry]
+  A \term{directory entry}[ディレクトリエントリ]%
+  \index{dentry|see{directory entry}} (dentry) is the VFS object that
+  corresponds to a single component of a path.
+\end{definition}
+
+Looking up the path \texttt{/users/joe} creates a dentry for each of
+\texttt{/}, \texttt{users} and \texttt{joe}.  The VFS keeps dentries in the
+\emph{dentry cache}, so that a later lookup of a path with the same prefix
+does not have to read the corresponding directories again.  Dentries are
+soft state: they exist only in memory and have no on-disk representation.
+
+\begin{definition}[Superblock]
+  A \term{superblock}[スーパーブロック] contains file-system-specific
+  information about the layout of a file system.
+\end{definition}
+
+\begin{example}
+  A process opens \texttt{/users/joe/notes.txt}.  Starting from the dentry
+  of \texttt{/}, the VFS reads each directory on the path to find the next
+  component and its inode, creating the dentries of \texttt{users},
+  \texttt{joe} and \texttt{notes.txt} on the way.  If the process then opens
+  \texttt{/users/joe/todo.txt}, the dentries of \texttt{/}, \texttt{users}
+  and \texttt{joe} are found in the dentry cache, and only the last
+  component must be looked up in the directory \texttt{joe}.
+\end{example}
+
+\subsection{VFS on disk}
+
+On disk, the abstractions are placed as follows (\cref{fig:l11-vfs-objects}).
+The data of a file are kept in data blocks.  The inode, which tracks the
+blocks of the file, also resides on disk, in some block.  The superblock
+provides the overall map of the disk blocks: which blocks hold inodes, which
+hold data, and which are free.
+
+\section{The second extended file system}
+\label{sec:l11-ext2}
+
+Linux has long used a family of file systems whose on-disk structures
+correspond closely to the abstractions of the VFS.\source{P3L5, ext2;
+OSTEP ch.~40--41.}  The second extended file system, \term{ext2}[ext2], was
+for many years the default file system of Linux and is the basis of its
+successors ext3 and ext4.  An ext2 partition begins with \SI{1024}{\byte}
+reserved for booting---all of block~0 when blocks are
+\SI{1}{\kibi\byte}---and the rest is divided into groups of blocks
+(\cref{fig:l11-ext2}).
+
+\begin{definition}[Block group]
+  A \term{block group}[ブロックグループ] is one of the equal-sized groups of
+  consecutive blocks into which ext2 divides a disk partition.  Each block
+  group holds its own inodes and data blocks together with the metadata that
+  describe them.
+\end{definition}
+
+Each block group contains
+\begin{description}
+  \item[a copy of the superblock] recording file-system-wide information:
+    the numbers of inodes and of disk blocks, the numbers of free inodes and
+    blocks, and the size of a block;
+  \item[a copy of the group descriptor table] with one descriptor per group,
+    recording the locations of the bitmaps and the inode table of that group
+    and its numbers of free blocks, free inodes and directories;
+  \item[a block bitmap and an inode bitmap] tracking which blocks and which
+    inodes of the group are free;
+  \item[the inode table] holding a consecutive range of the inodes of the
+    file system, which are numbered from 1 to the maximum number, one per
+    file;
+  \item[the data blocks] holding the file data.
+\end{description}
+The superblock and the group descriptor table describe the file system as a
+whole; the copies in block group~0 are the ones normally used, and the
+copies in the other groups serve as backups.  Keeping the inodes and the
+data blocks of a file in the same group places related blocks close together
+on the disk and reduces the distance the disk head must travel between
+them.\margin{A group is not a region of the disk
+geometry: it holds as many blocks as one block of bitmap can track.}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-ext2}
+  \caption{Layout of an ext2 partition.  After the space reserved for
+    booting, the partition is divided into block groups, each with a copy of
+    the superblock and of the group descriptor table, its own bitmaps, and
+    its inodes and data blocks.}
+  \label{fig:l11-ext2}
+\end{figure}
+
+\needspace{6\baselineskip}
+\section{Inodes}
+\label{sec:l11-inodes}
+
+A file is identified by its inode, and the inode is the index of all disk
+blocks of the file: it lists the blocks, in order, together with the
+metadata.\source{P3L5, inodes, inodes with indirect pointers; OSTEP ch.~40;
+Kerrisk ch.~14.}  In its simplest form the inode contains the block numbers
+of all blocks of the file.  Sequential and random access are then equally
+easy: with block size $B$, the byte at offset $o$ lies in the block whose
+number is entry $\lfloor o/B \rfloor$ of the list.  The size of a file,
+however, is limited by the number of entries that fit into the inode.
+
+\begin{example}
+  An inode of 512~bytes that uses 64~bytes for metadata has room
+  for $448/4 = 112$ block numbers of 4~bytes each.  With
+  \SI{4}{\kibi\byte} blocks, no file can be larger than
+  $112 \times \SI{4}{\kibi\byte} = \SI{448}{\kibi\byte}$.
+\end{example}
+
+\subsection{Indirect pointers}
+
+To support large files with small inodes, an inode holds pointers of several
+kinds (\cref{fig:l11-inode}).
+\begin{description}
+  \item[Direct pointers] A \term{direct pointer}[直接ポインタ] points to a
+    data block.
+  \item[Indirect pointers] An \term{indirect pointer}[間接ポインタ] points
+    to a block that contains pointers to data blocks.
+  \item[Double indirect pointers] A
+    \term{double indirect pointer}[二重間接ポインタ] points to a block of
+    pointers to blocks of pointers to data blocks.
+\end{description}
+A \emph{triple indirect pointer} adds a further level.  The inodes of ext2
+and of many UNIX file systems contain 12 direct pointers and one pointer of
+each indirect kind.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-inode}
+  \caption{An inode with 12 direct pointers and single, double and triple
+    indirect pointers.  Each level of indirection multiplies the number of
+    reachable data blocks by the number of pointers per block.}
+  \label{fig:l11-inode}
+\end{figure}
+
+With block size $B$ and pointer size $p$, a block holds $P = B/p$ pointers.
+An inode with $n_d$ direct pointers and one pointer of each of the three
+indirect kinds can address files of up to
+\begin{equation}
+  S_{\max} \;=\; \bigl(n_d + P + P^2 + P^3\bigr) \times B .
+  \label{eq:l11-max-size}
+\end{equation}
+
+\begin{example}
+  With \SI{4}{\kibi\byte} blocks and 8~bytes per pointer, a block
+  holds $P = 4096/8 = 512$ pointers.  The 12 direct pointers address
+  $12 \times \SI{4}{\kibi\byte} = \SI{48}{\kibi\byte}$; the indirect pointer
+  $512 \times \SI{4}{\kibi\byte} = \SI{2}{\mebi\byte}$; the double indirect
+  pointer $512^2 \times \SI{4}{\kibi\byte} = \SI{1}{\gibi\byte}$; and the
+  triple indirect pointer $512^3 \times \SI{4}{\kibi\byte} =
+  \SI{512}{\gibi\byte}$.  The maximum file size is about
+  \SI{513}{\gibi\byte}.
+\end{example}
+
+The benefit of indirect pointers is that a small inode supports very large
+files.  The cost is slower file access, because every level of indirection
+adds a disk access to reach a data block.  Reading a block through a direct
+pointer requires two disk accesses, one for the inode and one for the data
+block; reading a block through a double indirect pointer requires up to
+four.
+
+\begin{example}
+  With the parameters of the previous example, a process reads the byte at
+  offset \SI{600}{\mebi\byte} of a file.  It lies in block
+  $600 \times 1024 / 4 = \num{153600}$ of the file.  Blocks 0--11 are reached
+  directly, blocks 12--523 through the indirect pointer, and blocks
+  \num{524}--\num{262667} through the double indirect pointer, so the read
+  requires the inode, two blocks of pointers and the data block: four disk
+  accesses if none of them is cached.
+\end{example}
+
+\begin{keypoint}
+  The VFS operates on files through file descriptors, dentries, inodes and
+  superblocks.  On disk, a file is its inode plus the data blocks the inode
+  indexes; direct and indirect pointers let a fixed-size inode index very
+  large files at the price of extra disk accesses per level of indirection.
+\end{keypoint}
+
+\section{Disk access optimizations}
+\label{sec:l11-optim}
+
+Accessing a file costs disk accesses, and on a hard disk every access that
+is not sequential costs time to move the head.\source{P3L5, disk access
+optimizations; OSTEP ch.~37, 40, 42; Kerrisk ch.~13--14.}  File systems use
+four techniques to reduce the overhead of file access
+(\cref{tab:l11-optim}).
+
+\begin{table}[htbp]
+  \centering
+  \caption{Techniques that reduce file access overhead.}
+  \label{tab:l11-optim}
+  \small
+  \begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.62\linewidth}@{}}
+    \toprule
+    Technique & Effect \\
+    \midrule
+    Caching and buffering & fewer disk accesses \\
+    I/O scheduling & less head movement; more sequential, less random
+      access \\
+    Prefetching & more cache hits, by exploiting locality \\
+    Journaling & less random access for writes, without keeping updates
+      only in memory \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Caching and buffering}
+
+\begin{definition}[Buffer cache]
+  A \term{buffer cache}[バッファキャッシュ] is a cache of file data in main
+  memory.  Reads are served from the cache when possible and writes update
+  the cache; modified data are written to disk periodically, or when a
+  process requests it with \texttt{fsync}.
+\end{definition}
+
+A process that must make an update durable follows the write with
+\texttt{fsync}:
+\needspace{5\baselineskip}
+\begin{lstlisting}[language=C, numbers=none]
+write(fd, rec, sizeof *rec);  /* updates the cache */
+fsync(fd);                    /* flushes it to disk */
+\end{lstlisting}
+\caution{A successful \texttt{write} does not mean the data are on disk; a
+crash loses data still in the cache.}
+\texttt{fsync} returns only after the data of the file have been written to
+the device.
+
+\subsection{I/O scheduling}
+
+Ordering the pending disk requests so as to reduce the movement of the disk
+head is called \term{I/O scheduling}[I/Oスケジューリング]: requests are
+served in an order that maximizes sequential access and minimizes random
+access.
+
+\begin{example}
+  The head is positioned at block 10, and writes to blocks 90, 12, 91, 13
+  and 50 arrive in this order.  Assuming that block numbers reflect
+  positions on the disk, serving the requests in arrival order moves the
+  head across $80+78+79+78+37 = 352$ blocks.  Serving them in the order 12,
+  13, 50, 90, 91 moves it across only $2+1+37+40+1 = 81$ blocks, and the
+  pairs 12, 13 and 90, 91 become sequential writes.
+\end{example}
+
+\needspace{5\baselineskip}
+\subsection{Prefetching}
+
+Reading more blocks than a request asks for is called
+\term{prefetching}[プリフェッチ] or read-ahead: when a block is read, the
+blocks likely to be needed next are read with it.  Prefetching exploits locality---a file that
+is being read sequentially will soon need the following blocks---and
+increases the hit rate of the buffer cache.  If a process reads block 40 of
+a file and the file system also reads blocks 41--43 in the same disk
+operation, the next three reads are served from memory without further
+head movement.
+
+\subsection{Journaling}
+
+Writing every update to its proper location immediately causes random
+access, whereas keeping updates only in the buffer cache risks losing them.
+The technique of \term{journaling}[ジャーナリング], or logging, avoids both
+problems.  The file system describes each update---which block, at which
+offset, with which value---in a log, the \emph{journal}, which it writes sequentially to a
+dedicated area of the disk, and it periodically applies the logged updates
+to their proper disk locations (\cref{fig:l11-journal}).  Because the
+journal is on disk, an update recorded in it survives a crash and can be
+applied afterwards.  The ext3 and ext4 file systems add such a journal to
+the design of ext2; by default they log only metadata blocks and write file
+data directly to their final locations, and logging the data as well is an
+option.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l11-journal}
+  \caption{Journaling.  Updates to scattered blocks are first appended in
+    order to the journal and later applied to their proper locations.}
+  \label{fig:l11-journal}
+\end{figure}
+
+\needspace{16\baselineskip}
+\begin{keypoint}[Lesson summary]
+  An I/O device presents command, data and status registers, reached
+  through interconnects such as PCIe and operated by a device driver behind
+  an interface standardized by the operating system.  Devices are block,
+  character or network devices and are represented as device files.  The
+  CPU addresses registers through memory-mapped I/O or I/O ports, learns of
+  device events through interrupts or polling, and transfers data with
+  programmed I/O or DMA.  A device access normally passes through the
+  kernel, but operating system bypass can remove the kernel from the data
+  path; the requesting thread either blocks or continues asynchronously.
+  Files reach block devices through the file system, the generic block layer
+  and the driver.  The virtual file system unifies file systems through file
+  descriptors, dentries, inodes and superblocks; ext2 organizes a partition
+  into block groups, and its inodes use direct and indirect pointers.
+  Caching, I/O scheduling, prefetching and journaling reduce the cost of
+  disk access.
+\end{keypoint}
+
+\end{document}

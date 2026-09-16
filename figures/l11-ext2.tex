@@ -1,0 +1,35 @@
+% Layout of an ext2 partition: boot block and block groups; contents of one
+% block group.
+% Usage: \input{figures/l11-ext2}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  note/.style={font=\scriptsize\sffamily, text=ln-muted, align=center,
+               anchor=north, text width=17mm, inner sep=0.5pt}]
+  % top strip
+  \def\tseg#1#2#3#4{\draw[fill=#3] (#1,18) rectangle (#2,25);
+    \node[lab] at ({(#1+#2)/2},21.5) {#4};}
+  \tseg{2}{22}{black!8}{\iflangja{ブート}{boot}}
+  \tseg{22}{50}{white}{\iflangja{ブロックグループ 0}{block group 0}}
+  \tseg{50}{78}{ln-box}{\iflangja{ブロックグループ 1}{block group 1}}
+  \tseg{78}{88}{white}{\ldots}
+  \tseg{88}{116}{white}{\iflangja{ブロックグループ $N$}{block group $N$}}
+  \node[lab, anchor=south] at (12,25.3) {\iflangja{1024 バイト}{1024 bytes}};
+  % zoom lines
+  \draw[densely dashed, ln-muted] (50,18) -- (2,5);
+  \draw[densely dashed, ln-muted] (78,18) -- (116,5);
+  % block group detail
+  \def\bseg#1#2#3#4{\draw[fill=#3] (#1,-4) rectangle (#2,5);
+    \node[lab] at ({(#1+#2)/2},0.5) {#4};}
+  \bseg{2}{21}{ln-accent!22}{\iflangja{スーパー\\ブロック}{superblock}}
+  \bseg{21}{40}{ln-accent!10}{\iflangja{グループ\\記述子}{group\\descriptor}}
+  \bseg{40}{58}{ln-box}{\iflangja{ブロック\\ビットマップ}{block\\bitmap}}
+  \bseg{58}{76}{ln-box}{\iflangja{iノード\\ビットマップ}{inode\\bitmap}}
+  \bseg{76}{94}{white}{\iflangja{iノード}{inodes}}
+  \bseg{94}{116}{white}{\iflangja{データ\\ブロック}{data\\blocks}}
+  \node[note] at (11.5,-5) {\iflangja{ファイルシステム全体の数とサイズ（コピー）}{file-system-wide counts and sizes (copy)}};
+  \node[note] at (30.5,-5) {\iflangja{全ブロックグループの記述子（コピー）}{descriptors of all groups (copy)}};
+  \node[note] at (49,-5) {\iflangja{空きブロックを記録}{tracks free blocks}};
+  \node[note] at (67,-5) {\iflangja{空き iノードを記録}{tracks free inodes}};
+  \node[note] at (85,-5) {\iflangja{iノード番号の連続した範囲}{a range of the inode numbers}};
+  \node[note] at (105,-5) {\iflangja{ファイルのデータ}{file data}};
+\end{tikzpicture}

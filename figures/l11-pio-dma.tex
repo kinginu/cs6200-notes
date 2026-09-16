@@ -1,0 +1,55 @@
+% Sending a packet with programmed I/O (data copied by the CPU into the data
+% register) and with DMA (device copies the data from a memory buffer).
+% Usage: \input{figures/l11-pio-dma}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  box/.style={draw, fill=white, minimum height=7mm, inner sep=1pt, align=center},
+  reg/.style={draw, fill=white, minimum width=20mm, minimum height=5.5mm,
+              inner sep=1pt, font=\scriptsize\sffamily},
+  num/.style={circle, draw=black, fill=white, text=black, line width=0.4pt,
+              inner sep=0.4pt, font=\scriptsize\sffamily\bfseries},
+  lab/.style={font=\scriptsize\sffamily, align=left},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % ---------------- (a) PIO
+  \node[ttl] at (0,26) {\iflangja{(a) プログラム制御I/O}{(a) programmed I/O}};
+  \node[box, fill=ln-accent!22, minimum width=14mm] (cpu) at (9,13) {CPU};
+  \node[box, minimum width=16mm, minimum height=9mm] (mem) at (9,-4)
+    {\iflangja{メモリ\\（パケット）}{memory\\(packet)}};
+  \draw[fill=ln-box] (30,-9) rectangle (56,21);
+  \node[font=\scriptsize\sffamily\bfseries, text=ln-accent, anchor=north]
+    at (43,20.5) {NIC};
+  \node[reg] (cm) at (43,13) {\iflangja{コマンド}{command}};
+  \node[reg] (dt) at (43,3) {\iflangja{データ}{data}};
+  \draw[->] (cpu.east) -- node[num, above=0.3mm] {1} (cm.west);
+  \draw[->, line width=1.4pt, ln-accent] (mem.north) -- (cpu.south);
+  \draw[->, line width=1.4pt, ln-accent] (cpu.south east) -- node[num, below left=-0.4mm] {2} (dt.west);
+  \node[lab, anchor=north west, text width=56mm] at (0,-12)
+    {\iflangja{\textbf{1} コマンドレジスタへの書き込み 1 回\\
+      \textbf{2} データレジスタへの書き込み（パケット全体を\\
+      \phantom{\textbf{2} }レジスタの大きさずつ繰り返す）}%
+     {\textbf{1} one write to the command register\\
+      \textbf{2} writes to the data register, repeated\\
+      \phantom{\textbf{2} }until the whole packet is transferred}};
+  % ---------------- (b) DMA
+  \begin{scope}[xshift=62mm]
+  \node[ttl] at (0,26) {\iflangja{(b) DMA}{(b) direct memory access}};
+  \node[box, fill=ln-accent!22, minimum width=14mm] (cpu2) at (9,13) {CPU};
+  \node[box, minimum width=16mm, minimum height=9mm] (mem2) at (9,-4)
+    {\iflangja{メモリ\\（バッファ）}{memory\\(buffer)}};
+  \draw[fill=ln-box] (30,-9) rectangle (56,21);
+  \node[font=\scriptsize\sffamily\bfseries, text=ln-accent, anchor=north]
+    at (43,20.5) {NIC};
+  \node[reg] (cm2) at (43,13) {\iflangja{コマンド}{command}};
+  \node[reg, fill=ln-accent!10] (dma) at (43,-4) {\iflangja{DMA コントローラ}{DMA controller}};
+  \draw[->] (cpu2.east) -- node[num, above=0.3mm] {1} (cm2.west);
+  \draw[->] (cpu2.south east) -- node[num, above right=-0.6mm] {2} (dma.north west);
+  \draw[->, line width=1.4pt, ln-accent] (mem2.east |- dma.west) -- node[num, below=0.8mm] {3} (dma.west);
+  \node[lab, anchor=north west, text width=56mm] at (0,-12)
+    {\iflangja{\textbf{1} コマンドレジスタへの書き込み 1 回\\
+      \textbf{2} DMA の設定（バッファのアドレスとサイズ）\\
+      \textbf{3} デバイスがバッファからデータを読む}%
+     {\textbf{1} one write to the command register\\
+      \textbf{2} DMA configuration: buffer address and size\\
+      \textbf{3} the device reads the data from the buffer}};
+  \end{scope}
+\end{tikzpicture}
