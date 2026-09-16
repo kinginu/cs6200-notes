@@ -1,0 +1,62 @@
+% Thread-related data structures at scale: user-level thread structures in
+% the library, PCBs holding the hard process state, kernel-level threads
+% holding the light process state, and CPU structures.
+% Usage: \input{figures/l05-structures}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  ult/.style={draw, fill=white, minimum width=10mm, minimum height=5mm,
+              inner sep=0.5pt, align=center},
+  klt/.style={draw, fill=white, minimum width=16mm, minimum height=11mm,
+              inner sep=0.5pt, align=center},
+  pcb/.style={draw, fill=ln-box, minimum height=14mm, inner sep=0.5pt,
+              align=center},
+  cpu/.style={draw, fill=ln-accent!22, minimum width=12mm, minimum height=5mm,
+              inner sep=0.5pt},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  map/.style={densely dashed, ln-muted}]
+  % user/kernel boundary
+  \draw[dashed, ln-rule] (0,36) -- (118,36);
+  \node[lab, anchor=south west] at (0,36.5) {\iflangja{ユーザ}{user}};
+  \node[lab, anchor=north west] at (0,35.5) {\iflangja{カーネル}{kernel}};
+  % ---- process P: library with user-level threads
+  \draw[rounded corners=2pt, fill=ln-box] (22,39) rectangle (86,56);
+  \node[lab, anchor=north west] at (22.5,55.8)
+    {\iflangja{P のユーザレベルスレッドライブラリ}{user-level thread library of P}};
+  \foreach \x/\n in {30/1, 44/2, 58/3, 72/4}
+    \node[ult] (u\n) at (\x,45) {ULT\,\n};
+  % ---- process P: PCB and kernel-level threads
+  \node[pcb, minimum width=19mm] (pcbp) at (9.5,24)
+    {\iflangja{P の PCB}{PCB of P}\\[1pt]
+     \iflangja{ハード状態}{hard state}\\
+     \iflangja{（アドレス}{(address}\\
+     \iflangja{対応付け）}{mappings)}};
+  \foreach \x/\n in {32/1, 54/2, 76/3}
+    \node[klt] (k\n) at (\x,24)
+      {\textbf{KLT\,\n}\\\iflangja{ライト状態}{light state}\\
+       \iflangja{レジスタ等}{regs, stack}};
+  \draw[->] (pcbp.east) -- (k1.west);
+  \draw[->] (k1.east) -- (k2.west);
+  \draw[->] (k2.east) -- (k3.west);
+  % user-level threads currently mapped onto kernel-level threads
+  \draw[map] (u1.south) -- (k1.north);
+  \draw[map] (u3.south) -- (k2.north);
+  \draw[map] (u4.south) -- (k3.north);
+  % ---- process Q: single-threaded
+  \draw[rounded corners=2pt, fill=ln-box] (93,39) rectangle (118,56);
+  \node[align=center] at (105.5,47.5)
+    {\iflangja{プロセス Q}{process Q}\\\iflangja{（シングル\\スレッド）}{(single-\\threaded)}};
+  \node[pcb, minimum width=11mm] (pcbq) at (95.5,24)
+    {\iflangja{Q の}{PCB}\\\iflangja{PCB}{of Q}};
+  \node[klt, minimum width=14mm] (kq) at (111,24)
+    {\textbf{KLT}\\\iflangja{ライト状態}{light state}\\
+     \iflangja{レジスタ等}{regs, stack}};
+  \draw[->] (pcbq.east) -- (kq.west);
+  % ---- CPUs
+  \node[cpu] (c0) at (32,5) {CPU\,0};
+  \node[cpu] (c1) at (76,5) {CPU\,1};
+  \node[cpu] (c2) at (111,5) {CPU\,2};
+  \draw[<->] (k1.south) -- (c0.north);
+  \draw[<->] (k3.south) -- (c1.north);
+  \draw[<->] (kq.south) -- (c2.north);
+  \node[lab, anchor=north] at (54,18) {\iflangja{実行中でない}{not running}};
+\end{tikzpicture}

@@ -1,0 +1,47 @@
+% Handling an interrupt (system-wide handler table) and a signal (per-process
+% handler table).
+% Usage: \input{figures/l05-int-sig}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  box/.style={draw, fill=white, minimum height=9mm, inner sep=1pt, align=center},
+  act/.style={draw, fill=ln-accent!22, minimum height=9mm, inner sep=1pt,
+              align=center},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west},
+  tcap/.style={font=\scriptsize\sffamily, text=ln-muted, anchor=south}]
+  % \lstable{y-top}{row1a}{row1b}{row3a}{row3b}: three-row handler table at x=52..88
+  \def\lstable#1#2#3#4#5{%
+    \draw[fill=ln-box] (52,#1) rectangle (88,#1-15);
+    \draw (52,#1-5) -- (88,#1-5);
+    \draw (52,#1-10) -- (88,#1-10);
+    \draw (65,#1) -- (65,#1-15);
+    \node at (58.5,#1-2.5) {#2};  \node at (76.5,#1-2.5) {#3};
+    \node at (58.5,#1-7.5) {\ldots}; \node at (76.5,#1-7.5) {\ldots};
+    \node at (58.5,#1-12.5) {#4}; \node at (76.5,#1-12.5) {#5};}
+  % ---- (a) interrupt
+  \node[ttl] at (0,33) {\iflangja{(a) 割り込み}{(a) interrupt}};
+  \node[box, minimum width=16mm] (dev) at (8,20) {\iflangja{デバイス}{device}};
+  \node[act, minimum width=12mm] (cpu) at (38,20) {CPU};
+  \draw[->, thick] (dev.east) -- node[lab, above] {MSI} node[lab, below]
+    {\iflangja{（PCIe）}{(PCIe)}} (cpu.west);
+  \lstable{27.5}{INT-1}{\iflangja{ハンドラ 1 の番地}{addr.\ handler 1}}%
+    {INT-N}{\iflangja{ハンドラ N の番地}{addr.\ handler N}}
+  \node[tcap] at (70,27.8) {\iflangja{割り込みハンドラテーブル（システム全体）}{interrupt handler table (system-wide)}};
+  \draw[->] (cpu.east) -- node[lab, above] {N} (47,20) |- (52,15);
+  \node[act, minimum width=20mm] (h1) at (107,15) {\iflangja{ハンドラ N}{handler N}};
+  \draw[->, thick] (88,15) -- node[lab, above] {\iflangja{PC を}{set}}
+    node[lab, below] {\iflangja{設定}{PC}} (h1.west);
+  % ---- (b) signal
+  \node[ttl] at (0,1) {\iflangja{(b) シグナル}{(b) signal}};
+  \node[box, minimum width=16mm] (thr) at (8,-12) {\iflangja{P の\\スレッド}{thread\\of P}};
+  \node[act, minimum width=12mm] (ker) at (38,-12) {\iflangja{カーネル}{kernel}};
+  \draw[->, thick] (thr.east) -- node[lab, above] {\iflangja{不正な}{illegal}}
+    node[lab, below] {\iflangja{アクセス}{access}} (ker.west);
+  \lstable{-4.5}{SIG-1}{\iflangja{ハンドラ / 既定}{handler / default}}%
+    {SIGSEGV}{\iflangja{ハンドラの番地}{addr.\ handler}}
+  \node[tcap] at (70,-4.2) {\iflangja{P のシグナルハンドラテーブル}{signal handler table of P}};
+  \draw[->] (ker.east) -- node[lab, above] {11} (47,-12) |- (52,-17);
+  \node[act, minimum width=20mm] (h2) at (107,-17) {\iflangja{ハンドラ\\（スレッドの\\文脈で実行）}{handler\\(in thread's\\context)}};
+  \draw[->, thick] (88,-17) -- node[lab, above] {\iflangja{PC を}{set}}
+    node[lab, below] {\iflangja{設定}{PC}} (h2.west);
+\end{tikzpicture}
