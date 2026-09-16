@@ -11,7 +11,10 @@
 The preceding lessons considered a single machine, managed by one
 operating system or, in Lesson~12, by a hypervisor beneath several.  This
 lesson opens the part on distributed systems, in which cooperating
-processes run on different machines connected by a network.  Across
+processes run on different machines connected by a network.\margin{Light
+in fibre covers about \SI{200}{\kilo\meter\per\milli\second}, so a call to a
+machine \SI{5000}{\kilo\meter} away cannot return in under
+\SI{50}{\milli\second}, however fast the two machines are.}  Across
 machines, the processes can only exchange messages, typically through the
 sockets of Lesson~9, and every application that uses them repeats the same
 low-level communication code.  Remote procedure calls hide this code behind
@@ -71,7 +74,12 @@ Birrell and Nelson \cite{birrell1984} described the design and
 implementation of an RPC facility for the Cedar programming environment at
 Xerox PARC in 1984.  The structure they chose, with generated stubs and a
 runtime library on both sides (\cref{sec:l13-structure}), underlies later
-RPC systems, including the two examined in this lesson.
+RPC systems, including the two examined in this lesson.\sidenote{Their
+measurements, between two Dorado workstations on a
+\SI{2.94}{\mega\bit\per\second} Ethernet, give the scale of the overhead: a
+call with no arguments and no results took \SI{1097}{\micro\second} in the
+median, of which \SI{131}{\micro\second} was transmission, against
+\SI{9}{\micro\second} for the same call made locally \cite{birrell1984}.}
 
 \section{RPC requirements}
 \label{sec:l13-requirements}
@@ -180,7 +188,9 @@ An RPC proceeds in the following steps, numbered as in
     server, with the transport protocol agreed on during binding.
   \item[4 Receive] The RPC runtime of the server receives the message and
     passes it to the server stub.  Access control checks are performed at
-    this point.
+    this point.\caution{Sun RPC's default credentials, \texttt{AUTH\_SYS},
+    are no more than the user and group identifiers that the client claims;
+    real authentication needs \texttt{RPCSEC\_GSS} \cite{rfc2203}.}
   \item[5 Unmarshal] The server stub unmarshals the arguments: it extracts
     them from the buffer and creates the corresponding data structures.
   \item[6 Actual call] The server stub calls the local implementation of the
@@ -258,7 +268,10 @@ A message, in contrast, is a contiguous sequence of bytes.
   parsing a received buffer according to the types given by the interface,
   extracting the values, and creating the corresponding data structures in
   the address space of the receiver, allocating and initializing memory as
-  needed.
+  needed.\caution{Marshalling and serialization are interchangeable here.
+  Where they are distinguished, serialization is the byte layout alone and
+  marshalling adds what the receiver needs to rebuild the value, such as the
+  code base of a class in Java.}
 \end{definition}
 
 For data of fixed size, the types in the interface tell the receiver where
@@ -279,7 +292,10 @@ NUL character terminates a C string.
   elements.  The address \texttt{0x5a10} is not sent.  The server stub reads
   the count, allocates memory for three integers, here at \texttt{0x9c40},
   copies the elements into it, and calls the implementation with
-  \texttt{count} $=3$ and \texttt{values} $=\mathtt{0x9c40}$.
+  \texttt{count} $=3$ and \texttt{values} $=\mathtt{0x9c40}$.\margin{The
+  data are copied at least twice on the way, into the send buffer and out of
+  the receive buffer; the shared memory of Lesson~9 exists to avoid exactly
+  these copies.}
 \end{example}
 
 \begin{figure}[htbp]
@@ -394,7 +410,13 @@ which component has failed (\cref{fig:l13-failures}).
 \end{figure}
 
 An RPC system can bound the waiting with a \emph{timeout} and retransmit
-the request when it expires, but timeouts and retries give no guarantees.
+the request when it expires, but timeouts and retries give no
+guarantees.\sidenote{Retrying until a reply arrives gives
+\emph{at-least-once} semantics and giving up after the first attempt
+\emph{at-most-once}; neither is exactly-once.  A server comes close by
+keeping a cache of recent request identifiers together with their replies
+and answering a retransmission from the cache instead of executing the
+procedure again---NFS servers call it the duplicate request cache.}
 Retries cannot succeed while the server is down, and if the reply was lost,
 a retry executes the procedure again, as in \cref{fig:l13-failures}c.
 Repeated execution is harmless only for \emph{idempotent} procedures,
@@ -499,7 +521,11 @@ contains procedures; this part of the \texttt{.x} language is the RPC
 language, an extension of XDR defined together with the protocol
 \cite{rfc5531}.  Program, version and procedure are identified by numbers,
 and a request names all three.  The 32-bit program number identifies the
-service uniquely.  A client that sets
+service uniquely.\margin{Numbers \texttt{0x00000001}--\texttt{0x1fffffff}
+are assigned by IANA---NFS is \texttt{100003}---and
+\texttt{0x20000000}--\texttt{0x3fffffff} are left to local administrators,
+which is where \texttt{0x20000123} comes from \cite{rfc5531}.}  A client
+that sets
 \texttt{values} to the three integers 7, $-2$ and 300 and calls
 \texttt{SUM\_PROC} receives a \texttt{sum\_out} with \texttt{total} $=305$.
 
@@ -544,7 +570,10 @@ files (\cref{fig:l13-rpcgen}).
 The developer writes two pieces of code.  On the server side it is the
 implementation of the procedure, \texttt{sum\_proc\_1\_svc}, which follows;
 on the client side it is the program that includes \texttt{sum.h} and calls
-\texttt{sum\_proc\_1} (\cref{sec:l13-sun-binding}).  Each is compiled and
+\texttt{sum\_proc\_1} (\cref{sec:l13-sun-binding}).\tip{The generated names
+follow a rule: the procedure name in lower case, then the version
+number---\texttt{sum\_proc\_1}---with \texttt{\_svc} added for the procedure
+the developer writes.}  Each is compiled and
 linked with the generated files.  The RPC runtime library does the rest: the interaction
 with the operating system, such as the use of sockets, and the management
 of the communication.
@@ -611,7 +640,9 @@ $ rpcinfo -p
 
 Each line gives the program number, the version, the transport protocol
 and the port.  The daemon itself appears as program \texttt{100000} on
-port 111, and the NFS server as program \texttt{100003}.  The last line is
+port 111, and the NFS server as program \texttt{100003}.\margin{NFS also
+listens on the registered port 2049, and NFSv4 clients are told not to use
+the binding protocol at all \cite{rfc8881}.}  The last line is
 the \texttt{sum} server, whose program number \texttt{0x20000123} is
 printed in decimal.
 
@@ -630,7 +661,11 @@ the server machine, the program number, the version number and the
 transport protocol.  \texttt{clnt\_create} asks \texttt{rpcbind} on that
 machine for the port of the server (steps 2 and~3) and returns a pointer to
 a client handle of type \texttt{CLIENT}, which the client passes to every
-stub.  Besides the address of the server, the handle holds the
+stub.\margin{The server's own port is ephemeral and differs after every
+restart, so a firewall cannot open it in advance; \texttt{rpcbind} itself
+answers any query, and exposed daemons have been abused to amplify
+denial-of-service traffic.}  Besides the
+address of the server, the handle holds the
 authentication information and the status of the most recent call, from
 which error messages are derived.  The complete client follows.
 
@@ -671,7 +706,10 @@ A stub that returns \texttt{NULL} reports a failed call.  The runtime has
 recorded the reason in the handle---for example that the server machine
 could not be reached or that the call timed out---and
 \texttt{clnt\_perror} prints it.  A call that receives no reply times out;
-over UDP the runtime retransmits the request while it waits.
+over UDP the runtime retransmits the request while it waits.\margin{An RPC
+message over UDP must fit in a single datagram, at most \SI{65507}{\byte} of
+payload; the runtime of glibc retransmits every \SI{5}{\second} until the
+call times out.}
 
 \section{XDR data types and routines}
 \label{sec:l13-xdr-types}
@@ -690,7 +728,9 @@ structures.\source{P4L1, XDR data types, XDR routines; RFC 4506
 \end{description}
 Arrays and strings are declared as in \cref{tab:l13-xdr-types}.  A
 variable-length array, whose maximum length is given in angle brackets,
-becomes a C structure with a length field and a pointer to the elements.
+becomes a C structure with a length field and a pointer to the
+elements.\margin{The maximum is enforced: the generated routine refuses a
+longer array, so the call fails instead of overrunning the receiver.}
 The size of this structure does not depend on the maximum length; the
 elements reside in separately allocated memory.  A string becomes a
 pointer to a NUL-terminated C string in memory, but it is transmitted as a
@@ -725,7 +765,10 @@ length followed by the characters (\cref{sec:l13-encoding}).
 Pointers are declared with an asterisk, as in C.  Such \emph{optional
 data} is encoded as a Boolean that states whether the pointer is non-null,
 followed by the pointed-to data if it is, so that a linked list is
-serialized element by element \cite{rfc4506}.
+serialized element by element \cite{rfc4506}.\caution{A structure with a
+cycle defeats this encoding: the stubs would follow the pointers for ever.
+Java's object serialization instead gives every object a handle and writes a
+back-reference the second time.}
 
 \subsection{XDR routines}
 
@@ -765,7 +808,9 @@ An RPC message on the wire consists of three parts.\source{P4L1, encoding,
 XDR encoding; RFC 5531 \cite{rfc5531}; RFC 4506 \cite{rfc4506}.}
 \begin{description}
   \item[Transport header] the headers of the transport protocol, such as
-    TCP or UDP, and of the protocols below it.
+    TCP or UDP, and of the protocols below it.\margin{Over a byte stream
+    each message is preceded by a \SI{4}{\byte} record mark: a last-fragment
+    flag in the top bit and a 31-bit length \cite{rfc5531}.}
   \item[RPC header] the identification of the call: a request identifier
     (the \emph{xid}), with which the client matches replies to requests,
     the program, version and procedure numbers, and authentication data.
@@ -776,7 +821,9 @@ XDR thus comprises both the IDL and the encoding, the binary representation
 of the data on the wire.  Its encoding rules are few.
 \begin{itemize}
   \item Every item is encoded in a multiple of \SI{4}{\byte}; shorter data
-    are padded with zero bytes.
+    are padded with zero bytes.\tip{An item of $n$ bytes occupies
+    $4\lceil n/4\rceil$ on the wire, and a variable-length array or string
+    adds a \SI{4}{\byte} length field.}
   \item Multi-byte values are transmitted in big-endian order.
   \item Integers are represented in two's complement.
   \item Floating-point numbers are represented in the IEEE~754 format.
@@ -844,7 +891,9 @@ interface is a Java interface that extends \texttt{java.rmi.Remote}, and
 each of its methods declares the exception \texttt{RemoteException}, the
 error notification through which partial failures are reported.
 The following remote interface declares the \texttt{sum} service, and the
-client code beneath it calls the service.
+client code beneath it calls the service.\margin{The RMI registry is itself
+a remote object; \texttt{LocateRegistry.getRegistry} returns a stub for the
+one at TCP port 1099 unless another port is given.}
 
 \begin{lstlisting}[language=Java, numbers=none]
 public interface Summation extends java.rmi.Remote {
@@ -862,7 +911,10 @@ under a name in the \emph{RMI registry}; a client looks the name up and
 obtains a stub for the remote object, whose methods it then invokes
 (\cref{fig:l13-rmi}).  Arguments that are ordinary objects, such as the
 array of integers above, are passed by value: they are serialized
-together with the objects they refer to.  Remote objects are passed by
+together with the objects they refer to.\caution{The copy is made on every
+invocation, and changes that the server makes to it are invisible to the
+client---the trap of the serialized pointers of \cref{sec:l13-pointers}.}
+Remote objects are passed by
 reference, as stubs.
 
 \begin{figure}[htbp]
@@ -915,7 +967,10 @@ provides the two layers beneath them.
     transfers the data.  The architecture allows different transports, such
     as TCP, UDP or shared memory.
 \end{description}
-\Cref{tab:l13-design} compares the design choices of Sun RPC and Java RMI.
+\Cref{tab:l13-design} compares the design choices of Sun RPC and Java
+RMI.\margin{gRPC makes the same four choices differently: Protocol Buffers
+as IDL and encoding, DNS and a load balancer in place of a registry, and a
+status code returned by every call.}
 
 \needspace{13\baselineskip}
 \begin{keypoint}[Lesson summary]
