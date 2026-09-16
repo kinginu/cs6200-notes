@@ -33,7 +33,8 @@ the kernel-level thread: its registers, stack pointer and stack.  The
 user-level library keeps a data structure for each user-level thread, with
 the thread's identifier, its saved registers and its stack.  By loading one
 of these contexts onto the kernel-level thread, the library decides which
-user-level thread runs.
+user-level thread runs.\margin{The PCB is Lesson~2; here its contents are
+split, so that the threads of one process share the address-space part.}
 
 When a process has several kernel-level threads, one PCB can no longer
 hold everything, because every kernel-level thread needs its own execution
@@ -42,7 +43,9 @@ replicate the virtual address mappings, which are the same for all threads
 of the process.  The kernel therefore keeps a separate kernel-level thread
 data structure with the registers, stack pointer and stack of each
 kernel-level thread, and the PCB keeps the information that is common to
-the process.
+the process.\margin{On x86-64 Linux every task carries its own
+\SI{16}{\kibi\byte} kernel stack (four pages), while the address space it
+points to is shared.  Kernel documentation, \texttt{x86/kernel-stacks}.}
 
 With many processes, many threads and several CPUs, the relationships
 among these structures must be recorded as well
@@ -75,7 +78,9 @@ among these structures must be recorded as well
 
 When the kernel switches between two kernel-level threads of the same
 process, the virtual address mappings remain valid, and only the state
-that belongs to the individual thread has to be saved and restored.  Some
+that belongs to the individual thread has to be saved and restored.\tip{A
+field is hard state if it is valid for every thread of the process, light
+state if it is valid only for the thread currently executing.}  Some
 of that state concerns the user-level threads: which signals are masked
 and the arguments of a system call in progress belong to the user-level
 thread that currently runs on a kernel-level thread, not to the whole
@@ -89,7 +94,9 @@ process.  The state of a process thus divides into two parts.
   \term{light process state}[ライトプロセス状態] is the part that is
   relevant only to the subset of user-level threads currently associated
   with a particular kernel-level thread, such as the signal mask and the
-  system call arguments.
+  system call arguments.\caution{The two terms come from the Solaris
+    literature and from the lecture; textbooks usually speak instead of
+    per-process and per-thread state.}
 \end{definition}
 
 \subsection{Why several data structures}
@@ -201,7 +208,10 @@ that other thread runs and fails---far from the cause.
 \begin{definition}[Red zone]
   A \term{red zone}[レッドゾーン] is a region of virtual address space
   between a thread's stack and the neighbouring thread's data structure
-  that is not mapped to memory, so that any access to it causes a fault.
+  that is not mapped to memory, so that any access to it causes a
+  fault.\caution{An unrelated meaning: in the x86-64 ABI the \emph{red zone}
+    is the \SI{128}{\byte} below the stack pointer that a leaf function may
+    use without adjusting it.}
 \end{definition}
 
 A stack that grows into its red zone causes a fault at once, in the thread
@@ -231,7 +241,10 @@ whose stack overflowed, which makes the error easy to diagnose
   lands in $[192, 196)$ and faults; without the red zone it would overwrite
   the structure of thread~2.  For 1024 threads the region spans
   \SI{64}{\mebi\byte} of virtual address space, of which the
-  \SI{4}{\mebi\byte} of red zones use no physical memory.
+  \SI{4}{\mebi\byte} of red zones use no physical memory.\margin{On x86,
+    NPTL keeps the same layout: the thread descriptor sits at the top of the
+    stack block, and glibc puts one guard page below the stack---%
+    \SI{4}{\kibi\byte} by default, \texttt{pthread\_attr\_setguardsize}.}
 \end{example}
 
 \subsection{Kernel-level data structures}
@@ -288,7 +301,10 @@ such as a kernel-level thread blocking.
 \begin{example}
   A process has six user-level threads, of which at most three need to run
   at the same time.  \Cref{tab:l05-interaction} traces how the library and
-  the kernel adjust the number of kernel-level threads.
+  the kernel adjust the number of kernel-level threads.\margin{On Linux
+    \texttt{pthread\_setconcurrency} has no effect: with a one-to-one
+    library there is nothing to choose, and POSIX lets an implementation
+    ignore the hint.}
 \end{example}
 
 \begin{table}[htbp]
@@ -330,7 +346,10 @@ Each level sees only part of the picture.
 \end{description}
 The library may bind a user-level thread to a kernel-level thread, as for
 the bound threads of Lesson~3, and the kernel may pin a kernel-level
-thread to a CPU; neither decision is visible at the other level.
+thread to a CPU; neither decision is visible at the other
+level.\margin{In POSIX a bound thread is \texttt{PTHREAD\_SCOPE\_SYSTEM},
+the only scope NPTL supports; pinning a kernel-level thread to CPUs is the
+cache affinity of Lesson~7.}
 
 The lack of visibility causes problems.  Suppose a user-level thread
 acquires a mutex implemented by the library, and the kernel then preempts
@@ -342,7 +361,15 @@ kernel-level thread again, and the kernel, which does not see the mutex,
 has no reason to do so soon.  In the many-to-many model, user-level
 scheduling decisions and changes to the mapping of user-level threads onto
 kernel-level threads are visible only to the library.  The one-to-one model
-avoids many of these problems, because the kernel sees every thread.
+avoids many of these problems, because the kernel sees every
+thread.\sidenote{The general remedy for the many-to-many model is to make
+the kernel report every event that changes the number of running threads.
+Anderson et al.\ \cite{anderson1992} called such an upcall a
+\emph{scheduler activation}: the kernel hands the library a fresh activation
+whenever a thread blocks, unblocks or is preempted, so that the library can
+reschedule at once; \texttt{SIGWAITING} is a narrow form of the same idea.
+NetBSD and FreeBSD implemented activations and later removed them---like the
+many-to-many model itself, they cost more than they returned.}
 
 Being ordinary code in the address space of the process, the library's
 scheduler runs only when execution enters the library:
@@ -415,7 +442,8 @@ To decide between spinning and blocking, the lock operation must find out
 whether the owner is running, so the mutex data structure records its
 owner.  Lesson~10 returns to spinning as the basis of the
 spinlock.\margin{OSTEP calls a lock that first spins for a while and then
-sleeps a \emph{two-phase lock}.}
+sleeps a \emph{two-phase lock}; the mutex of the Linux kernel spins only
+while the owner is running, exactly as here.}
 
 \subsection{Destroying threads}
 
@@ -428,7 +456,10 @@ placed on a list called the \emph{death row}.  A \term{reaper thread}%
 and frees their data structures.  If a request to create a thread arrives
 before the reaper has run, the structure and stack of a thread on the
 death row are reused, which saves the cost of allocating and initializing
-them.
+them.\margin{glibc does the same for NPTL threads: a freed stack stays in a
+cache of up to \SI{40}{\mebi\byte} (tunable
+\texttt{glibc.pthread.stack\_cache\_size}) and is handed to the next
+\texttt{pthread\_create}.}
 
 \needspace{11\baselineskip}
 \begin{keypoint}
@@ -528,7 +559,10 @@ it is the interrupt descriptor table.}
 
 Signals are generated by the operating system.  When a thread accesses
 memory that is not allocated to its process, for example, the operating
-system raises \texttt{SIGSEGV} (signal~11 on Linux).  For each process it
+system raises \texttt{SIGSEGV} (signal~11 on Linux).\margin{Linux defines
+31 standard signals and a block of real-time ones; glibc reserves the first
+two of those for NPTL, so \texttt{SIGRTMIN} is 34 and \texttt{SIGRTMAX} 64
+(\texttt{signal(7)}).}  For each process it
 keeps a \emph{signal handler table} that maps every signal number to the
 action to be taken (\cref{fig:l05-int-sig}b).  The set of signals is
 operating-system specific; POSIX defines a standard set.  Every signal has
@@ -549,7 +583,10 @@ apply.
 
 \begin{example}
   A program, using the headers \texttt{signal.h} and \texttt{unistd.h},
-  that stops its work loop when a timer expires:
+  that stops its work loop when a timer expires:\caution{A handler may
+    assign only to \texttt{volatile sig\_atomic\_t} objects and call the
+    functions listed in \texttt{signal-safety(7)}; \texttt{printf} and
+    \texttt{malloc} are not among them.}
   \begin{lstlisting}[language=C, numbers=none]
 static volatile sig_atomic_t expired = 0;
 
@@ -765,7 +802,11 @@ scheme pays off when
 \end{equation}
 where $N_{\mathrm{int}}$ and $N_{\mathrm{mutex}}$ are the numbers of
 interrupts and of mutex operations.  Mutexes are locked and unlocked far
-more often than interrupts occur, so the balance is positive.
+more often than interrupts occur, so the balance is
+positive.\margin{Linux makes the same trade: booting with
+\texttt{threadirqs} runs handlers in threads, and under
+\texttt{PREEMPT\_RT}, mainline since Linux~6.12, that is the default for
+every handler not marked \texttt{IRQF\_NO\_THREAD}.}
 
 \begin{example}
   A system handles 2\,000 interrupts and performs 150\,000 mutex operations
@@ -794,7 +835,10 @@ mask for each kernel-level thread, in its LWP.  A user-level thread changes
 its own mask through the library, without a system call; the kernel sees
 only the masks of the kernel-level threads.  When a signal arrives, the
 kernel interrupts a kernel-level thread whose mask enables it, whatever the
-mask of the user-level thread currently running on it.
+mask of the user-level thread currently running on it.\margin{With NPTL the
+two levels coincide and the mismatch disappears: \texttt{pthread\_sigmask}
+is a system call (\texttt{rt\_sigprocmask}) that sets the kernel's mask of
+that thread directly.}
 
 The SunOS library resolves the mismatch by installing its own routine as
 the handler of the signals in the signal handler table of the process.
@@ -827,7 +871,9 @@ application's handler in a suitable user-level thread.  Four cases arise
     follow, until the signal is disabled in all kernel-level threads and
     remains pending.  When a user-level thread later enables the signal,
     the library makes a system call to enable it in a kernel-level thread
-    again, and the pending signal is delivered.
+    again, and the pending signal is delivered.\tip{One rule generates the
+    four cases: run the handler wherever a user-level mask enables the
+    signal; if no thread does, clear the kernel-level mask and re-raise.}
 \end{description}
 
 \begin{figure}[htbp]
@@ -883,7 +929,10 @@ struct task_struct {       // abridged, Linux 3.x
 Every task has its own identifier, \texttt{pid}.  The tasks of one process
 form a thread group whose identifier, \texttt{tgid}, is the \texttt{pid}
 of the leader of the group; this is the process identifier that
-\texttt{getpid} returns.  The task structure does not contain the
+\texttt{getpid} returns.\caution{The field named \texttt{pid} is the thread
+identifier: \texttt{getpid} returns \texttt{tgid}, and \texttt{gettid}
+returns \texttt{pid}.  \texttt{ps -L} prints the two as \texttt{PID} and
+\texttt{LWP}.}  The task structure does not contain the
 process's resources: \texttt{mm} and \texttt{files} point to separately
 allocated structures for the address space and the open files.  As in
 \cref{sec:l05-structures}, the state is split into structures that several
