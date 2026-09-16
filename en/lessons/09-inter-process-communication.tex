@@ -62,7 +62,10 @@ single IPC operation.  A send is a system call that copies the message from
 the address space of the sender into the channel; a receive is a system call
 that copies it from the channel into the address space of the receiver.  A
 request-response exchange between a client and a server therefore costs
-four user/kernel crossings and four data copies (\cref{fig:l09-message-ipc}).
+four user/kernel crossings and four data copies
+(\cref{fig:l09-message-ipc}).\margin{A null system call on x86-64 costs on
+the order of \SI{100}{\nano\second} (lmbench \texttt{lat\_syscall}); the
+Meltdown mitigation (KPTI) can double it.}
 
 \begin{figure}[htbp]
   \centering
@@ -94,8 +97,11 @@ performs.
 \end{definition}
 
 The POSIX call \texttt{pipe(fd)} creates a pipe and stores one file
-descriptor for each end in the two-element array \texttt{fd}.  A typical use connects the output of one process
-to the input of another, as the shell does for \texttt{ls | wc -l}.
+descriptor for each end in the two-element array \texttt{fd}.\margin{A Linux
+pipe holds \SI{64}{\kilo\byte}; writes of at most \texttt{PIPE\_BUF}
+$=\SI{4}{\kilo\byte}$ are atomic (\texttt{pipe(7)}).}  A typical use
+connects the output of one process to the input of another, as the shell
+does for \texttt{ls | wc -l}.
 
 \begin{definition}[Message queue]
   A \term{message queue}[メッセージキュー] is a channel that carries
@@ -107,7 +113,9 @@ Because the kernel knows where messages begin and end, it can manage them,
 for example deliver messages in the order of the priority that the sender
 attaches to them (POSIX) or let a receiver select messages by type
 (System~V).  Unix-like systems offer a System~V and a POSIX interface for
-message queues.
+message queues.\margin{Linux defaults: \SI{8}{\kilo\byte} per System~V
+message, \SI{16}{\kilo\byte} per queue, ten messages per POSIX queue
+(\texttt{msgsnd(2)}, \texttt{mq\_overview(7)}).}
 
 \begin{definition}[Socket]
   A \term{socket}[ソケット] is a communication endpoint created with the
@@ -150,7 +158,10 @@ by mapping the same physical pages into the virtual address spaces of the
 processes: page-table entries of every participating process point to the
 same page frames (\cref{fig:l09-shm-mapping}).  As with any paged mapping
 (Lesson~8), the virtual addresses at which the processes see the region
-need not be the same, and the physical frames need not be contiguous.
+need not be the same, and the physical frames need not be
+contiguous.\margin{Mapping moves no data, only page-table entries
+(Lesson~8); one \SI{2}{\mega\byte} huge page covers 512 base pages with a
+single entry (\texttt{SHM\_HUGETLB}).}
 
 \begin{figure}[htbp]
   \centering
@@ -180,7 +191,10 @@ available, how the space in the region is managed---is the programmer's
 responsibility (\cref{sec:l09-design}).  Unix and Linux support shared
 memory through System~V shared memory (\cref{sec:l09-sysv}), POSIX shared
 memory (\cref{sec:l09-posix}) and memory-mapped files; Android adds its own
-facility, ashmem.
+facility, ashmem.\sidenote{A region of ashmem can be \emph{unpinned}: its
+contents are then expendable, and under memory pressure the kernel reclaims
+the region instead of killing the process; a later pin reports whether it
+was purged.  Android is moving these uses to \texttt{memfd\_create}.}
 
 \section{Copy versus map}
 \label{sec:l09-copy-map}
@@ -224,7 +238,9 @@ region and the receiver does not block, but a process that blocks and is
 woken up adds system calls.  The setup cost consists of a fixed part and a
 part proportional to the number of pages mapped; as long as mapping a page
 costs less than copying its contents, $n^{*}$ falls as $S$ grows and drops
-below one for large data.
+below one for large data.\tip{Setting $n^{*} \le 1$ for the constants of the
+example gives $S \approx \SI{600}{\kilo\byte}$: above that a single transfer
+already pays for the mapping.}
 
 \begin{example}
   \label{ex:l09-copy-map}
@@ -236,7 +252,10 @@ below one for large data.
   but, with $t_{\mathrm{sync}} \approx 0$, $1050 + 4000 =
   \SI{5050}{\micro\second}$ over shared memory, and only the
   \SI{1050}{\micro\second} of setup if the sender creates the data directly
-  in the region; $n^{*} = 1050/4002 \approx 0.26$.  A blocking wait and a
+  in the region; $n^{*} = 1050/4002 \approx 0.26$.\margin{Here
+  \SI{0.1}{\micro\second} per kilobyte is
+  \SI{10}{\giga\byte\per\second}, the order of magnitude of one core's
+  copy bandwidth to main memory.}  A blocking wait and a
   wake-up, $t_{\mathrm{sync}} = \SI{2}{\micro\second}$, leave this
   unchanged ($n^{*} = 1050/4000 \approx 0.26$), whereas for
   $S = \SI{4}{\kilo\byte}$ they raise $n^{*}$ from $50.1/2.4 \approx 21$ to
@@ -318,12 +337,17 @@ The interface consists of four calls and a helper for generating keys.
     with \texttt{key}; if none exists and \texttt{flags} contains
     \texttt{IPC\_CREAT}, it creates one of the given size (with
     \texttt{IPC\_CREAT | IPC\_EXCL} the call fails if the segment already
-    exists).  It returns the segment's identifier.
+    exists).  It returns the segment's identifier.\margin{\texttt{size} is
+    rounded up to whole pages, so the smallest segment is one
+    \SI{4}{\kilo\byte} page (\texttt{shmget(2)}).}
   \item[\texttt{ftok(pathname, proj\_id)}] generates a key from the identity
     (device and i-node number) of an existing file and the low 8 bits of a
     nonzero integer.  As long as the file is not re-created, the same file
     and number yield the same key, so unrelated processes can find a segment
-    by agreeing on a file name and a number.
+    by agreeing on a file name and a number.\caution{The key holds only the
+    \texttt{proj\_id} byte, the low 16 bits of the i-node number and the low
+    8 bits of the device number, so different files can collide on one key
+    (\texttt{ftok(3)}).}
   \item[\texttt{shmat(id, addr, flags)}] attaches the segment and returns the
     virtual address at which it is mapped; with \texttt{addr} set to
     \texttt{NULL} the operating system chooses the address.  The returned
@@ -385,7 +409,10 @@ to those of System~V (\cref{tab:l09-shm-api}).
 \texttt{shm\_open(name, flags, mode)} creates or opens the shared memory
 object and returns a file descriptor for it, and \texttt{ftruncate} sets
 its size.  \texttt{mmap} with the flag \texttt{MAP\_SHARED} attaches the
-object and returns its virtual address; \texttt{munmap} detaches it.
+object and returns its virtual address; \texttt{munmap} detaches
+it.\caution{With \texttt{MAP\_PRIVATE} the mapping is copy-on-write instead:
+the first write gives the process a private page and nothing is shared
+(\texttt{mmap(2)}).}
 \texttt{close} releases the file descriptor without affecting an
 established mapping, and \texttt{shm\_unlink(name)} removes the name; the
 object is destroyed once no process has it open or mapped.
@@ -465,7 +492,13 @@ pthread_mutexattr_setpshared(&attr,
 pthread_mutex_init(&shm->mutex, &attr);
 \end{lstlisting}
   The condition variable is initialized likewise, with the
-  \texttt{pthread\_condattr} counterparts of these calls.  The flag
+  \texttt{pthread\_condattr} counterparts of these calls.\sidenote{A process
+  can die inside its critical section, and the mutex then stays locked for
+  ever.  A mutex whose attribute object sets
+  \texttt{PTHREAD\_MUTEX\_ROBUST} hands the next locker \texttt{EOWNERDEAD}
+  instead; that process repairs the shared state and calls
+  \texttt{pthread\_mutex\_consistent}, or the mutex becomes unusable
+  (\texttt{ENOTRECOVERABLE}).}  The flag
   \texttt{IPC\_EXCL} makes \texttt{shmget} fail if the segment already
   exists, so the synchronization constructs are initialized only once.
   Every process that attaches the segment then locks \texttt{shm->mutex}
@@ -494,7 +527,10 @@ accesses never overlap.
 \end{figure}
 
 A semaphore (Lesson~10) is a synchronization construct of the operating
-system that holds an integer value.  Used with the values 0 and~1 it acts
+system that holds an integer value.\margin{A POSIX named semaphore
+(\texttt{sem\_open}) is process-shared by construction; an unnamed one needs
+\texttt{pshared} set and must lie in the region
+(\texttt{sem\_overview(7)}).}  Used with the values 0 and~1 it acts
 like a mutex: a process that finds the value~0 blocks; a process that finds
 the value~1 decrements it to~0 and proceeds, and it increments the value
 again when it leaves the critical section.
@@ -515,7 +551,10 @@ Unix-like systems provide commands to inspect and remove them.\source{P3L3,
 IPC command line tools; Kerrisk ch.~45.}  The command \texttt{ipcs} lists
 all IPC facilities in the system---message queues, shared memory segments
 and semaphore sets---with their keys, identifiers, owners and permissions;
-\texttt{ipcs -m} restricts the list to shared memory.  The command
+\texttt{ipcs -m} restricts the list to shared memory.\tip{The
+\texttt{nattch} column counts the processes attached to a segment right now;
+a segment with \texttt{nattch} 0 that no program will open again is a
+leak.}  The command
 \texttt{ipcrm} removes a facility: \texttt{ipcrm -m} followed by a segment
 identifier destroys that segment, which is the usual way to reclaim a
 segment that a program failed to destroy.
@@ -541,7 +580,10 @@ Processes that communicate over shared memory can organize it in two ways
   \item[Many small segments] Each pair of communicating processes uses a
     segment of its own.  Because creating segments is costly and their
     number is limited, a pool of segments is created in advance, and the
-    identifiers of the free ones are kept in a queue.  A process takes a
+    identifiers of the free ones are kept in a queue.\margin{Allocating a
+    pool in advance and handing out its entries is the argument of the
+    boss-workers thread pool of Lesson~3, applied to segments.}  A process
+    takes a
     segment from the pool and tells its peer the identifier through another
     mechanism, such as a message queue; after the exchange the segment
     returns to the pool.
@@ -589,7 +631,9 @@ typedef struct {
   the next portion into \texttt{buf}, sets \texttt{nbytes} (and
   \texttt{done} with the last portion), and signals.  The receiver waits
   until \texttt{nbytes} is non-zero, copies the portion out, resets
-  \texttt{nbytes} to~0, and signals.  A transfer of \SI{5}{\mega\byte} takes
+  \texttt{nbytes} to~0, and signals.\margin{This is the producer/consumer
+  bounded buffer of Lesson~4 with a single slot, the slot being the payload
+  area of the segment.}  A transfer of \SI{5}{\mega\byte} takes
   $\lceil 5/2 \rceil = 3$ rounds:
   \begin{center}
     \small
