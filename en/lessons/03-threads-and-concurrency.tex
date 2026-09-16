@@ -115,7 +115,11 @@ three respects:
   Suppose an application holds \SI{400}{\mega\byte} of data that each
   process would have to keep separately (code pages, which the operating
   system can share between processes, are ignored here) and needs about
-  \SI{1}{\mega\byte} of stack and other per-context state.  Run as four
+  \SI{1}{\mega\byte} of stack and other per-context state.\margin{On Linux a
+  thread's stack is \SI{8}{\mebi\byte} of address space by default
+  (\texttt{RLIMIT\_STACK}); only the pages it touches occupy memory, so
+  \num{10000} threads reserve \SI{80}{\gibi\byte} and may still need no more
+  than tens of megabytes.}  Run as four
   processes, each with its own copy of the data, it occupies about
   $4\times 401 = \SI{1604}{\mega\byte}$; run as four threads of one
   process it occupies about $400 + 4\times 1 = \SI{404}{\mega\byte}$.
@@ -139,7 +143,11 @@ off when the time gained exceeds the delay, that is, when
 Because a context switch between threads avoids the address-space switch,
 its $t_{\mathrm{ctx}}$ is smaller than that of a switch between processes,
 and \cref{eq:l03-idle} holds for shorter idle periods.  Multithreading
-therefore lets a program hide idle time even on one CPU.
+therefore lets a program hide idle time even on one CPU.\margin{A disk seek
+(some \SI{10}{\milli\second}) or an SSD read (some \SI{100}{\micro\second})
+repays two switches many times over; a wait of the order of a memory access
+(under \SI{100}{\nano\second}) never does, and such short waits are spun on
+instead (Lesson~10).}
 
 \begin{figure}[htbp]
   \centering
@@ -158,7 +166,11 @@ therefore lets a program hide idle time even on one CPU.
   \SI{1}{\milli\second}.  A wait of \SI{4}{\milli\second} gives another
   thread $4 - 0.05 = \SI{3.95}{\milli\second}$ of CPU time and delays the
   blocked thread by \SI{0.05}{\milli\second}; for another process the
-  figures are \SI{3.5}{\milli\second} and \SI{0.5}{\milli\second}.
+  figures are \SI{3.5}{\milli\second} and
+  \SI{0.5}{\milli\second}.\margin{The round figures keep the arithmetic
+  simple; measured costs are microseconds. lmbench reported
+  \SI{6}{\micro\second} per context switch on a 200-MHz P6 in 1996, and
+  2--3 GHz cores stay below a microsecond (OSTEP ch.~6).}
 \end{example}
 
 \subsection{Multithreaded applications and kernels}
@@ -321,7 +333,10 @@ The mutex is released implicitly when the block ends.  Most thread
 interfaces, including the POSIX threads of Lesson~4, instead have separate
 calls \texttt{lock(m)} and \texttt{unlock(m)} around the critical section,
 and the programmer must make sure that every path through the critical
-section ends with an unlock.
+section ends with an unlock.\caution{A mutex is not recursive: a thread that
+locks a mutex it already holds deadlocks against itself.  POSIX prescribes
+this for \texttt{PTHREAD\_MUTEX\_NORMAL}, the behaviour of the default type
+on Linux; a recursive mutex has to be requested explicitly.}
 
 \needspace{12\baselineskip}
 \begin{example}
@@ -538,7 +553,10 @@ Lock(counter_mutex) {
 } // unlock
 \end{lstlisting}
 
-The choice of notification in the exit code follows from who can be waiting.
+The choice of notification in the exit code follows from who can be
+waiting.\tip{Signal when at most one waiting thread can proceed and any of
+them will do; broadcast when the change can admit several waiters, or when
+threads waiting on one condition variable wait for different predicates.}
 \begin{itemize}
   \item A \textbf{reader} that leaves while other readers remain changes
     nothing that a waiting thread cares about.  When the last reader leaves,
@@ -553,7 +571,11 @@ The choice of notification in the exit code follows from who can be waiting.
     reader gets in first, the other woken readers enter as well, and the
     writer finds the counter $\neq 0$ in its \texttt{while} loop and waits
     again; if the writer gets in first, the readers find the counter
-    $=-1$ and wait again.
+    $=-1$ and wait again.\caution{The policy favours readers: while new
+    readers keep arriving the counter never returns to 0, and a waiting
+    writer never enters.  glibc's \texttt{pthread\_rwlock} is
+    reader-preferring by default too, and offers a writer-preferring kind
+    (Lesson~10).}
 \end{itemize}
 
 \begin{example}
@@ -638,7 +660,11 @@ variables.\source{P2L2, common pitfalls, spurious wake-ups; Birrell
     resource.  Recording the association where the variables are declared,
     e.g.\ \texttt{Mutex m1; // protects file1}, avoids this.
   \item Forgetting to lock or to unlock, or locking and unlocking the wrong
-    mutex.  Some compilers and analysis tools can warn about such cases.
+    mutex.  Some compilers and analysis tools can warn about such
+    cases.\margin{Clang's \texttt{-Wthread-safety} checks lock annotations
+    while compiling; ThreadSanitizer (\texttt{-fsanitize=thread}) finds races
+    while the program runs, at a typical cost of 5--15$\times$ in time and
+    5--10$\times$ in memory.}
   \item Using more than one mutex for the same resource.  If the readers of
     a file lock \texttt{m1} and its writers lock \texttt{m2}, reads and
     writes run concurrently.
@@ -689,7 +715,11 @@ This is not always possible.  In the reader's exit code the decision whether
 to signal depends on \texttt{resource\_counter}, which may only be read while
 holding the mutex, so the \texttt{Signal} cannot simply be moved after the
 unlock; it can be moved only by recording the decision in a local variable
-inside the critical section and signalling afterwards.  Spurious wake-ups
+inside the critical section and signalling afterwards.\margin{Linux offers
+\texttt{FUTEX\_CMP\_REQUEUE} for the same purpose: instead of waking the
+threads waiting on a condition variable it moves them to the wait queue of
+the mutex, which \texttt{futex(2)} describes as avoiding a
+\enquote{thundering herd}.}  Spurious wake-ups
 never affect correctness---the \texttt{while} loop sends a thread that cannot
 proceed back to waiting---only performance.
 
@@ -827,7 +857,15 @@ kernel-level thread and the scheduler runs that kernel-level thread on a CPU.
 \subsection{Multithreading models}
 
 How user-level threads are associated with kernel-level threads is
-described by three multithreading models (\cref{fig:l03-mt-models}).
+described by three multithreading models
+(\cref{fig:l03-mt-models}).\sidenote{The many-to-many model was the
+ambitious one, and it has largely been abandoned.  Solaris~2 implemented it,
+but the coordination between the two levels proved to cost more than it
+saved, and Sun made the one-to-one library the default in Solaris~9 (2002);
+Linux settled on the one-to-one NPTL rather than the many-to-many NGPT
+(Lesson~5).  The model survives in language runtimes, where the scheduler is
+part of the runtime: a Go program multiplexes goroutines, which start with a
+stack of \SI{2}{\kibi\byte}, onto a few kernel-level threads.}
 
 \begin{figure}[htbp]
   \centering
@@ -932,10 +970,13 @@ The boss can pass work to workers in two ways
 
 Workers can be created on demand, when a request arrives, but creating a
 thread for every request adds latency.  More commonly the application uses
-a \term{thread pool}[スレッドプール], a set of workers created in advance.
+a \term{thread pool}[スレッドプール], a set of workers created in
+advance.
 The pool can be static, or dynamic, growing---typically by several threads
 at a time rather than one---when the queue gets long and shrinking when
-workers are idle.
+workers are idle.\tip{Size a pool by the work, not by the request rate: a
+worker that spends a fraction $b$ of each request blocked keeps a CPU busy
+only $1-b$ of the time, so $c$ CPUs need about $c/(1-b)$ workers.}
 
 The pattern is simple, but it requires thread pool management, and it
 ignores locality: the boss does not know which worker has just performed a
@@ -1004,7 +1045,11 @@ layers above and below it.
 \subsection{Comparing boss-workers and pipeline}
 
 Which pattern completes a batch of requests faster depends on the number of
-requests.  Consider $n$ requests, each needing the same total processing
+requests.\margin{Lesson~6 measures these patterns in real web servers:
+Apache's worker MPM is boss-workers with one pool per process
+(\texttt{ThreadsPerChild} = 25 by default),
+and the event-driven Flash server handles many requests in a single
+thread.}  Consider $n$ requests, each needing the same total processing
 time.  A boss-workers design with $w$ workers and a negligible boss time
 $t_{\mathrm{boss}}$ completes requests in groups of $w$, each group taking
 the full task time $t$; a pipeline of $k$ equal stages of time $s$ completes
@@ -1018,7 +1063,10 @@ the first request after $k$ stage times and then one request per stage time:
 
 \begin{example}
   Both designs use four threads, and a request needs
-  \SI{100}{\milli\second} of work.  The boss-workers design has one boss and
+  \SI{100}{\milli\second} of work.\caution{The formulas compare the
+  completion time of a whole batch.  A pipeline does not shorten a single
+  request: it still passes through all $k$ stages, and it waits in a buffer
+  whenever the next stage is busy.}  The boss-workers design has one boss and
   $w=3$ workers with $t=\SI{100}{\milli\second}$; the pipeline has $k=4$
   stages of $s=\SI{25}{\milli\second}$.  Boss-workers completes 3 requests
   per \SI{100}{\milli\second} and the full pipeline 4, so boss-workers can
