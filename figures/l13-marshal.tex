@@ -1,0 +1,61 @@
+% Marshalling and unmarshalling the arguments of sum(count, values).
+% The pointer value is not sent; the pointed-to array is copied into the
+% buffer and recreated at a different address on the server.
+% Usage: \input{figures/l13-marshal}   (width ~120 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  cell/.style={draw, fill=white, minimum height=5mm, inner sep=0pt,
+               font=\scriptsize\sffamily},
+  var/.style={cell, minimum width=16mm},
+  elem/.style={cell, minimum width=7mm},
+  buf/.style={cell, minimum width=7mm, fill=ln-accent!15},
+  vname/.style={font=\scriptsize\sffamily, anchor=east},
+  hdr/.style={font=\scriptsize\sffamily\bfseries, text=ln-muted, anchor=base},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  addr/.style={font=\scriptsize\ttfamily, text=ln-muted, anchor=south west,
+               inner sep=0.5pt},
+  op/.style={font=\scriptsize\sffamily, anchor=south}]
+  % ---------------- client address space
+  \node[hdr] at (15,42) {\iflangja{クライアントのアドレス空間}{client address space}};
+  \node[lab, anchor=west] at (0,36.5) {\iflangja{スタック}{stack}};
+  \node[var] (cc) at (21,31) {3};
+  \node[var] (cv) at (21,25) {\texttt{0x5a10}};
+  \node[vname] at (12.5,31) {\texttt{count}};
+  \node[vname] at (12.5,25) {\texttt{values}};
+  \node[elem] (c1) at (11.5,9) {7};
+  \node[elem] (c2) at (18.5,9) {$-2$};
+  \node[elem] (c3) at (25.5,9) {300};
+  \node[addr, anchor=north west] at (8,6.3) {0x5a10};
+  \node[lab, anchor=east] at (7.6,9) {\iflangja{ヒープ}{heap}};
+  \draw[->] ([xshift=-4mm]cv.south) -- (c1.north);
+  % ---------------- message buffer
+  \node[hdr] at (60,42) {\iflangja{メッセージバッファ}{message buffer}};
+  \foreach \v [count=\i from 0] in {3,7,$-2$,300} {
+    \node[buf] (b\i) at (49.5+7*\i,20) {\v};
+    \node[font=\tiny\sffamily, text=ln-muted] at (46+7*\i,24.5) {\the\numexpr4*\i\relax};
+  }
+  \node[font=\tiny\sffamily, text=ln-muted] at (74,24.5) {16};
+  \draw[ln-muted] (46.4,16.8) -- (46.4,15.8) -- (52.6,15.8) -- (52.6,16.8);
+  \node[lab, anchor=north] at (49.5,15.3) {\texttt{count}};
+  \draw[ln-muted] (53.4,16.8) -- (53.4,15.8) -- (73.6,15.8) -- (73.6,16.8);
+  \node[lab, anchor=north] at (63.5,15.3)
+    {\iflangja{要素}{elements}};
+  % ---------------- server address space
+  \node[hdr] at (105,42) {\iflangja{サーバのアドレス空間}{server address space}};
+  \node[lab, anchor=west] at (90,36.5) {\iflangja{スタック}{stack}};
+  \node[var] (sc) at (111,31) {3};
+  \node[var] (sv) at (111,25) {\texttt{0x9c40}};
+  \node[vname] at (102.5,31) {\texttt{count}};
+  \node[vname] at (102.5,25) {\texttt{values}};
+  \node[elem] (s1) at (101.5,9) {7};
+  \node[elem] (s2) at (108.5,9) {$-2$};
+  \node[elem] (s3) at (115.5,9) {300};
+  \node[addr, anchor=north west] at (98,6.3) {0x9c40};
+  \node[lab, anchor=east] at (97.6,9) {\iflangja{ヒープ}{heap}};
+  \draw[->] ([xshift=-4mm]sv.south) -- (s1.north);
+  % ---------------- operations
+  \draw[->, thick, ln-accent] (31,20) -- (44.5,20);
+  \node[op] at (37.8,20.8) {\iflangja{マーシャル}{marshal}};
+  \draw[->, thick, ln-accent] (75.5,20) -- (89,20);
+  \node[op] at (82.3,20.8) {\iflangja{アンマーシャル}{unmarshal}};
+\end{tikzpicture}

@@ -1,0 +1,69 @@
+% Partial failures seen by an RPC client: (a) request lost, (b) server
+% crash, (c) reply lost followed by a retry that executes the call twice.
+% Time runs downward.  Usage: \input{figures/l13-failures}  (width 120 mm)
+% The Japanese labels are wider than the English ones: with the same
+% geometry the picture would exceed the 120 mm body width, so the
+% panels are set closer together and the headers a little further in.
+\iflangja{\def\lnPanB{40}\def\lnPanC{80}\def\lnHdrC{6}\def\lnHdrS{30}}%
+         {\def\lnPanB{42}\def\lnPanC{84}\def\lnHdrC{4}\def\lnHdrS{32}}%
+\begin{tikzpicture}[x=1mm, y=0.85mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  life/.style={draw=ln-rule, thick},
+  blocked/.style={draw=ln-accent, fill=ln-accent!25},
+  exec/.style={draw, fill=ln-muted!45},
+  msg/.style={->},
+  hdr/.style={font=\scriptsize\sffamily\bfseries, text=ln-muted, anchor=base},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  pcap/.style={font=\footnotesize\sffamily, anchor=north}]
+  \newcommand{\lnLost}[2]{%
+    \draw[ln-caution, thick] (#1-1.1,#2-1.1) -- (#1+1.1,#2+1.1)
+      (#1-1.1,#2+1.1) -- (#1+1.1,#2-1.1);}
+  \newcommand{\lnTimeout}[1]{%
+    \draw[ln-caution, thick] (1.5,#1) -- (6.5,#1);
+    \node[lab, text=ln-caution, anchor=south west, inner sep=0.5pt]
+      at (6.8,#1) {\iflangja{タイムアウト}{timeout}};}
+  \foreach \xs/\pc in {0/{\iflangja{(a) 要求の消失}{(a) request lost}},
+                        \lnPanB/{\iflangja{(b) サーバのクラッシュ}{(b) server crash}},
+                        \lnPanC/{\iflangja{(c) 応答の消失}{(c) reply lost}}} {
+    \begin{scope}[xshift=\xs mm]
+      \node[hdr] at (\lnHdrC,45) {\iflangja{クライアント}{client}};
+      \node[hdr] at (\lnHdrS,45) {\iflangja{サーバ}{server}};
+      \node[pcap] at (18,-6) {\pc};
+    \end{scope}
+  }
+  % ================= (a) request lost
+  \draw[life] (4,42) -- (4,-4);
+  \draw[life] (32,42) -- (32,-4);
+  \draw[blocked] (3,36) rectangle (5,14);
+  \draw[msg] (5,36) -- (17,32.2);
+  \lnLost{18}{31.9}
+  \lnTimeout{14}
+  % ================= (b) server crash
+  \begin{scope}[xshift=\lnPanB mm]
+  \draw[life] (4,42) -- (4,-4);
+  \draw[life] (32,42) -- (32,27);
+  \draw[life, densely dashed] (32,27) -- (32,-4);
+  \draw[blocked] (3,36) rectangle (5,14);
+  \draw[msg] (5,36) -- (31,30);
+  \draw[exec] (31,30) rectangle (33,27.5);
+  \draw[ln-caution, line width=1pt] (29.8,27) -- (34.2,27);
+  \node[lab, anchor=east] at (30.5,25.3) {\iflangja{クラッシュ}{crash}};
+  \lnTimeout{14}
+  \end{scope}
+  % ================= (c) reply lost, retry
+  \begin{scope}[xshift=\lnPanC mm]
+  \draw[life] (4,42) -- (4,-4);
+  \draw[life] (32,42) -- (32,-4);
+  \draw[blocked] (3,36) rectangle (5,-1);
+  \draw[msg] (5,36) -- (31,30);
+  \draw[exec] (31,30) rectangle (33,26);
+  \draw[msg] (31,26) -- (19,22.3);
+  \lnLost{18}{22}
+  \lnTimeout{14}
+  \draw[msg] (5,12) -- (31,6);
+  \node[lab, anchor=south, rotate=-11] at (18,9.6) {\iflangja{再送}{retry}};
+  \draw[exec] (31,6) rectangle (33,2);
+  \draw[msg] (31,2) -- (5,-1);
+  \node[lab, anchor=east] at (30.5,4) {\iflangja{再実行}{runs again}};
+  \end{scope}
+\end{tikzpicture}

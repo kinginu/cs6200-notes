@@ -1,0 +1,62 @@
+% Structure of an RPC system and the steps of one call.
+% Badges: -1 register, 0 bind, 1 call, 2 marshal, 3 send, 4 receive,
+% 5 unmarshal, 6 actual call, 7 result.  Dashed arrows: return path.
+% Usage: \input{figures/l13-steps}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  machine/.style={draw=ln-rule, rounded corners=2pt, fill=ln-box},
+  comp/.style={draw, fill=white, align=center, minimum width=34mm,
+               minimum height=8mm, inner sep=1pt},
+  stubc/.style={comp, fill=ln-accent!15},
+  rt/.style={comp, fill=ln-accent!30},
+  reg/.style={draw, rounded corners=2pt, fill=white, align=center,
+              minimum width=26mm, minimum height=7mm, inner sep=1pt},
+  stepn/.style={circle, draw, fill=white, inner sep=0pt,
+                minimum size=4.2mm, font=\scriptsize\sffamily\bfseries},
+  hdr/.style={font=\scriptsize\sffamily\bfseries, text=ln-muted},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  ret/.style={->, densely dashed}]
+  % machines
+  \draw[machine] (2,0) rectangle (46,48);
+  \draw[machine] (74,0) rectangle (118,48);
+  \node[hdr] at (24,2.6) {\iflangja{クライアントマシン}{client machine}};
+  \node[hdr] at (96,2.6) {\iflangja{サーバマシン}{server machine}};
+  % client side
+  \node[comp]  (caller) at (24,38)
+    {\iflangja{呼び出し元}{caller}\\[-0.3ex]\texttt{s = sum(3, v);}};
+  \node[stubc] (cstub)  at (24,24.5) {\iflangja{クライアントスタブ}{client stub}};
+  \node[rt]    (crt)    at (24,11) {\iflangja{RPC ランタイム}{RPC runtime}};
+  % server side
+  \node[comp]  (proc)   at (96,38)
+    {\iflangja{手続きの実装}{implementation}\\[-0.3ex]\texttt{sum(count, values)}};
+  \node[stubc] (sstub)  at (96,24.5) {\iflangja{サーバスタブ}{server stub}};
+  \node[rt]    (srt)    at (96,11) {\iflangja{RPC ランタイム}{RPC runtime}};
+  % registry
+  \node[reg] (reg) at (60,56) {\iflangja{レジストリ}{registry}};
+  % -1 register, 0 bind
+  \draw[->] ([xshift=-6mm]proc.north) |- (reg.east);
+  \draw[<->] ([xshift=6mm]caller.north) |- (reg.west);
+  \node[stepn] at (90,51.5) {$-1$};
+  \node[stepn] at (30,51.5) {0};
+  % client: call path down, return path up
+  \draw[->]  ([xshift=-8mm]caller.south) -- ([xshift=-8mm]cstub.north);
+  \draw[->]  ([xshift=-8mm]cstub.south) -- ([xshift=-8mm]crt.north);
+  \draw[ret] ([xshift=8mm]crt.north) -- ([xshift=8mm]cstub.south);
+  \draw[ret] ([xshift=8mm]cstub.north) -- ([xshift=8mm]caller.south);
+  \node[stepn] at (11.5,31.3) {1};
+  \node[stepn] at (7,24.5) {2};
+  % network
+  \draw[->]  ([yshift=2mm]crt.east) -- ([yshift=2mm]srt.west);
+  \draw[ret] ([yshift=-2mm]srt.west) -- ([yshift=-2mm]crt.east);
+  \node[stepn] at (51,17) {3};
+  \node[stepn] at (69,17) {4};
+  \node[lab] at (60,5.5) {\iflangja{ネットワーク}{network}};
+  % server: request path up, return path down
+  \draw[->]  ([xshift=-8mm]srt.north) -- ([xshift=-8mm]sstub.south);
+  \draw[->]  ([xshift=-8mm]sstub.north) -- ([xshift=-8mm]proc.south);
+  \draw[ret] ([xshift=8mm]proc.south) -- ([xshift=8mm]sstub.north);
+  \draw[ret] ([xshift=8mm]sstub.south) -- ([xshift=8mm]srt.north);
+  \node[stepn] at (113,24.5) {5};
+  \node[stepn] at (83.5,31.3) {6};
+  \node[stepn] at (113,38) {7};
+\end{tikzpicture}

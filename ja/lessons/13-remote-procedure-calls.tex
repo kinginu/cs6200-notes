@@ -1,0 +1,879 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{遠隔手続き呼び出し}
+\lessoninfo{
+  video={P4L1},
+  textbook={OSTEP \cite{ostep} ch.~48；Silberschatz ら \cite{silberschatz2018} ch.~3；Birrell と Nelson \cite{birrell1984}；RFC 5531 \cite{rfc5531}，RFC 4506 \cite{rfc4506}},
+  keywords={遠隔手続き呼び出し，スタブ，RPCランタイム，インタフェース定義言語，マーシャリング，アンマーシャリング，バインディング，レジストリ，部分障害，Sun RPC，XDR，rpcgen，rpcbind，Java RMI},
+}
+
+これまでの章が扱ってきたのは，1つのオペレーティングシステムが管理する単一の
+マシン，あるいは第12章のように，複数のオペレーティングシステムの下にある
+ハイパーバイザが管理する単一のマシンであった．この章から分散システムの部が始まる．
+そこでは協調するプロセスが，ネットワークで結ばれた別々のマシン上で動作する．
+マシンをまたぐと，プロセスは---通常は第9章のソケットを通じて---メッセージを
+交換することしかできず，それを使うアプリケーションはどれも同じ低水準の通信
+コードを繰り返し書くことになる．遠隔手続き呼び出しは，このコードを通常の
+手続き呼び出しのインタフェースの背後に隠す．この章では，RPC システムの構造
+と，どの RPC システムも下さなければならない設計上の決定---インタフェースの
+定義，マーシャリング，バインディング，ポインタ引数，部分障害---を示し，
+続いて Sun RPC と Java RMI がそれらをどう決めているかを調べる．
+
+\section{なぜ遠隔手続き呼び出しか}
+\label{sec:l13-why}
+
+2つのクライアント・サーバアプリケーションを考える．\source{P4L1，なぜ RPC か，
+RPC の利点；Birrell と Nelson \cite{birrell1984}；OSTEP ch.~48．}第1のもの
+では，クライアントがサーバにファイルを要求し，サーバはそのファイルの内容を
+返す．第2のものでは，クライアントが画像とともに画像処理アルゴリズムの名前と
+そのパラメータを送り，サーバは処理した画像を返す．サービスは異なるが，2つの
+アプリケーションの通信コードはほとんど同じである．どちらも次のことを行わな
+ければならない．
+\begin{itemize}
+  \item クライアントとサーバが通信するためのソケットを作り，初期化する；
+  \item メッセージのためのバッファを確保し，そこに内容を詰める；
+  \item メッセージをどう解釈すべきかを相手側に伝えるプロトコル情報---要求
+    された操作（ファイルの取得，アルゴリズムの適用）や後続のデータの大きさ
+    など---を含める；
+  \item データをバッファへコピーする．第1のアプリケーションではファイル名と
+    ファイルの内容，第2のアプリケーションではアルゴリズムのパラメータと画像
+    である．
+\end{itemize}
+そして受信側は逆の手順を行う．アプリケーションに固有なのは，操作と，やり取り
+されるデータの型だけである．
+
+\begin{definition}[遠隔手続き呼び出し]
+  \term[えんかくてつづきよびだし]{遠隔手続き呼び出し}[remote procedure call]
+  （RPC）とは，プロセスが，別のアドレス空間---通常は別のマシン上---で実行
+  される手続きを，ローカルな手続きを呼び出すのと同じやり方で呼び出せるように
+  するプロセス間通信機構である．手続きへ引数を渡し結果を呼び出し元へ返す通信
+  は，RPC システムが行う．
+\end{definition}
+\index{RPC|see{遠隔手続き呼び出し}}
+
+RPC は，アドレス空間やマシンをまたぐやり取りの開発を単純にすることを目的と
+する．その利点は次のとおりである．
+\begin{description}
+  \item[より高水準のインタフェース] データの移動と通信は，ソケットに書き
+    ソケットから読むバイトバッファとしてではなく，型の付いた引数と結果を持つ
+    手続きの呼び出しとして表現される．
+  \item[エラー処理] RPC システムは通信のエラーを検出し，統一された形で
+    アプリケーションへ報告する．
+  \item[複雑さの隠蔽] 接続の管理から，マシンごとのデータ表現の違いに至るまで，
+    マシン間のやり取りの詳細は，RPC システムとそれが生成するコードが扱う．
+\end{description}
+
+Birrell と Nelson \cite{birrell1984} は，1984 年に Xerox PARC の Cedar
+プログラミング環境のための RPC 機構の設計と実装を記述した．彼らが選んだ構造，
+すなわち生成されたスタブと両側のランタイムライブラリからなる構造
+（\cref{sec:l13-structure}）は，この章で扱う2つを含む後の RPC システムの基礎
+になっている．
+
+\section{RPC への要件}
+\label{sec:l13-requirements}
+
+遠隔の操作を手続き呼び出しのように見せるという目標から，RPC システムには
+次の要件が生じる．\source{P4L1，RPC への要件；OSTEP ch.~48．}
+\begin{description}
+  \item[クライアント・サーバのやり取り] RPC はクライアント・サーバモデルを
+    対象とする．サーバが一組の手続きを提供し，クライアントがそれらを呼び出す．
+  \item[手続き呼び出しインタフェース] RPC は\emph{同期的な呼び出しのセマン
+    ティクス}を持つ．呼び出したプロセス，マルチスレッドのプロセスであれば
+    呼び出したスレッドは，呼び出しを行うとブロックし，手続きが完了してその
+    結果が返されて初めて実行を続ける．ローカルな呼び出しとまったく同じである．
+  \item[型検査] 引数と結果には型が宣言されているので，RPC システムはそれらを
+    検査し，呼び出しが手続きに合致しないときはエラーを報告できる．型はまた，
+    メッセージのバイト列を受信側がどう解釈すべきかを伝える．ソケットはそれを
+    解釈されないバイト列として配送するだけである．
+  \item[マシン間の変換] クライアントとサーバは，データの表現が異なるマシン上
+    で動作しうるので，RPC システムは表現の間の変換を行わなければならない．
+  \item[より高水準のプロトコル] RPC はトランスポート層の上のプロトコルである．
+    クライアントを認証しその呼び出しを認可するアクセス制御や，耐障害性の機構
+    を組み込むことができ，TCP や UDP など異なるトランスポートプロトコルを
+    使えることが望ましい．
+\end{description}
+
+表現の違いのうち最も一般的なのは，複数バイトからなる値のバイトを格納する順序
+である．整数の最上位バイトを最も低いアドレスに格納するマシンを
+\term[びっぐえんでぃあん]{ビッグエンディアン}[big-endian]，最下位バイトを
+そこに格納するマシンを
+\term[りとるえんでぃあん]{リトルエンディアン}[little-endian]と呼ぶ．x86
+プロセッサはリトルエンディアンであり，多くのネットワークプロトコルと
+\cref{sec:l13-encoding} の符号化はビッグエンディアンの順序を使う．
+
+\begin{example}
+  \label{ex:l13-endian}
+  32 ビット整数 $300 = \mathtt{0x0000012C}$ は，アドレスの昇順に，ビッグ
+  エンディアンのマシンでは \texttt{00 00 01 2C} のバイト列を，リトル
+  エンディアンのマシンでは \texttt{2C 01 00 00} を占める．リトルエンディアン
+  のクライアントがこの整数のバイトをそのままメッセージへコピーすると，ビッグ
+  エンディアンのサーバはそれを $\mathtt{0x2C010000} = \num{738263040}$ と
+  読む．
+\end{example}
+
+\section{RPC システムの構造}
+\label{sec:l13-structure}
+
+ローカルな手続き呼び出しでは，呼び出し元が引数をスタックまたはレジスタに置き，
+手続きへジャンプする．手続きは結果を計算して戻る．\source{P4L1，RPC の構造，
+RPC の手順；Birrell と Nelson \cite{birrell1984}；OSTEP ch.~48．}RPC では，
+呼び出し元と手続きは異なるアドレス空間にあり，引数も手続きのコードも相手側
+からはアクセスできない．そこで呼び出しは，遠隔の手続きと同じインタフェースを
+持ちながら代わりに通信を行う，ローカルな手続きへジャンプする
+（\cref{fig:l13-steps}）．
+
+\begin{definition}[スタブ]
+  \term[すたぶ]{スタブ}[stub]とは，RPC システムが生成する手続きであり，手続き
+  呼び出しとメッセージの間の変換を行う．\emph{クライアントスタブ}はクライア
+  ントにリンクされ，遠隔の手続きのインタフェースを持つ．引数をメッセージに
+  詰め，応答から結果を取り出す．\emph{サーバスタブ}はサーバにリンクされ，引数
+  を取り出し，手続きの実際の実装を呼び出し，その結果を応答に詰める．
+\end{definition}
+
+\begin{definition}[RPC ランタイム]
+  \term[RPCらんたいむ]{RPCランタイム}[RPC runtime]とは，両側に存在し，
+  クライアントとサーバの間でメッセージを転送するライブラリである．接続を管理
+  し，メッセージを送受信し，失われたメッセージを再送し，受信した各メッセージ
+  を適切なスタブへ渡す．
+\end{definition}
+
+呼び出し元にも手続きにも通信のコードは含まれず，どちらもローカルな呼び出し
+だけを見る．\margin{Birrell と Nelson のシステムも同じ部品からなり，その
+スタブ生成器は Lupine と呼ばれた \cite{birrell1984}．}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-steps}
+  \caption{RPC システムの構造と呼び出しの手順．実線の矢印は呼び出しを，破線の
+    矢印は結果の返送を表す．手順 $-1$ と 0 は最初の呼び出しの前に行われる．}
+  \label{fig:l13-steps}
+\end{figure}
+
+\subsection{RPC の手順}
+
+RPC は次の手順で進む．番号は \cref{fig:l13-steps} のものである．
+\begin{description}
+  \item[$-1$ 登録] サーバは，提供する手続き，その引数の型，および自身の所在を
+    登録し，クライアントがそのサーバを見つけられるようにする
+    （\cref{sec:l13-binding}）．
+  \item[0 バインド] クライアントは，目的の手続きを提供するサーバを見つけ，
+    例えば接続を開いてそれにバインドする．
+  \item[1 呼び出し] クライアントが手続きを呼び出す．制御はクライアントスタブ
+    へ移り，呼び出し元はブロックする．
+  \item[2 マーシャル] クライアントスタブが引数をマーシャルする．すなわち
+    バッファへ直列化する（\cref{sec:l13-marshalling}）．
+  \item[3 送信] クライアントの RPC ランタイムが，バインドの際に合意した
+    トランスポートプロトコルでメッセージをサーバへ送る．
+  \item[4 受信] サーバの RPC ランタイムがメッセージを受信し，サーバスタブへ
+    渡す．アクセス制御の検査はこの時点で行われる．
+  \item[5 アンマーシャル] サーバスタブが引数をアンマーシャルする．すなわち
+    バッファから取り出し，対応するデータ構造を作る．
+  \item[6 実際の呼び出し] サーバスタブが手続きのローカルな実装を呼び出す．
+  \item[7 結果] 手続きが結果を計算し，結果は逆の経路でクライアントへ戻る．
+    サーバスタブがそれをマーシャルし，両側のランタイムが応答を転送し，
+    クライアントスタブがそれをアンマーシャルして呼び出し元へ返し，呼び出し元
+    は実行を再開する．
+\end{description}
+手順 $-1$ と 0 は最初の呼び出しの前に一度だけ行われ，手順 1--7 は呼び出しの
+たびに繰り返される．
+
+\begin{keypoint}
+  RPC は，呼び出し元にとっても手続きにとってもローカルな手続き呼び出しに
+  見える．スタブが呼び出しとメッセージの間を変換し，RPC ランタイムがマシン間
+  でメッセージを運ぶ．
+\end{keypoint}
+
+\section{インタフェース定義言語}
+\label{sec:l13-idl}
+
+クライアントとサーバは，サーバが何をできるか，そして各手続きの引数と結果に
+ついて合意していなければならない．\source{P4L1，インタフェース定義言語，
+IDL の記述；OSTEP ch.~48．}クライアントはあるサーバにバインドするかどうかを
+決めるためにこの情報を必要とし，RPC システムはスタブを自動的に生成するために，
+正確で機械可読な形でそれを必要とする．
+
+\begin{definition}[インタフェース定義言語]
+  \term[いんたふぇーすていぎげんご]{インタフェース定義言語}%
+  [interface definition language]（IDL）とは，サーバが公開するインタフェース
+  ---手続きの名前，その引数と結果の型，およびバージョン番号---を記述するため
+  の言語である．
+\end{definition}
+\index{IDL|see{インタフェース定義言語}}
+
+RPC システムは2種類の IDL のいずれかを使える．
+\begin{description}
+  \item[言語非依存の IDL] クライアントやサーバを書くプログラミング言語とは
+    独立した専用の言語であり，そこから対応する各言語向けのスタブが生成される．
+    Sun RPC は XDR を使う（\cref{sec:l13-sunrpc}）．
+  \item[言語固有の IDL] インタフェースをアプリケーション自身のプログラミング
+    言語で記述するので，プログラマは別の言語を学ぶ必要がない．Java RMI は
+    Java を使う（\cref{sec:l13-rmi}）．
+\end{description}
+いずれの場合も，IDL が記述するのはサーバのインタフェースだけであり，その実装
+ではない．
+
+バージョン番号はサービスの進化を支える．サービスが更新されるとき，すべての
+サーバが同時に更新されるとは限らず，1つのサーバが古いバージョンと新しい
+バージョンのインタフェースを並べて公開することもある．期待するバージョンを
+示すことで，クライアントはそのバージョンを実装するサーバにだけバインドする．
+
+\section{マーシャリングとアンマーシャリング}
+\label{sec:l13-marshalling}
+
+呼び出しの引数は呼び出し元のメモリにある．スタックやレジスタ上の値と，
+ポインタが指す，アドレス空間の別の場所にあるデータである．\source{P4L1，
+マーシャリング，アンマーシャリング；OSTEP ch.~48．}一方メッセージは連続した
+バイト列である．
+
+\begin{definition}[マーシャリング]
+  呼び出しの引数や結果を，メッセージとして送れ受信側が正しく解釈できるように，
+  クライアントとサーバの間で合意された符号化で連続したバッファへ変換することを
+  \term[まーしゃりんぐ]{マーシャリング}[marshalling]，あるいは
+  \emph{直列化}と呼ぶ．
+\end{definition}
+\index{ちょくれつか@直列化|see{マーシャリング}}
+
+\begin{definition}[アンマーシャリング]
+  その逆の変換を
+  \term[あんまーしゃりんぐ]{アンマーシャリング}[unmarshalling]と呼ぶ．受け
+  取ったバッファをインタフェースが与える型に従って解析し，値を取り出し，必要に
+  応じてメモリを確保・初期化しながら，受信側のアドレス空間に対応するデータ構造
+  を作る．
+\end{definition}
+
+大きさが固定のデータについては，インタフェースの型が，ある値がどこで終わり次の
+値がどこから始まるかを受信側に伝える．配列や文字列のように大きさが可変のデータ
+には追加の情報が要る．要素の前に長さを符号化するか，あるいは C の文字列を NUL
+文字が終端するように，特別な値で終わりを示すかである．
+
+\begin{example}
+  \label{ex:l13-marshal}
+  あるサーバのインタフェースが，手続き
+  \texttt{int sum(int count, int *values)} を宣言し，\texttt{values} は
+  \texttt{count} 個の整数を指すと定めているとする．クライアントは
+  \texttt{sum(3, v)} を呼び出す．ここで \texttt{v} はアドレス
+  \texttt{0x5a10} にある配列で，7，$-2$，300 を保持している．整数を
+  \SI{4}{\byte} とすると，クライアントスタブは \cref{fig:l13-marshal} の
+  \SI{16}{\byte} のバッファ，すなわち個数に続いて3つの要素を並べたものを作る．
+  アドレス \texttt{0x5a10} は送られない．サーバスタブは個数を読み，整数3つ分の
+  メモリを---ここでは \texttt{0x9c40} に---確保し，要素をそこへコピーし，
+  \texttt{count} $=3$，\texttt{values} $=\mathtt{0x9c40}$ で実装を呼び出す．
+\end{example}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-marshal}
+  \caption{\texttt{sum(3, v)} の引数のマーシャリングとアンマーシャリング．
+    バッファには，ポインタが指す配列を含めて引数の値が入るが，ポインタそのもの
+    は入らない．その上に付した数はバイトオフセットである．}
+  \label{fig:l13-marshal}
+\end{figure}
+
+ランタイムが送るメッセージは，呼び出される手続きも識別する．Sun RPC が符号化
+した引数の前に置くヘッダは \cref{sec:l13-encoding} で示す．
+
+マーシャリングとアンマーシャリングのコードは手で書くものではない．IDL の
+コンパイラが，インタフェースからスタブとともにそれを生成する．Sun RPC に
+ついては \cref{sec:l13-rpcgen} で示す．
+
+\section{バインディングとレジストリ}
+\label{sec:l13-binding}
+
+クライアントがサーバの手続きを呼び出せるようになる前に，\source{P4L1，
+バインディングとレジストリ；Birrell と Nelson \cite{birrell1984}．}どのサーバ
+を使い，どうやってそこへ到達するかを決めなければならない．
+
+\begin{definition}[バインディング]
+  \term[ばいんでぃんぐ]{バインディング}[binding]では，クライアントが，サービス
+  の名前とバージョンで識別される通信相手のサーバを決め，ネットワークアドレス，
+  トランスポートプロトコル，ポートで与えられるそのサーバへの接続方法を決め，
+  通信を確立する．
+\end{definition}
+
+\begin{definition}[レジストリ]
+  \term[れじすとり]{レジストリ}[registry]とは，利用可能なサービスのデータ
+  ベースである．サーバは自分のサービスをそこに登録し，クライアントはサービス名
+  で検索して，そのサービスを提供するサーバと，そのサーバに接続するために必要な
+  情報を見つける．
+\end{definition}
+
+レジストリの構成には2通りがある．
+\begin{description}
+  \item[分散レジストリ] 複製されることもあるレジストリサービスであり，どこで
+    動作していても任意の RPC サービスがそこに登録できる．クライアントは
+    サービスの所在を知らなくてもそれを見つけられる．\margin{Birrell と Nelson
+    はバインディングに分散データベース Grapevine を用いた \cite{birrell1984}．}
+  \item[マシンごとのレジストリ] 各マシンが，そのマシン上のサービスのための
+    レジストリを動かす．クライアントはマシンのアドレスをあらかじめ知っていな
+    ければならず，レジストリはそのサービスに到達できるポート番号を与える．
+\end{description}
+レジストリには命名の規約も要る．最も単純なものは，クライアントのサービス名が
+登録された名前と厳密に一致することを求める．より凝ったものは同義語も考慮し，
+\texttt{sum} という名前のサービスを探すクライアントが \texttt{add} や
+\texttt{summation} として登録されたものも見つけられるようにできる．
+
+\section{引数としてのポインタ}
+\label{sec:l13-pointers}
+
+\cref{ex:l13-marshal} の \texttt{sum} のようなローカルな手続きは，ポインタを
+受け取ってそれを間接参照できる．呼び出し元と手続きがアドレス空間を共有して
+いるからである．\source{P4L1，RPC におけるポインタ；OSTEP ch.~48．}RPC では，
+ポインタはクライアントのアドレス空間を指す．サーバ上で同じアドレスは無意味で
+あり，割り当てられていないかもしれず，無関係なデータを保持しているかもしれ
+ない．RPC システムはこの問題を2通りのいずれかで解決する．
+\begin{description}
+  \item[ポインタを許さない] 遠隔インタフェースにポインタ引数を含めてはならない
+    とする．
+  \item[指されたデータを直列化する] クライアントスタブは，ポインタが指すデータ
+    構造を送信バッファへコピーし，サーバスタブはそれをサーバのアドレス空間に
+    再構成して，その複製へのポインタを渡す（\cref{fig:l13-marshal}）．連結された
+    データ構造については，スタブがポインタを再帰的にたどる．
+\end{description}
+ポインタを直列化する場合，サーバが操作するのは複製である．サーバが指された
+データに加えた変更は，インタフェースがそのデータを結果の一部として返さない限り
+クライアントからは見えない．
+
+\section{部分障害}
+\label{sec:l13-failures}
+
+ローカルな手続き呼び出しは，戻るか，さもなければそれを行ったプロセスもろとも
+失敗する．\source{P4L1，部分障害の扱い，RPC の設計上の選択のまとめ；OSTEP
+ch.~48．}呼び出し元と手続きは，1台のマシン上の1つのプロセスという運命を共に
+している．分散システムは部分的に故障しうる．
+
+\begin{definition}[部分障害]
+  \term[ぶぶんしょうがい]{部分障害}[partial failure]とは，分散システムの一部の
+  構成要素---マシン，プロセス，ネットワークのリンク，あるいは個々のメッセージ
+  など---が故障し，他の構成要素は動作し続けることをいう．
+\end{definition}
+
+RPC が戻らないとき，その原因は，サーバのマシンが停止している，サーバの
+プロセスがクラッシュした，または過負荷である，ネットワークが停止している，
+あるいは要求か応答が失われた，のいずれでもありうる．クライアントはどの場合にも
+同じこと---応答がないこと---しか観測できず，どの構成要素が故障したのかを
+見分けられない（\cref{fig:l13-failures}）．
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-failures}
+  \caption{クライアントが区別できない3つの部分障害．網掛けの帯はクライアントが
+    ブロックしている時間を，灰色の箱は手続きの実行を，×は失われたメッセージを
+    表す．(a)~要求が失われる．(b)~呼び出しの実行中にサーバがクラッシュする．
+    (c)~応答が失われ，再送が手続きを2度目に実行する．}
+  \label{fig:l13-failures}
+\end{figure}
+
+RPC システムは\emph{タイムアウト}で待ち時間に上限を設け，期限が切れたら要求を
+再送できるが，タイムアウトと再送は何も保証しない．サーバが停止している間は再送
+は成功しえないし，応答が失われていた場合には，\cref{fig:l13-failures}c のように
+再送は手続きをもう一度実行させる．繰り返しの実行が無害なのは，1回の実行と同じ
+効果しかもたらさない\emph{冪等}な手続きに限られる．
+
+\begin{example}
+  ファイルにレコードを追加する手続きは冪等ではない．\SI{200}{\byte} の
+  レコードを追加する呼び出しの応答が失われると，再送はレコードを2度目に追加し，
+  ファイルは \SI{400}{\byte} 大きくなる．例えばオフセット \num{4096} のように，
+  与えられたオフセットに \SI{200}{\byte} を書く手続きは冪等である．2度実行して
+  も内容は同じである．
+\end{example}
+
+そこで RPC システムは，呼び出しが部分的に失敗しうる様々な場合をまとめて受け
+止める特別なエラー通知---エラーコード，シグナル，または例外---を提供する．
+呼び出し元はすべての呼び出しでそれを受け取る用意をしておかなければならない．
+ただしそれは，どの構成要素が故障したのかも，手続きが実行されたのかどうかも
+示さない．\margin{Birrell と Nelson の意味論では，呼び出しが戻れば
+手続きはちょうど1回実行され，さもなければ例外が上がる \cite{birrell1984}．}
+
+\begin{keypoint}[RPC の設計上の選択]
+  どの RPC システムも次を決めなければならない．
+  \begin{itemize}
+    \item サーバをどう見つけるか．レジストリを介したバインディング；
+    \item サーバとどうやり取りし，データをどう詰めるか．IDL とマーシャリング；
+    \item ポインタ引数をどう扱うか．許さないか，指されたデータを直列化するか；
+    \item 部分障害をどう扱うか．特別なエラー通知による．
+  \end{itemize}
+\end{keypoint}
+
+\section{Sun RPC}
+\label{sec:l13-sunrpc}
+
+Sun Microsystems は 1980 年代に Unix システムのために
+\term{Sun RPC}[Sun RPC] を開発した．最もよく知られた応用はネットワーク
+ファイルシステム（第14章）である．\source{P4L1，SunRPC とは何か，SunRPC の
+概要，SunRPC の XDR の例；RFC 5531 \cite{rfc5531}；RFC 4506 \cite{rfc4506}．}
+現在ではほとんどのプラットフォームで利用でき，ONC~RPC（Open Network
+Computing RPC）として標準化されている \cite{rfc5531}．%
+\index{ONC RPC|see{Sun RPC}}Sun RPC は，\cref{sec:l13-failures} の末尾に
+まとめた4つの設計上の選択を次のように行う．
+\begin{description}
+  \item[バインディング] RPC サービスを提供するマシンはどれもレジストリ
+    デーモンを動かす（\cref{sec:l13-sun-binding}）．
+  \item[IDL] XDR がインタフェースの記述にも，通信路上のデータの符号化にも
+    使われる．
+  \item[ポインタ] ポインタは許され，指されたデータが直列化される．
+  \item[障害] ランタイムはタイムアウトを用いて呼び出しを再送し，障害の原因に
+    ついてできる限りの情報を返す．
+\end{description}
+
+\begin{definition}[外部データ表現]
+  Sun RPC の言語非依存の IDL と，それが記述するデータの標準的なバイナリ符号化
+  とを合わせて，\term[がいぶでーたひょうげん]{外部データ表現}%
+  [external data representation]（XDR）と呼ぶ \cite{rfc4506}．
+\end{definition}
+\index{XDR|see{外部データ表現}}
+
+クライアントとサーバは手続き呼び出しを通じてやり取りする．サービスの
+インタフェースは \texttt{.x} ファイルに XDR で記述され，そこから
+\texttt{rpcgen} が特定の言語のスタブを生成する．以下では C である
+（\cref{sec:l13-rpcgen}）．サーバは自分のマシンのレジストリデーモンに登録し，
+デーモンはサービスの番号，バージョン，トランスポートプロトコル，ポートを記録
+する．バインディングは\emph{クライアントハンドル}を作る．クライアントはそれを
+すべての呼び出しに渡し，ランタイムはその中にクライアントの RPC の状態を保持
+する．クライアントとサーバは同じマシン上で動いても，別々のマシン上で動いても
+よい．現在の実装は TI-RPC（トランスポート非依存 RPC）の系譜にあり，その
+ライブラリは特定のトランスポートプロトコルに依存しない．
+
+\subsection{インタフェースの記述}
+
+次の XDR の記述 \texttt{sum.x} は，最大 64 個の整数の和を返すサービスを記述
+する．
+
+\begin{lstlisting}[language=C, numbers=none]
+const MAX_VALUES = 64;
+
+struct sum_in {
+  int values<MAX_VALUES>;    /* 可変長配列 */
+};
+struct sum_out {
+  int total;
+};
+
+program SUM_PROG {                     /* サービス */
+  version SUM_VERS {
+    sum_out SUM_PROC(sum_in) = 1;      /* 手続き 1 */
+  } = 1;                               /* バージョン 1 */
+} = 0x20000123;                        /* プログラム番号 */
+\end{lstlisting}
+
+データ型 \texttt{sum\_in} と \texttt{sum\_out} は引数と結果を記述する．手続き
+は引数を1つ取り結果を1つ返すので，複数の値は構造体にまとめる．サービス自体は
+\emph{プログラム}であり，1つ以上のバージョンを含み，各バージョンが手続きを
+含む．\texttt{.x} 言語のこの部分は RPC 言語であり，プロトコルとともに定義された
+XDR の拡張である \cite{rfc5531}．プログラム，バージョン，手続きは番号で識別
+され，要求はその3つすべてを指定する．32 ビットのプログラム番号はサービスを
+一意に識別する．\texttt{values} に3つの整数 7，$-2$，300 を設定して
+\texttt{SUM\_PROC} を呼び出したクライアントは，\texttt{total} $=305$ の
+\texttt{sum\_out} を受け取る．
+
+\section{rpcgen によるインタフェースのコンパイル}
+\label{sec:l13-rpcgen}
+
+Sun RPC のスタブは，XDR の記述を C のコードに翻訳するコンパイラ
+\term{rpcgen}[rpcgen] が生成する．\source{P4L1，XDR のコンパイル，XDR の
+コンパイルのまとめ；OSTEP ch.~48．}コマンド \texttt{rpcgen -C sum.x}
+（\texttt{-C} は ANSI~C を選ぶ）は，4つのファイルを生成する
+（\cref{fig:l13-rpcgen}）．
+\begin{description}
+  \item[\texttt{sum.h}] データ型とスタブ手続きの C の宣言，および
+    \texttt{SUM\_PROG}，\texttt{SUM\_VERS}，\texttt{SUM\_PROC} などの定数．
+    他のすべてのファイルがこれをインクルードする．
+  \item[\texttt{sum\_clnt.c}] クライアントスタブ \texttt{sum\_proc\_1}．
+    手続きとバージョンにちなんで名付けられる．引数をマーシャルし，ランタイムを
+    通じて要求を送り，応答を待ち，結果をアンマーシャルする．
+  \item[\texttt{sum\_svc.c}] サーバスタブと，サーバプログラムの骨組み．その
+    \texttt{main} 関数はトランスポートを作り，プログラムとバージョンを
+    レジストリデーモンに登録し，要求を待つループに入る．要求ごとに，ディス
+    パッチ手続き \texttt{sum\_prog\_1} が手続き番号を判別し，引数をアン
+    マーシャルし，\texttt{sum\_proc\_1\_svc} を呼び，結果をマーシャルして送る．
+  \item[\texttt{sum\_xdr.c}] \texttt{sum\_in} と \texttt{sum\_out} を
+    マーシャル・アンマーシャルする XDR ルーチン．両側で使われる
+    （\cref{sec:l13-xdr-types}）．
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-rpcgen}
+  \caption{Sun RPC のクライアントとサーバの構築．開発者はインタフェース，
+    クライアントプログラム，手続きの実装を書き，残りは \texttt{rpcgen} が
+    生成する．\texttt{sum.h} はすべての C ファイルがインクルードする．}
+  \label{fig:l13-rpcgen}
+\end{figure}
+
+開発者が書くコードは2つである．サーバ側では手続きの実装
+\texttt{sum\_proc\_1\_svc}（以下に示す），クライアント側では \texttt{sum.h} を
+インクルードして \texttt{sum\_proc\_1} を呼ぶプログラムである
+（\cref{sec:l13-sun-binding}）．それぞれを，生成されたファイルとともにコンパイル
+しリンクする．残りは RPC ランタイムライブラリが行う．ソケットの利用など
+オペレーティングシステムとのやり取りと，通信の管理である．
+
+\begin{lstlisting}[language=C, numbers=none]
+#include "sum.h"
+
+sum_out *
+sum_proc_1_svc(sum_in *in, struct svc_req *req)
+{
+  static sum_out out;       /* 呼び出しより長く生きる */
+  u_int i;
+
+  out.total = 0;
+  for (i = 0; i < in->values.values_len; i++)
+    out.total += in->values.values_val[i];
+  return &out;              /* スタブがマーシャルする */
+}
+\end{lstlisting}
+
+結果はポインタで返され，手続きから戻った後も，サーバスタブがそれをマーシャル
+し終えるまで有効でなければならないので，静的変数に保持する．生成されるクライ
+アントスタブも同様に静的変数へのポインタを返し，次の呼び出しがそれを上書き
+する．このため \texttt{rpcgen -C} が生成するコードは，マルチスレッドの
+クライアントやサーバでは安全でない．\texttt{-M} オプションを付けると，
+\texttt{rpcgen} はスレッドセーフなコードを生成し，スタブの呼び出し元が結果の
+ためのメモリを与える．このオプションはサーバをマルチスレッドにするわけでは
+ない．生成される \texttt{main} は依然として一度に1つの要求しか扱わない．
+Solaris では，さらに \texttt{-A} オプションを付けると，サーバのランタイムが
+要求のためのスレッドを自動的に生成する．
+
+\section{Sun RPC のレジストリとバインディング}
+\label{sec:l13-sun-binding}
+
+Sun RPC のレジストリはマシンごとである．\source{P4L1，SunRPC のレジストリと
+バインディング；RFC 1833 \cite{rfc1833}．}RPC サービスを提供する各マシンが
+自分のレジストリデーモンを動かし，クライアントはよく知られたポートでそれに
+接続する．
+
+\begin{definition}[rpcbind]
+  Sun RPC のレジストリデーモンが \term{rpcbind}[rpcbind] である．TCP と UDP の
+  両方でポート 111 を待ち受け，プログラム番号，バージョン番号，トランスポート
+  プロトコルを，対応するサーバが待ち受けるアドレスへ対応付ける．
+\end{definition}
+\index{portmapper|see{rpcbind}}
+
+\texttt{rpcbind} デーモンは，より古い \emph{portmapper} デーモンを引き継いだ
+もので，その名前は下の出力にもなお現れる．ポート 111 は特権ポートなので，
+デーモンはスーパーユーザの権限で起動しなければならない．サーバが起動すると，
+生成された \texttt{main} が，プログラムの各バージョンを各トランスポートに
+ついて登録する（\cref{fig:l13-rpcbind}，手順 1）．あるマシンの登録は
+\texttt{rpcinfo -p} で一覧できる．
+
+\begin{lstlisting}[numbers=none]
+$ rpcinfo -p
+   program vers proto   port  service
+    100000    4   tcp    111  portmapper
+    100000    2   udp    111  portmapper
+    100003    3   tcp   2049  nfs
+ 536871203    1   tcp  40123
+\end{lstlisting}
+
+各行はプログラム番号，バージョン，トランスポートプロトコル，ポートを示す．
+デーモン自身はポート 111 のプログラム \texttt{100000} として現れ，NFS サーバは
+プログラム \texttt{100003} として現れる．最後の行が \texttt{sum} サーバで
+あり，そのプログラム番号 \texttt{0x20000123} が 10 進で表示されている．
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-rpcbind}
+  \caption{Sun RPC における登録とバインディング．(1)~サーバが自分のプログラム，
+    バージョン，トランスポート，ポートを \texttt{rpcbind} に登録する．
+    (2,\,3)~\texttt{clnt\_create} がサーバマシンの \texttt{rpcbind} にポートを
+    尋ねる．(4)~呼び出しは直接サーバへ送られる．}
+  \label{fig:l13-rpcbind}
+\end{figure}
+
+クライアントは \texttt{clnt\_create} でバインドする．その引数は，サーバマシン
+の名前，プログラム番号，バージョン番号，トランスポートプロトコルである．
+\texttt{clnt\_create} はそのマシンの \texttt{rpcbind} にサーバのポートを尋ね
+（手順 2 と 3），\texttt{CLIENT} 型のクライアントハンドルへのポインタを返す．
+クライアントはそれをすべてのスタブに渡す．ハンドルはサーバのアドレスのほか，
+認証情報と直近の呼び出しの状態を保持し，エラーメッセージはそこから得られる．
+クライアントの全体を以下に示す．
+
+\begin{lstlisting}[language=C, numbers=none]
+#include <stdio.h>
+#include <stdlib.h>
+#include "sum.h"
+
+int main(int argc, char *argv[])
+{
+  int v[3] = { 7, -2, 300 };
+  sum_in in = { { 3, v } };   /* values_len, values_val */
+  sum_out *out;
+  CLIENT *clnt;
+
+  if (argc != 2) {
+    fprintf(stderr, "usage: %s host\n", argv[0]);
+    exit(1);
+  }
+  /* バインド：argv[1] の rpcbind にポートを尋ねる */
+  clnt = clnt_create(argv[1], SUM_PROG, SUM_VERS, "tcp");
+  if (clnt == NULL) {
+    clnt_pcreateerror(argv[1]);
+    exit(1);
+  }
+  out = sum_proc_1(&in, clnt);         /* RPC 呼び出し */
+  if (out == NULL) {                   /* RPC が失敗 */
+    clnt_perror(clnt, argv[1]);
+    exit(1);
+  }
+  printf("total = %d\n", out->total);
+  clnt_destroy(clnt);
+  return 0;
+}
+\end{lstlisting}
+
+\texttt{NULL} を返すスタブは呼び出しの失敗を報告する．ランタイムはその理由を
+---例えばサーバマシンに到達できなかった，呼び出しがタイムアウトしたなどを---
+ハンドルに記録しており，\texttt{clnt\_perror} がそれを表示する．応答を受け
+取れない呼び出しはタイムアウトする．UDP の場合，ランタイムは待つ間に要求を
+再送する．
+
+\section{XDR のデータ型とルーチン}
+\label{sec:l13-xdr-types}
+
+XDR は，整数，浮動小数点数，列挙，ブール，構造体など，C でおなじみの基本型を
+提供する．\source{P4L1，XDR のデータ型，XDR ルーチン；RFC 4506
+\cite{rfc4506}．}さらに次のものを加える．
+\begin{description}
+  \item[\texttt{const}] 記号定数．\texttt{\#define} に翻訳される；
+  \item[\texttt{hyper}] 64 ビット整数；
+  \item[\texttt{quadruple}] 128 ビット浮動小数点数；
+  \item[\texttt{opaque}] 解釈されないバイナリデータ．C では \texttt{char} の
+    バイト列として表現される．
+\end{description}
+配列と文字列は \cref{tab:l13-xdr-types} のように宣言する．可変長配列は最大長を
+山括弧で与え，長さのフィールドと要素へのポインタを持つ C の構造体になる．この
+構造体の大きさは最大長に依存しない．要素は別に確保されたメモリに置かれる．
+文字列は，メモリ上では NUL で終端された C の文字列へのポインタになるが，通信路
+上では長さに続いて文字が並ぶ形で転送される（\cref{sec:l13-encoding}）．
+
+\begin{table}[htbp]
+  \centering
+  \caption{XDR の配列と文字列，および \texttt{rpcgen} が生成するその C の
+    表現．}
+  \label{tab:l13-xdr-types}
+  \small
+  \begin{tabular}{@{}>{\raggedright}p{27mm}>{\raggedright}p{31mm}%
+      >{\raggedright\arraybackslash}p{52mm}@{}}
+    \toprule
+    種類 & XDR の宣言 & C の表現 \\
+    \midrule
+    固定長配列 & \texttt{int data[8];} & \texttt{int data[8];} \\
+    \addlinespace
+    可変長配列 & \texttt{int data<8>;}
+      & \texttt{struct \{ u\_int data\_len; int *data\_val; \} data;} \\
+    \addlinespace
+    文字列 & \texttt{string name<32>;} & \texttt{char *name;} \\
+    \addlinespace
+    固定長 opaque & \texttt{opaque id[16];} & \texttt{char id[16];} \\
+    \addlinespace
+    可変長 opaque & \texttt{opaque id<16>;}
+      & \texttt{struct \{ u\_int id\_len; char *id\_val; \} id;} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+ポインタは C と同じくアスタリスクで宣言する．そうした\emph{省略可能なデータ}
+は，ポインタが非 null かどうかを示すブール値と，非 null ならそれに続く指された
+データとして符号化される．こうして連結リストは要素ごとに直列化される
+\cite{rfc4506}．
+
+\subsection{XDR ルーチン}
+
+ファイル \texttt{sum\_xdr.c} は，インタフェースのデータ型ごとに1つの XDR
+ルーチンを含む．\texttt{rpcgen} が生成する \texttt{sum\_in} 用のルーチンは
+次のとおりである．
+
+\begin{lstlisting}[language=C, numbers=none]
+bool_t
+xdr_sum_in(XDR *xdrs, sum_in *objp)
+{
+  if (!xdr_array(xdrs,
+      (char **)&objp->values.values_val,
+      (u_int *)&objp->values.values_len, MAX_VALUES,
+      sizeof(int), (xdrproc_t)xdr_int))
+    return FALSE;
+  return TRUE;
+}
+\end{lstlisting}
+
+同じルーチンがマーシャリング，アンマーシャリング，解放のいずれにも使われ，XDR
+ストリーム \texttt{xdrs} のフィールド \texttt{x\_op} が方向を選ぶ．符号化する
+ときは長さと要素をバッファへ書き，復号するときはそれらを読み，
+\texttt{values\_val} が null なら配列を確保し，解放するときはこのメモリを
+返却する．
+アンマーシャリングの際に確保したメモリは，いつかは解放しなければならない．
+クライアントでは，不要になった結果に \texttt{xdr\_free} が解放の方向で
+ルーチンを適用する．\texttt{-M} を付けて生成したサーバでは，結果をクライアント
+へ返した後に，サーバスタブが開発者の書いた手続き
+\texttt{sum\_prog\_1\_freeresult} を呼ぶ．この手続きは通常 \texttt{xdr\_free}
+を呼ぶ．
+
+\section{XDR の符号化}
+\label{sec:l13-encoding}
+
+通信路上の RPC メッセージは3つの部分からなる．\source{P4L1，符号化，XDR の
+符号化；RFC 5531 \cite{rfc5531}；RFC 4506 \cite{rfc4506}．}
+\begin{description}
+  \item[トランスポートヘッダ] TCP や UDP などのトランスポートプロトコルと，
+    その下位のプロトコルのヘッダ．
+  \item[RPC ヘッダ] 呼び出しの識別情報．クライアントが応答を要求に対応付ける
+    ための要求識別子（\emph{xid}），プログラム番号，バージョン番号，手続き
+    番号，および認証データ．
+  \item[データ] 引数または結果を，そのデータ型に従ってバイト列へ符号化した
+    もの．
+\end{description}
+このように XDR は，IDL と，通信路上のデータのバイナリ表現である符号化の両方を
+包含する．その符号化の規則は少ない．
+\begin{itemize}
+  \item すべての項目は \SI{4}{\byte} の倍数で符号化される．短いデータはゼロ
+    バイトで詰められる．
+  \item 複数バイトの値はビッグエンディアンの順序で転送される．
+  \item 整数は2の補数で表現される．
+  \item 浮動小数点数は IEEE~754 形式で表現される．
+\end{itemize}
+各マシンは，マーシャルとアンマーシャルの際に自分のネイティブな表現と XDR との
+間で変換するので，どちらの側も相手の表現を知る必要がない．
+
+\begin{example}
+  \label{ex:l13-encoding}
+  \cref{sec:l13-sun-binding} のクライアントは，値 7，$-2$，300 で
+  \texttt{SUM\_PROC} を呼び出す．XDR はこの可変長配列を
+  \cref{fig:l13-marshal} の \SI{16}{\byte} に，長さに続いて3つの要素という形で
+  符号化する．
+  \begin{center}
+    \texttt{00 00 00 03 \quad 00 00 00 07 \quad ff ff ff fe \quad
+      00 00 01 2c}
+  \end{center}
+  要素 $-2$ はクライアントのバイト順序によらず2の補数で \texttt{ff ff ff fe}
+  と，300 は \texttt{00 00 01 2c} と表される．これらのバイトの前には，RPC
+  ヘッダが呼び出しの要求識別子と，プログラム番号，バージョン番号，手続き番号を
+  運ぶ．
+\end{example}
+
+文字列は，メモリ上の表現と通信路上の表現の違いを示す．
+
+\begin{example}
+  \texttt{string name<32>} と宣言された文字列 \texttt{"kernel"} は，
+  クライアントとサーバのメモリ上では \SI{7}{\byte} を占める．6文字と終端の
+  NUL である．XDR はこれを \SI{12}{\byte} に符号化する．\SI{4}{\byte} の
+  長さ 6，6文字，そして4の倍数にするための2バイトのパディングであり，終端記号
+  は付かない．
+  \begin{center}
+    \texttt{00 00 00 06 \quad 6b 65 72 6e \quad 65 6c 00 00}
+  \end{center}
+\end{example}
+
+\begin{keypoint}
+  XDR は IDL であり符号化でもある．すべての項目は \SI{4}{\byte} の倍数で，
+  ビッグエンディアンの順序で，整数は2の補数，浮動小数点数は IEEE 形式で符号化
+  され，可変長のデータは自身の長さを伴う．メッセージは，トランスポートヘッダに，
+  要求，プログラム，バージョン，手続きを識別する RPC ヘッダを加えたものである．
+\end{keypoint}
+
+\section{Java RMI}
+\label{sec:l13-rmi}
+
+Java は，そのオブジェクト指向のセマンティクスに合う RPC の対応物を提供する．
+\source{P4L1，Java RMI；Wollrath ら \cite{wollrath1996}．}
+
+\begin{definition}[リモートメソッド呼び出し]
+  別のアドレス空間にあるオブジェクトのメソッドを，ローカルなメソッド呼び出しの
+  構文とセマンティクスで呼び出すことを，
+  \term[りもーとめそっどよびだし]{リモートメソッド呼び出し}%
+  [remote method invocation]（RMI）と呼ぶ．Java RMI では，そのアドレス空間は，
+  同じマシン上あるいは別のマシン上の Java 仮想マシン（JVM）のアドレス空間で
+  ある．
+\end{definition}
+\index{RMI|see{リモートメソッド呼び出し}}%
+\index{Java RMI|see{リモートメソッド呼び出し}}
+
+Java RMI の IDL は Java 自身であり，言語固有の IDL である．遠隔インタフェース
+は \texttt{java.rmi.Remote} を継承した Java のインタフェースであり，その各
+メソッドは例外 \texttt{RemoteException} を宣言する．これが，部分障害を報告する
+エラー通知である．次の遠隔インタフェースは \texttt{sum} サービスを宣言し，その
+下のクライアントのコードがそのサービスを呼び出す．
+
+\begin{lstlisting}[language=Java, numbers=none]
+public interface Summation extends java.rmi.Remote {
+  int sum(int[] values) throws java.rmi.RemoteException;
+}
+
+/* クライアント */
+Registry reg = LocateRegistry.getRegistry("server");
+Summation s = (Summation) reg.lookup("Summation");
+int total = s.sum(new int[] { 7, -2, 300 });
+\end{lstlisting}
+
+サーバはインタフェースを実装するオブジェクトを作り，\emph{RMI レジストリ}に
+名前を付けて登録する．クライアントはその名前を検索して遠隔オブジェクトの
+スタブを得て，そのメソッドを呼び出す（\cref{fig:l13-rmi}）．上の整数の配列の
+ような通常のオブジェクトである引数は，値渡しされる．すなわち，それが参照する
+オブジェクトとともに直列化される．遠隔オブジェクトはスタブとして参照渡しされる．
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l13-rmi}
+  \caption{Java RMI．呼び出しはクライアントからスタブ，リモート参照層，
+    トランスポート層を経てサーバへ渡り，サーバではスケルトンがそれを遠隔
+    オブジェクトへ配送する．}
+  \label{fig:l13-rmi}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Sun RPC と Java RMI の設計上の選択．}
+  \label{tab:l13-design}
+  \small
+  \begin{tabular}{@{}>{\raggedright}p{24mm}>{\raggedright}p{44mm}%
+      >{\raggedright\arraybackslash}p{44mm}@{}}
+    \toprule
+    選択 & Sun RPC & Java RMI \\
+    \midrule
+    バインディング & マシンごとのレジストリデーモン \texttt{rpcbind}
+      & RMI レジストリが名前を遠隔オブジェクトへ対応付ける \\
+    \addlinespace
+    IDL & XDR，言語非依存，\texttt{rpcgen} でコンパイル
+      & Java の遠隔インタフェース，言語固有 \\
+    \addlinespace
+    符号化 & XDR の符号化 & Java のオブジェクト直列化 \\
+    \addlinespace
+    ポインタと参照 & 許される，指されたデータを直列化
+      & オブジェクトは複製，遠隔オブジェクトはスタブとして渡す \\
+    \addlinespace
+    部分障害 & タイムアウトと再送，エラー状態はクライアントハンドルに
+      & \texttt{RemoteException} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Java RMI は各側に3つの層を持つ．最上位は，クライアント側ではスタブ，サーバ側
+では\emph{スケルトン}であり，スケルトンは呼び出しをアンマーシャルして遠隔
+オブジェクトへディスパッチする．\margin{JDK~1.2 以降はスタブが直接ディス
+パッチし，スケルトンは生成されない．}その下の2つの層は RMI ランタイムが提供
+する．
+\begin{description}
+  \item[リモート参照層] 呼び出しのセマンティクスを決める．単一のオブジェクト
+    への\emph{ユニキャスト}か，複製など一群のオブジェクトへの
+    \emph{ブロードキャスト}かであり，後者は最初の応答を返すか，すべての応答が
+    一致したときだけ返す．
+  \item[トランスポート層] 接続を設定・管理し，データを転送する．この構成は，
+    TCP，UDP，共有メモリなど異なるトランスポートを許す．
+\end{description}
+\cref{tab:l13-design} は Sun RPC と Java RMI の設計上の選択を比較したもので
+ある．
+
+\needspace{13\baselineskip}
+\begin{keypoint}[章のまとめ]
+  RPC は，プロセスが別のアドレス空間---通常は別のマシン上---の手続きを，
+  ローカルな呼び出しと同じ同期的なセマンティクスで呼び出せるようにする．IDL
+  から生成されたスタブが引数と結果をマーシャル・アンマーシャルし，RPC ランタイム
+  がメッセージを転送する．どの RPC システムも，クライアントがレジストリを介して
+  どうサーバにバインドするか，インタフェースをどう記述しデータをどう符号化する
+  か，ポインタ引数をどう扱うか，そしてクライアントには診断できない部分障害をどう
+  報告するかを決めなければならない．Sun RPC は XDR を IDL と符号化に用い，
+  \texttt{rpcgen} でスタブを生成し，マシンごとの \texttt{rpcbind} レジストリを
+  使う．Java RMI は Java を IDL とし，呼び出しのセマンティクスを定めるリモート
+  参照層を加える．
+\end{keypoint}
+
+\end{document}
