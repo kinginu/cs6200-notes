@@ -117,11 +117,13 @@ that hold the base address, the limit and further information of the
 segments.  Because walking a page table in memory is slow, the MMU also
 contains a cache of valid translations, the TLB (\cref{sec:l08-tlb}).
 
-The translation itself is performed entirely in hardware.  The operating
-system creates and maintains the data structures that the hardware uses,
-such as the page tables, but the hardware dictates their format and
-therefore which memory management mechanisms are possible: for example,
-the page sizes and the layout of a page table entry.
+The translation itself is performed entirely in hardware.\caution{Not every
+architecture translates in hardware alone: on MIPS and SPARC a TLB miss
+raises an exception and a kernel handler fills the TLB in software.  OSTEP
+ch.~19.}  The operating system creates and maintains the data structures
+that the hardware uses, such as the page tables, but the hardware dictates
+their format and therefore which memory management mechanisms are possible:
+for example, the page sizes and the layout of a page table entry.
 
 \begin{figure}[htbp]
   \centering
@@ -155,8 +157,11 @@ Each entry of the page table is a
 \term{page table entry}[ページテーブルエントリ]\index{PTE|see{page table entry}}
 (PTE).  Among other information (\cref{sec:l08-pte}), it holds the
 \term{physical frame number}[物理フレーム番号]\index{PFN|see{physical frame number}}
-(PFN) of the frame that contains the page.  The physical address combines
-the PFN with the unchanged offset (\cref{fig:l08-translation}):
+(PFN) of the frame that contains the page.\caution{A PFN need not be as wide
+as a VPN.  With physical address extension (PAE), 32-bit x86 maps 20-bit
+VPNs onto 24-bit PFNs and so addresses \SI{64}{\gibi\byte} of physical
+memory.}  The physical address combines the PFN with the unchanged offset
+(\cref{fig:l08-translation}):
 \begin{equation}
   \text{VPN} = \left\lfloor \frac{\mathit{VA}}{2^{d}} \right\rfloor ,
   \qquad
@@ -360,7 +365,9 @@ In a two-level table the virtual address is split into three parts
 (\cref{fig:l08-multilevel}): $p_1$ indexes the page directory, $p_2$ the
 inner page table that the directory entry points to, and the offset $d$
 selects the address within the frame.  If $p_2$ has $k$ bits, one inner
-page table covers $2^{k+d}$ bytes of the virtual address space.  A gap in
+page table covers $2^{k+d}$ bytes of the virtual address space.\tip{A table
+of $2^{9}$ entries of 8 bytes is exactly \SI{4}{\kibi\byte}: an index of 9
+bits per level makes every table fit in one page frame.}  A gap in
 the address space of this size needs no inner page table at all; its
 directory entry is simply marked invalid.  If the process later allocates
 memory in that region, the operating system allocates an inner page table
@@ -398,7 +405,9 @@ the larger the gaps that need no tables below it.
 The price is translation latency.  Every level adds one memory access to
 the translation of an address, since the entries of all levels are read
 from memory in turn.  More levels save more memory for the page tables but
-make each translation slower.
+make each translation slower.\margin{x86-64 implements only 48 of the 64
+virtual address bits.  Intel's 5-level paging adds a fifth level and raises
+this to 57 bits (\SI{128}{\pebi\byte}); Linux has supported it since~4.14.}
 
 \section{Speeding up translation: the TLB}
 \label{sec:l08-tlb}
@@ -419,16 +428,19 @@ cache.
 \end{definition}
 
 A TLB entry also holds the protection and validity bits of the translation,
-so that the access can be checked without the page table.  A small number
-of entries suffices for a high hit rate because memory accesses exhibit
-\emph{locality}: a page that has just been accessed is likely to be accessed
-again soon (temporal locality), and addresses close to it, which usually lie
-in the same page, are likely to be accessed next (spatial locality).  An
-Intel Core i7 processor of the Sandy Bridge generation, for example, has per
-core a data TLB of 64 entries, an instruction TLB of 128 entries, and a
-second-level TLB of 512 entries shared by both kinds of translations (all
-for \SI{4}{\kibi\byte} pages).\margin{A context switch makes TLB entries stale; they are flushed
-unless tagged with their address space (Lesson~12).}
+so that the access can be checked without the page table.\margin{The MMU
+also caches entries of the upper levels (paging-structure caches), so a miss
+usually costs fewer than $L$ accesses.  Intel SDM vol.~3A, 4.10.3.}  A small
+number of entries suffices for a high hit rate because memory accesses
+exhibit \emph{locality}: a page that has just been accessed is likely to be
+accessed again soon (temporal locality), and addresses close to it, which
+usually lie in the same page, are likely to be accessed next (spatial
+locality).  An Intel Core i7 processor of the Sandy Bridge generation, for
+example, has per core a data TLB of 64 entries, an instruction TLB of 128
+entries, and a second-level TLB of 512 entries shared by both kinds of
+translations (all for \SI{4}{\kibi\byte} pages).\margin{A context switch
+makes TLB entries stale; they are flushed unless tagged with their address
+space (Lesson~12).}
 
 With TLB lookup time $t_{\mathrm{TLB}}$, memory access time $t_{\mathrm{mem}}$,
 hit rate $h$ and an $L$-level page table, the effective time of a memory
@@ -441,10 +453,13 @@ access is
 
 \begin{example}
   Let $t_{\mathrm{mem}} = \SI{80}{\nano\second}$,
-  $t_{\mathrm{TLB}} = \SI{1}{\nano\second}$ and $L = 4$.  Without a TLB,
-  every access costs $5 \cdot 80 = \SI{400}{\nano\second}$.  With a hit rate
-  of \SI{99}{\percent}, \cref{eq:l08-eat} gives $0.99 \cdot 81 + 0.01 \cdot
-  401 \approx \SI{84.2}{\nano\second}$, only \SI{5}{\percent} more than an
+  $t_{\mathrm{TLB}} = \SI{1}{\nano\second}$ and $L =
+  4$.\tip{\Cref{eq:l08-eat} rearranges to $t_{\mathrm{eff}} =
+  t_{\mathrm{TLB}} + \bigl(1 + L(1-h)\bigr)\,t_{\mathrm{mem}}$: the lookup
+  is always paid, the walk only on a miss.}  Without a TLB, every access
+  costs $5 \cdot 80 = \SI{400}{\nano\second}$.  With a hit rate of
+  \SI{99}{\percent}, \cref{eq:l08-eat} gives $0.99 \cdot 81 + 0.01 \cdot 401
+  \approx \SI{84.2}{\nano\second}$, only \SI{5}{\percent} more than an
   untranslated access.  With a hit rate of \SI{90}{\percent} it gives $0.9
   \cdot 81 + 0.1 \cdot 401 = \SI{113}{\nano\second}$.
 \end{example}
@@ -474,11 +489,14 @@ holds at most one page at a time.
 
 The system needs a single inverted page table, whose size is proportional
 to physical memory and independent of the number of processes and of the
-size of their address spaces.  A virtual address consists of the process
-identifier (pid), the page number $p$ and the offset $d$.  To translate it,
-the table is searched for the entry that matches $(\text{pid}, p)$; the
-index $i$ of that entry is the frame number, and the physical address is
-formed from $i$ and $d$ (\cref{fig:l08-inverted}\,(a)).
+size of their address spaces.\caution{One entry per frame means one
+$(\text{pid}, p)$ pair per frame: a frame that several processes share does
+not fit the structure, which makes shared memory awkward.}  A virtual
+address consists of the process identifier (pid), the page number $p$ and
+the offset $d$.  To translate it, the table is searched for the entry that
+matches $(\text{pid}, p)$; the index $i$ of that entry is the frame number,
+and the physical address is formed from $i$ and $d$
+(\cref{fig:l08-inverted}\,(a)).
 
 \begin{figure}[htbp]
   \centering
@@ -497,7 +515,9 @@ function applied to the page number, together with the process identifier,
 selects a bucket, which heads a linked list of the entries whose keys hash
 to that bucket (\cref{fig:l08-inverted}\,(b)).  Each element holds the
 process identifier, the page number, the frame number and a pointer to the
-next element, so a translation searches only one short list.
+next element, so a translation searches only one short list.\margin{Hashed
+inverted tables were used by the IBM AS/400, by 64-bit PowerPC and by
+Itanium; x86 has always used multi-level tables.}
 
 \begin{example}
   A machine with \SI{16}{\gibi\byte} of physical memory and
@@ -533,9 +553,11 @@ On x86 the selector is held in a segment register, such as CS for code, DS
 for data and SS for the stack.  It indexes a \emph{segment descriptor
 table}---the global descriptor table (GDT) or a local descriptor table
 (LDT)---whose entry, the segment descriptor, holds the base, the limit and
-the permissions of the segment.  The sum of base and offset is a
-\emph{linear address}.  Segmentation is combined with paging: the linear
-address is translated into a physical address by the page tables
+the permissions of the segment.\margin{A descriptor is 8 bytes; a selector
+holds a 13-bit index---hence the 8192 entries---a bit choosing GDT or LDT,
+and a 2-bit privilege level.}  The sum of base and offset is a \emph{linear
+address}.  Segmentation is combined with paging: the linear address is
+translated into a physical address by the page tables
 (\cref{fig:l08-segmentation}).
 \begin{itemize}
   \item On 32-bit x86 (IA-32) both mechanisms are active.  A descriptor
@@ -546,7 +568,11 @@ address is translated into a physical address by the page tables
   \item On x86-64, segmentation is retained only for backward
     compatibility.  In 64-bit mode the processor treats the segment bases as
     0 (except for FS and GS) and does not check limits, so paging alone
-    translates addresses.
+    translates addresses.\sidenote{The two exceptions are in use.  Linux
+    keeps the thread-local storage of the running thread at the FS base and
+    the per-CPU data of the kernel at the GS base; the instruction
+    \texttt{swapgs} exchanges the user and the kernel value of the latter
+    when a system call enters the kernel.}
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -643,7 +669,10 @@ Allocators exist at two levels.
     heap, through calls such as \texttt{malloc} and \texttt{free}.  The
     kernel provides the process with a region of memory, and the user-level
     allocator divides it among the allocations without involving the kernel
-    again.  Examples are dlmalloc, jemalloc, Hoard and tcmalloc.
+    again.  Examples are dlmalloc, jemalloc, Hoard and
+    tcmalloc.\margin{glibc's \texttt{malloc} grows the heap with
+    \texttt{brk}, but serves each request above the mmap threshold,
+    \SI{128}{\kibi\byte} by default, with an \texttt{mmap} of its own.}
 \end{description}
 
 The main challenge of an allocator is fragmentation of the free memory.
@@ -703,7 +732,10 @@ Fragmentation can still occur, but merging works well and is fast: the
 buddy of the block of $2^{k}$ frames that starts at frame $a$ starts at
 frame $a \oplus 2^{k}$, i.e., the two addresses differ in a single bit, so
 the allocator finds a buddy without searching.  The rounding to powers of
-two, however, causes internal fragmentation.
+two, however, causes internal fragmentation.\margin{Linux keeps free lists
+for the orders 0--10, i.e.\ 1 to 1024 frames or \SI{4}{\kibi\byte} to
+\SI{4}{\mebi\byte}; \texttt{/proc/buddyinfo} counts the free blocks of each
+order.}
 
 \begin{example}
   \label{ex:l08-buddy}
@@ -749,7 +781,11 @@ two, however, causes internal fragmentation.
 
 Objects of the kernel have sizes that are not powers of two, and the buddy
 allocator would waste much of the memory it gives them.  The Linux kernel
-therefore allocates its objects with a slab allocator \cite{bonwick1994}.
+therefore allocates its objects with a slab allocator
+\cite{bonwick1994}.\sidenote{Bonwick wrote the first slab allocator for
+Solaris~2.4.  Linux has had three implementations of the idea---SLAB, SLUB
+and the compact SLOB---of which SLUB has been the default since~2.6.23;
+\texttt{/proc/slabinfo} lists the caches and their object sizes.}
 
 \begin{definition}[Slab allocator]
   A \term{slab allocator}[スラブアロケータ] keeps a cache for every common
@@ -763,7 +799,9 @@ Since slots have exactly the size of the objects, the slab allocator avoids
 the rounding waste of the buddy allocator---only the remainder at the end of
 a slab is unused---and external fragmentation is not an issue: a slot that is
 freed fits the next object of the same type (\cref{fig:l08-slab}).  The
-underlying slabs are obtained from the buddy allocator.
+underlying slabs are obtained from the buddy allocator.\margin{Each cache
+also keeps per-CPU lists of free slots, so that the common case of an
+allocation touches no shared state and takes no lock (Lesson~10).}
 
 \begin{figure}[htbp]
   \centering
@@ -815,7 +853,10 @@ take place (\cref{fig:l08-page-fault}):
   \item The operating system determines that the access is legal and where
     the page is stored in the swap partition.
   \item It reads the page from the swap partition into a free page frame,
-    using an I/O operation.
+    using an I/O operation.\margin{The \SI{8}{\milli\second} of the example
+    below is a rotating disk.  An NVMe SSD reads a page in tens of
+    microseconds, which makes a fault rate two orders of magnitude higher
+    tolerable.}
   \item It updates the PTE with the new PFN and sets the valid bit.
   \item It resets the program counter to the faulting instruction and lets
     the process continue, so that the reference is executed again and now
@@ -842,8 +883,7 @@ their physical address during direct memory access (Lesson~11).
   A memory access costs \SI{100}{\nano\second}, and handling a page fault
   that reads the page from disk costs \SI{8}{\milli\second}, i.e.,
   $8 \cdot 10^{6}$ nanoseconds, 80\,000 times as much.  With a fraction $p$
-  of accesses faulting, the
-  average access costs $(1-p) \cdot 100 + p \cdot 8 \cdot 10^{6}$
+  of accesses faulting, the average access costs $(1-p) \cdot 100 + p \cdot 8 \cdot 10^{6}$
   nanoseconds.  For $p = 10^{-4}$ this is about \SI{900}{\nano\second}, nine
   times slower; to stay within \SI{10}{\percent} of \SI{100}{\nano\second},
   $p$ must not exceed $1.25 \cdot 10^{-6}$, one fault in 800\,000 accesses.
@@ -858,9 +898,9 @@ ch.~22; Silberschatz et al.\ ch.~10; Bovet and Cesati ch.~17.}  A page that
 is swapped out but needed again soon costs a page fault and an I/O
 operation, which is expensive, as the example of \cref{sec:l08-demand}
 showed.  The operating system must therefore choose with care the pages
-that it swaps out.  This choice is called
-\term{page replacement}[ページ置換], and it raises two questions: when pages
-should be swapped out, and which ones.
+that it swaps out.  This choice is called \term{page
+replacement}[ページ置換], and it raises two questions: when pages should be
+swapped out, and which ones.
 
 Pages are swapped out by a \term{page-out daemon}[ページアウトデーモン], a
 kernel thread that runs when memory usage exceeds a threshold, the
@@ -883,11 +923,11 @@ accesses.
   \item Pages that must stay in memory, such as pinned pages and certain
     pages of the kernel, are never chosen.
 \end{itemize}
-Linux provides parameters that tune when reclaim starts and stops,
-categorizes pages into types, for instance reclaimable and swappable pages,
-and uses a variation of LRU that gives pages a second
-chance.\caution{In Linux both watermarks are thresholds on free memory:
-reclaim starts below the low and stops above the high one.}
+Linux provides parameters that tune when reclaim starts and
+stops,\caution{In Linux both watermarks are thresholds on free memory:
+reclaim starts below the low and stops above the high one.} categorizes
+pages into types, for instance reclaimable and swappable pages, and uses a
+variation of LRU that gives pages a second chance.
 
 \begin{definition}[Second chance algorithm]
   The \term{second chance algorithm}[セカンドチャンスアルゴリズム]
@@ -947,7 +987,9 @@ al.\ ch.~10.}  One of them avoids unnecessary copies when a process is
 created.
 
 A process created with \texttt{fork}\index{fork@\texttt{fork}} receives a copy of the
-entire address space of its parent (Lesson~2).  Many of its pages, such as
+entire address space of its parent (Lesson~2).\margin{The page tables are
+copied in any case: \SI{1}{\gibi\byte} of \SI{4}{\kibi\byte} pages needs
+$2^{18}$ entries of 8 bytes, \SI{2}{\mebi\byte}.}  Many of its pages, such as
 the code, are static and never change, and a child often calls
 \texttt{exec} soon after its creation, so most of the copying would be
 wasted.
@@ -967,7 +1009,10 @@ protection fault lets the operating system recognize the COW page; it
 copies this one page to a new page frame, maps the writing process's page
 to the copy with write permission, and restarts the write
 (\cref{fig:l08-cow}).  The cost of a copy is paid only for pages that are
-actually modified.
+actually modified.\caution{The saving is not unconditional.  Every first
+write traps into the kernel, on the order of a microsecond, so a child that
+writes almost all of its pages is slower than one whose address space was
+copied eagerly.}
 
 \begin{figure}[htbp]
   \centering
@@ -1023,14 +1068,19 @@ Checkpointing is the basis of further services.
   \item[Migration] With \term{process migration}[プロセスマイグレーション]
     the checkpoint of a process is transferred to another machine, where
     the process continues.  Migration serves disaster recovery and
-    consolidation of processes onto fewer machines.
+    consolidation of processes onto fewer machines.\margin{Clark et al.\ \cite{clark2005}
+    migrated running Xen virtual machines with \SI{210}{\milli\second} of
+    downtime for a web server and \SI{60}{\milli\second} for a game server.}
 \end{description}
 To keep the pause of a migration short, the checkpoints are repeated in a
 fast loop: the operating system copies all pages while the process runs,
 then the pages dirtied during that copy, then those dirtied during the
 second copy, and so on, until so few pages remain that a final
 pause-and-copy is acceptable---or until it is unavoidable because the
-process dirties pages as fast as they are copied.
+process dirties pages as fast as they are copied.\margin{This loop is called
+\emph{pre-copy} migration.  \emph{Post-copy} does the opposite: it resumes
+the process at the destination at once and faults its pages across the
+network.}
 
 \needspace{14\baselineskip}
 \begin{example}
