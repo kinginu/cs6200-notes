@@ -96,13 +96,17 @@ Spinning therefore pays off only when the lock is held for less time than
 it takes to block and resume a thread, and only when the owner is running
 on another CPU at the same time.  On a single CPU the owner cannot release
 the lock while the spinning thread occupies the CPU, so spinning merely
-wastes the remainder of the timeslice.  The adaptive mutexes of Lesson~5
+wastes the remainder of the timeslice.\tip{Spin for about what blocking
+would cost, then block: never worse than twice the best possible choice
+(Karlin et al., 1991).}  The adaptive mutexes of Lesson~5
 combine both behaviours: they spin when the owner is running on another
 CPU and block otherwise.\index{adaptive mutex}
 
 \begin{example}
   Suppose blocking a thread and later resuming it costs \SI{8}{\micro\second}
-  in total.  If the owner holds a lock for at most
+  in total.\margin{Measured: a context switch costs about
+  \SI{3.4}{\micro\second} directly, plus the cache refill after it.  Li et
+  al., ExpCS 2007.}  If the owner holds a lock for at most
   \SI{0.5}{\micro\second}, a waiting thread spins for at most
   \SI{0.5}{\micro\second}, one sixteenth of the cost of blocking.  If
   instead the owner performs a \SI{5}{\milli\second} disk read while
@@ -145,7 +149,8 @@ Semaphores are distinguished by the range of the count.  A
 admits as many threads at once as its initial value.  A
 semaphore whose count takes only the values 0 and 1 is a
 \term{binary semaphore}[バイナリセマフォ].  Initialized to 1, it admits
-one thread at a time and behaves like a mutex.
+one thread at a time and behaves like a mutex.\tip{Read the count as
+permits: 1 is a mutex, $n$ is $n$ slots, 0 is an event a thread waits for.}
 
 \begin{example}
   A counting semaphore initialized to 2 guards two identical devices, and
@@ -348,7 +353,9 @@ monitor BoundedBuffer {
 }
 \end{lstlisting}
   No lock operation appears in the code, so none can be forgotten or
-  applied to the wrong lock.
+  applied to the wrong lock.\caution{\texttt{while}, not \texttt{if}: a
+  Mesa signal only wakes the thread; another may take the item before it
+  runs.}
 \end{example}
 
 \begin{figure}[htbp]
@@ -367,7 +374,9 @@ condition in a \texttt{while} loop.}  Java supports them today: every object has
 internal lock, and a method declared \texttt{synchronized} is an entry
 procedure whose locking and unlocking the language runtime performs.
 Notifications, however, remain explicit calls to \texttt{notify} and
-\texttt{notifyAll}.
+\texttt{notifyAll}.\margin{In HotSpot an uncontended \texttt{synchronized}
+block is one compare-and-swap on the object header; contention inflates
+it.}
 
 The term \emph{monitor} also denotes a programming style.  Structuring
 every critical section with explicit enter and exit code built from a mutex
@@ -493,7 +502,9 @@ void naive_lock(int *lock) {
 }
 \end{lstlisting}
 The test and the update are separate instructions, and between them
-another thread can observe the same free lock.  \Cref{tab:l10-naive-race}
+another thread can observe the same free lock.\caution{A compiler may also
+hoist the plain load out of the loop; real code uses \texttt{volatile} or
+an atomic load.}  \Cref{tab:l10-naive-race}
 shows two threads on different CPUs that both enter the critical section.
 Protecting the two steps with another lock only moves the problem into that
 lock.  A lock of this form is correct only if checking it and setting it
@@ -541,7 +552,9 @@ Common examples are:
   \item[\texttt{compare\_and\_swap}] The
     \term{compare-and-swap}[コンペアアンドスワップ] instruction compares a
     memory location with an expected value and, only if they are equal,
-    writes a new value; it reports whether the write took place.
+    writes a new value; it reports whether the write took place.%
+    \caution{Compare-and-swap tests values, not history: a change from A to
+    B and back to A passes (the ABA problem).}
 \end{description}
 
 \needspace{14\baselineskip}
@@ -639,7 +652,9 @@ progress at the same time.
 
 Every CPU has its own cache.  Memory is slower to reach than the cache,
 both because it is physically farther away and because the CPUs contend
-for the bus or interconnect that leads to it; the caches hide this latency.
+for the bus or interconnect that leads to it; the caches hide this
+latency.\margin{Skylake: L1 4 cycles, L2 12, L3 about 40, DRAM about
+\SI{80}{\nano\second}.  Intel optimization manual.}
 
 When several CPUs work on the same data, however, copies of one memory
 location may reside in several caches at once.  If one CPU writes the
@@ -762,7 +777,9 @@ What the technique does for contention depends on the platform:
 \begin{description}
   \item[NCC] Neither the read nor the atomic instruction can be served from
     a cache, so every iteration of every spinning thread reaches memory and
-    contention is no better than with the plain loop.
+    contention is no better than with the plain loop.\margin{Software must
+    then handle stale copies, as the distributed shared memory of
+    Lesson~15 does.}
   \item[CC, write-update] While the lock is held, the spinning threads read
     their cached copies and generate no traffic at all.  The release is
     propagated to all caches, so every waiting thread sees \texttt{FREE} at
@@ -776,7 +793,9 @@ What the technique does for contention depends on the platform:
     burst of cache misses.
 \end{description}
 Spinning on read removes the traffic of the waiting period, not the traffic
-of the release.  When critical sections are short and many threads wait,
+of the release.\margin{All waiters reacting to one release is a
+\emph{thundering herd}, the effect \texttt{FUTEX\_CMP\_REQUEUE} avoids in
+Lesson~3.}  When critical sections are short and many threads wait,
 the releases follow one another so closely that these bursts dominate,
 which is why the technique performs worst of all under heavy contention on
 write-invalidate hardware.
@@ -785,7 +804,9 @@ write-invalidate hardware.
   A light-load case, in which spinning on read is at its best.  On four
   CPUs a thread on CPU~1 holds a lock for \SI{1}{\milli\second} while
   threads on CPUs 2--4 spin.  With the plain \texttt{test\_and\_set} loop,
-  one iteration taking \SI{50}{\nano\second}, each spinning thread performs
+  one iteration taking \SI{50}{\nano\second},\margin{Uncontended, a
+  \texttt{lock}-prefixed operation costs about 20 cycles; contended, about
+  200.  Agner Fog, instruction tables.} each spinning thread performs
   $\SI{1}{\milli\second}/\SI{50}{\nano\second} = \num{20000}$ iterations,
   so the hold costs $3\times\num{20000} = \num{60000}$ writes to the lock
   word, each of which invalidates or updates the copies in the other
@@ -887,7 +908,8 @@ the queueing lock has
     successor, which does not have to detect the release itself;
   \item much better \emph{contention}: a release generates traffic for one
     flag only, provided the flags of different threads lie in different
-    cache lines.
+    cache lines.\margin{A cache line is \SI{64}{\byte} on x86-64, so each
+    flag must be padded to that size (false sharing, Lesson~15).}
 \end{itemize}
 In exchange the lock occupies an array of $N$ entries instead of a single
 word, where $N$ is the number of threads that may request it, and
@@ -897,14 +919,22 @@ word, where $N$ is the number of threads that may request it, and
 
 \Cref{tab:l10-spin-compare} collects the assessments.  Anderson measured
 the implementations on a Sequent Symmetry with 20 CPUs and
-write-invalidate caches \cite{anderson1990}.  Under high load---many CPUs
+write-invalidate caches \cite{anderson1990}.\margin{The Sequent Symmetry
+put 20 Intel 80386 CPUs on one shared bus, which all coherence traffic had
+to cross.}  Under high load---many CPUs
 competing for the same lock---the queueing lock performed best and
 test-and-test-and-set worst, with the delay-based locks in between.  Under
 light load the order was reversed: test-and-test-and-set performed best,
 because its latency and delay are the smallest, and the queueing lock
 worst, because every acquisition pays for its bookkeeping.  No
 implementation is best under all conditions; the choice depends on the
-expected contention and on the instructions the platform provides.
+expected contention and on the instructions the platform
+provides.\sidenote{Anderson's queueing lock needs an array of $N$ flags per
+lock.  The MCS lock (Mellor-Crummey and Scott, 1991) replaces it with a
+list of per-thread nodes, so the lock itself is one word.  Linux adopted a
+FIFO ticket lock in 2.6.25 (2008), after unfair hand-offs were found to
+starve threads on an 8-core Opteron, and the MCS-based \texttt{qspinlock}
+in 4.2 (2015).}
 
 \begin{table}[htbp]
   \centering
