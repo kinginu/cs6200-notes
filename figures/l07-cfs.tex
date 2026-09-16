@@ -1,0 +1,31 @@
+% CFS runqueue: a red-black tree of the ready tasks ordered by virtual
+% runtime (ms).
+% Usage: \input{figures/l07-cfs}   (width ~108 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  bn/.style={draw, circle, fill=ln-muted, text=white, minimum size=7mm, inner sep=0pt},
+  rn/.style={draw, circle, fill=ln-caution!80, text=white, minimum size=7mm, inner sep=0pt},
+  lab/.style={font=\scriptsize\sffamily, align=center}]
+  \node[bn] (n24) at (48,0)   {24};
+  \node[bn] (n15) at (28,-13) {15};
+  \node[bn] (n38) at (68,-13) {38};
+  \node[rn] (n9)  at (18,-26) {9};
+  \node[rn] (n19) at (38,-26) {19};
+  \node[rn] (n30) at (58,-26) {30};
+  \node[rn] (n45) at (78,-26) {45};
+  \draw (n24) -- (n15); \draw (n24) -- (n38);
+  \draw (n15) -- (n9);  \draw (n15) -- (n19);
+  \draw (n38) -- (n30); \draw (n38) -- (n45);
+  % leftmost node
+  \draw[->, thick, ln-accent] (n9.west) -- ++(-9,0) node[left, lab, text=ln-accent]
+    {\iflangja{最左の節点：\\vruntime 最小\\→ 次に実行}{leftmost node:\\smallest vruntime\\$\to$ runs next}};
+  % a preempted task, whose vruntime has just passed that of the leftmost
+  % node, is reinserted
+  \node[bn, dashed, fill=white, text=black, draw=black] (p) at (98,-8) {12};
+  \node[lab, anchor=south] at (98,-3.5) {\iflangja{プリエンプト\\されたタスク}{preempted\\task}};
+  \node[draw, dashed, circle, minimum size=7mm, inner sep=0pt] (ins) at (25,-38) {};
+  \draw[dashed] (n9) -- (ins);
+  \draw[->, thick, densely dashed] (p.south) .. controls (98,-48) and (58,-48) .. (ins.east);
+  \node[lab] at (72,-38) {\iflangja{挿入}{insert}};
+  \node[lab, text=ln-muted, anchor=west] at (0,-48) {\iflangja{節点の値：仮想実行時間（ms）}{node values: virtual runtime (ms)}};
+\end{tikzpicture}

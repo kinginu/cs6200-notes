@@ -1,0 +1,35 @@
+% FCFS, SJF and round robin (timeslice 1 s) for three tasks that arrive
+% at time 0 in the order T1, T2, T3 with execution times 5 s, 2 s, 1 s.
+% Usage: \input{figures/l07-gantt}   (width ~106 mm)
+\begin{tikzpicture}[x=10mm, y=1mm, font=\footnotesize\sffamily,
+  t1/.style={draw, fill=ln-accent!25},
+  t2/.style={draw, fill=ln-box},
+  t3/.style={draw, fill=white},
+  lab/.style={anchor=east, align=right}]
+  % FCFS
+  \node[lab] at (-0.2,25) {FCFS};
+  \draw[t1] (0,22) rectangle (5,28); \node at (2.5,25) {T1};
+  \draw[t2] (5,22) rectangle (7,28); \node at (6,25) {T2};
+  \draw[t3] (7,22) rectangle (8,28); \node at (7.5,25) {T3};
+  % SJF
+  \node[lab] at (-0.2,14) {SJF};
+  \draw[t3] (0,11) rectangle (1,17); \node at (0.5,14) {T3};
+  \draw[t2] (1,11) rectangle (3,17); \node at (2,14) {T2};
+  \draw[t1] (3,11) rectangle (8,17); \node at (5.5,14) {T1};
+  % round robin, timeslice 1 s
+  \node[lab] at (-0.2,3) {\iflangja{RR（1\,s）}{RR (1\,s)}};
+  \draw[t1] (0,0) rectangle (1,6); \node at (0.5,3) {T1};
+  \draw[t2] (1,0) rectangle (2,6); \node at (1.5,3) {T2};
+  \draw[t3] (2,0) rectangle (3,6); \node at (2.5,3) {T3};
+  \draw[t1] (3,0) rectangle (4,6); \node at (3.5,3) {T1};
+  \draw[t2] (4,0) rectangle (5,6); \node at (4.5,3) {T2};
+  \draw[t1] (5,0) rectangle (8,6); \node at (6.5,3) {T1};
+  \draw[densely dotted] (6,0) -- (6,6) (7,0) -- (7,6);
+  % time axis
+  \draw[->] (0,-3) -- (8.6,-3);
+  \node[anchor=west] at (8.6,-3) {$t$\,(s)};
+  \foreach \x in {0,...,8} {
+    \draw (\x,-3) -- (\x,-4.2);
+    \node[below, font=\scriptsize\sffamily] at (\x,-4.2) {\x};
+  }
+\end{tikzpicture}

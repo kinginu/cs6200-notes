@@ -1,0 +1,34 @@
+% (a) Shared memory multiprocessor: CPUs with private caches share memory.
+% (b) Multicore processor: cores with private caches share the LLC.
+% Usage: \input{figures/l07-multicpu}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  cpu/.style={draw, fill=ln-accent!22, minimum width=17mm, minimum height=6mm, inner sep=1pt},
+  cache/.style={draw, fill=ln-box, minimum width=17mm, minimum height=4.5mm,
+                inner sep=1pt, font=\scriptsize\sffamily},
+  mem/.style={draw, fill=ln-box, minimum height=7mm, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center}]
+  % ---------------- (a) SMP
+  \foreach \x/\n in {12/0, 40/1} {
+    \node[cpu] (a\n) at (\x,0) {CPU\,\n};
+    \node[cache, anchor=north] (al\n) at (a\n.south) {L1, L2};
+    \node[cache, anchor=north] (ac\n) at (al\n.south) {LLC};
+    \draw (ac\n.south) -- (\x,-20);
+  }
+  \draw[line width=1.2pt] (4,-20) -- (48,-20);
+  \node[mem, minimum width=36mm] (am) at (26,-28) {\iflangja{メモリ（DRAM）}{memory (DRAM)}};
+  \draw (am.north) -- (26,-20);
+  \node[lab] at (26,-38) {\iflangja{(a) 共有メモリ型マルチプロセッサ}{(a) shared memory multiprocessor}};
+  % ---------------- (b) multicore
+  \draw[rounded corners=2pt, dashed, ln-muted] (64,4.5) rectangle (112,-17);
+  \node[lab, anchor=north east, text=ln-muted] at (111.5,-17.5) {\iflangja{プロセッサ}{processor}};
+  \foreach \x/\n in {76/0, 100/1} {
+    \node[cpu] (b\n) at (\x,0) {\iflangja{コア}{core}\,\n};
+    \node[cache, anchor=north] (bl\n) at (b\n.south) {L1, L2};
+  }
+  \node[cache, minimum width=41mm] (llc) at (88,-13) {\iflangja{LLC（共有）}{LLC (shared)}};
+  \draw (bl0.south) -- (bl0.south |- llc.north);
+  \draw (bl1.south) -- (bl1.south |- llc.north);
+  \node[mem, minimum width=36mm] (bm) at (88,-28) {\iflangja{メモリ（DRAM）}{memory (DRAM)}};
+  \draw (llc.south) -- (bm.north);
+  \node[lab] at (88,-38) {\iflangja{(b) マルチコアプロセッサ}{(b) multicore processor}};
+\end{tikzpicture}

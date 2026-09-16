@@ -1,0 +1,35 @@
+% Preemptive SJF and preemptive priority scheduling of three tasks:
+% T1 arrives at 0 (7 s, medium), T2 at 1 (2 s, low), T3 at 2 (3 s, high).
+% Usage: \input{figures/l07-preemptive}   (width ~100 mm)
+\begin{tikzpicture}[x=7.5mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.5mm]},
+  t1/.style={draw, fill=ln-accent!25},
+  t2/.style={draw, fill=ln-box},
+  t3/.style={draw, fill=white},
+  ttl/.style={anchor=south west, font=\footnotesize\sffamily\bfseries, inner sep=1pt}]
+  % preemptive SJF
+  \node[ttl] at (0,26.5) {\iflangja{(a) プリエンプティブ SJF}{(a) preemptive SJF}};
+  \draw[t1] (0,20) rectangle (1,26);  \node at (0.5,23) {T1};
+  \draw[t2] (1,20) rectangle (3,26);  \node at (2,23) {T2};
+  \draw[t3] (3,20) rectangle (6,26);  \node at (4.5,23) {T3};
+  \draw[t1] (6,20) rectangle (12,26); \node at (9,23) {T1};
+  % priority
+  \node[ttl] at (0,10.5) {\iflangja{(b) プリエンプティブ優先度スケジューリング}{(b) preemptive priority scheduling}};
+  \draw[t1] (0,4) rectangle (2,10);   \node at (1,7) {T1};
+  \draw[t3] (2,4) rectangle (5,10);   \node at (3.5,7) {T3};
+  \draw[t1] (5,4) rectangle (10,10);  \node at (7.5,7) {T1};
+  \draw[t2] (10,4) rectangle (12,10); \node at (11,7) {T2};
+  % time axis
+  \draw[->] (0,0) -- (12.8,0);
+  \node[anchor=west] at (12.8,0) {$t$\,(s)};
+  \foreach \x in {0,...,12} {
+    \draw (\x,0) -- (\x,-1.2);
+    \node[below, font=\scriptsize\sffamily] at (\x,-1.2) {\x};
+  }
+  % arrivals
+  \node[anchor=east, font=\scriptsize\sffamily] at (-0.2,-9) {\iflangja{到着}{arrival}};
+  \foreach \x/\t in {0/T1, 1/T2, 2/T3} {
+    \draw[->] (\x,-10.5) -- (\x,-5.5);
+    \node[below, font=\scriptsize\sffamily, inner sep=1pt] at (\x,-10.5) {\t};
+  }
+\end{tikzpicture}

@@ -1,0 +1,45 @@
+% Hierarchical scheduling on a NUMA system: per-CPU runqueues, a load
+% balancer, and two memory nodes connected by an interconnect.
+% Usage: \input{figures/l07-numa}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  cpu/.style={draw, fill=ln-accent!22, minimum width=16mm, minimum height=6mm, inner sep=1pt},
+  mem/.style={draw, fill=ln-box, minimum width=38mm, minimum height=7mm, inner sep=1pt},
+  nd/.style={draw, dashed, rounded corners=2pt, ln-muted},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  tk/.style={draw, circle, fill=white, minimum size=2.6mm, inner sep=0pt}]
+  % load balancer
+  \draw[fill=ln-box] (0,36) rectangle (112,42);
+  \node at (56,39) {\iflangja{負荷分散}{load balancing}};
+  % per-CPU runqueues and CPUs
+  \foreach \x/\n/\k in {13/0/3, 36/1/1, 76/2/2, 99/3/0} {
+    \draw[<->] (\x,35.5) -- (\x,29.5);
+    \draw[fill=white] (\x-8,24) rectangle (\x+8,29);
+    \foreach \i in {1,...,3} \draw (\x+8-4*\i,24) -- ++(0,5);
+    \ifnum\k>0 \foreach \i in {1,...,\k} \node[tk] at (\x+10-4*\i,26.5) {}; \fi
+    \draw[->] (\x,24) -- (\x,17);
+    \node[cpu] (c\n) at (\x,14) {CPU\,\n};
+  }
+  \node[lab] at (56,26.5) {\iflangja{CPU ごとの\\ランキュー}{per-CPU\\runqueues}};
+  % memory nodes
+  \node[mem] (m0) at (24.5,-6) {\iflangja{メモリノード 0}{memory node 0}};
+  \node[mem] (m1) at (87.5,-6) {\iflangja{メモリノード 1}{memory node 1}};
+  \draw[nd] (2,20) rectangle (45,-12);
+  \draw[nd] (67,20) rectangle (110,-12);
+  \node[lab, anchor=north, text=ln-muted] at (24.5,-12.5) {\iflangja{ノード 0（ソケット 0）}{node 0 (socket 0)}};
+  \node[lab, anchor=north, text=ln-muted] at (87.5,-12.5) {\iflangja{ノード 1（ソケット 1）}{node 1 (socket 1)}};
+  % local access
+  \draw[<->, thick] (c0.south) -- node[lab, right] {\iflangja{ローカル：\\速い}{local:\\fast}} (c0.south |- m0.north);
+  \draw (c1.south) -- (c1.south |- m0.north);
+  \draw (c2.south) -- (c2.south |- m1.north);
+  \draw (c3.south) -- (c3.south |- m1.north);
+  % interconnect
+  \draw[line width=2pt, ln-muted] (m0.east) -- (m1.west);
+  \node[lab, anchor=north, text=ln-muted] at (56,-12.5) {\iflangja{インターコネクト}{interconnect}};
+  \draw[ln-muted, densely dotted] (56,-6) -- (56,-12.3);
+  % remote access: down out of node 1, along the interconnect, into the
+  % memory of node 0
+  \draw[<->, thick, densely dashed, ln-caution, rounded corners=1.5mm]
+    (c2.south west) -- (52,11) -- (52,-6) -- (m0.east);
+  \node[lab, text=ln-caution] at (58.5,6) {\iflangja{リモート：\\遅い}{remote:\\slow}};
+\end{tikzpicture}

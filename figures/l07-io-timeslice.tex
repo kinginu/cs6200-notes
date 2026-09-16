@@ -1,0 +1,73 @@
+% A CPU-bound task T1 and an I/O-bound task T2 (5 ms of computation, then
+% an I/O operation of 10 ms) under round robin with a context switch of
+% 2 ms and timeslices of 5 ms and 30 ms.
+% Usage: \input{figures/l07-io-timeslice}   (width ~104 mm)
+\begin{tikzpicture}[x=1.1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.4mm]},
+  t1/.style={draw, fill=ln-accent!25},
+  t2/.style={draw, fill=white},
+  cx/.style={draw, fill=ln-muted},
+  io/.style={draw, fill=ln-box},
+  lab/.style={anchor=east, font=\footnotesize\sffamily},
+  ttl/.style={anchor=south west, font=\footnotesize\sffamily\bfseries, inner sep=1pt}]
+  % ---------- (a) timeslice 5 ms
+  \node[ttl] at (0,45) {\iflangja{(a) タイムスライス 5\,ms}{(a) timeslice 5\,ms}};
+  \node[lab] at (-1,41) {CPU};
+  \node[lab] at (-1,31) {I/O};
+  \foreach \a in {0,19,38,57} {
+    \draw[t2] (\a,38) rectangle (\a+5,44);
+    \node at (\a+2.5,41) {T2};
+    \draw[cx] (\a+5,38) rectangle (\a+7,44);
+    \draw[io] (\a+5,28) rectangle (\a+15,34);
+    \node at (\a+10,31) {T2};
+  }
+  \foreach \a in {7,26,45,64} {
+    \draw[t1] (\a,38) rectangle (\a+10,44);
+    \draw[densely dotted] (\a+5,38) -- (\a+5,44);
+    \node at (\a+2.5,41) {T1};
+    \node at (\a+7.5,41) {T1};
+    \draw[cx] (\a+10,38) rectangle (\a+12,44);
+  }
+  \draw[t2] (76,38) -- (80,38) (76,44) -- (80,44) (76,38) -- (76,44);
+  \node at (78.2,41) {T2};
+  \draw (0,25) -- (82,25);
+  \foreach \x in {0,10,...,80} {
+    \draw (\x,25) -- (\x,24);
+    \node[below, inner sep=1pt] at (\x,24) {\x};
+  }
+  % ---------- (b) timeslice 30 ms
+  \node[ttl] at (0,13) {\iflangja{(b) タイムスライス 30\,ms}{(b) timeslice 30\,ms}};
+  \node[lab] at (-1,9) {CPU};
+  \node[lab] at (-1,-7) {I/O};
+  \foreach \a in {0,39} {
+    \draw[t2] (\a,6) rectangle (\a+5,12);
+    \node at (\a+2.5,9) {T2};
+    \draw[cx] (\a+5,6) rectangle (\a+7,12);
+    \draw[io] (\a+5,-10) rectangle (\a+15,-4);
+    \node at (\a+10,-7) {T2};
+    \draw[t1] (\a+7,6) rectangle (\a+37,12);
+    \node at (\a+22,9) {T1};
+    \draw[cx] (\a+37,6) rectangle (\a+39,12);
+  }
+  \draw[t2] (78,6) -- (80,6) (78,12) -- (80,12) (78,6) -- (78,12);
+  % T2 is ready but waits for the timeslice of T1 to end
+  \draw[<->, ln-caution] (15,2.5) -- (39,2.5);
+  \draw[ln-caution, densely dotted] (15,-4) -- (15,2.5) (39,2.5) -- (39,6);
+  \node[anchor=north west, text=ln-caution, inner sep=1pt] at (16,1.8)
+    {\iflangja{T2 は実行可能だが待つ（24\,ms）}{T2 ready, waiting (24\,ms)}};
+  \draw (0,-13) -- (82,-13);
+  \foreach \x in {0,10,...,80} {
+    \draw (\x,-13) -- (\x,-14);
+    \node[below, inner sep=1pt] at (\x,-14) {\x};
+  }
+  \node[anchor=west] at (82,-13) {ms};
+  % ---------- legend
+  \begin{scope}[yshift=-24mm]
+    \draw[t1] (0,-1.5) rectangle (4,1.5);
+    \node[anchor=west] at (4.5,0) {\iflangja{CPU バウンドの T1}{CPU-bound T1}};
+    \draw[t2] (28,-1.5) rectangle (32,1.5);
+    \node[anchor=west] at (32.5,0) {\iflangja{I/O バウンドの T2}{I/O-bound T2}};
+    \draw[cx] (55,-1.5) rectangle (57,1.5);
+    \node[anchor=west] at (57.5,0) {\iflangja{コンテキストスイッチ}{context switch}};
+  \end{scope}
+\end{tikzpicture}
