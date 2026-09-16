@@ -276,8 +276,11 @@ atomic instruction	アトミック命令	あとみっくめいれい	10
 test-and-set	テストアンドセット	てすとあんどせっと	10	
 compare-and-swap	コンペアアンドスワップ	こんぺああんどすわっぷ	10	
 cache coherence	キャッシュ一貫性	きゃっしゅいっかんせい	10	
+write-invalidate	書き込み無効化	かきこみむこうか	10	cache coherence strategy
+write-update	書き込み更新	かきこみこうしん	10	cache coherence strategy
 lock contention	ロック競合	ろっくきょうごう	10	
 test-and-test-and-set	テストアンドテストアンドセット	てすとあんどてすとあんどせっと	10	
+queueing lock	キューイングロック	きゅーいんぐろっく	10	Anderson: array of per-thread flags
 device register	デバイスレジスタ	でばいすれじすた	11	command, data and status registers
 Peripheral Component Interconnect	PCI	PCI	11	PCI Express (PCIe)
 PCI	PCI	PCI	11	see: Peripheral Component Interconnect
@@ -408,6 +411,7 @@ strict consistency	厳密一貫性	げんみついっかんせい	15
 sequential consistency	逐次一貫性	ちくじいっかんせい	15	
 causal consistency	因果一貫性	いんがいっかんせい	15	
 weak consistency	弱一貫性	じゃくいっかんせい	15	
+datacenter	データセンタ	でーたせんた	16	
 Internet service	インターネットサービス	いんたーねっとさーびす	16	
 multi-tier architecture	多層アーキテクチャ	たそうあーきてくちゃ	16	presentation, business logic, data tiers
 homogeneous architecture	ホモジニアス構成	ほもじにあすこうせい	16	functionally identical nodes

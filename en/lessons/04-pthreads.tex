@@ -565,7 +565,7 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex);
 \begin{example}
   A thread updates optional statistics only when the mutex happens to be
   free, rather than delaying its main work:\margin{Calling \texttt{trylock} in a
-  loop turns it into a spin lock, which burns CPU while another thread holds
+  loop turns it into a spinlock, which burns CPU while another thread holds
   the mutex; Lesson~10 compares spinning with blocking.}
   \begin{lstlisting}[language=C, numbers=none]
 if (pthread_mutex_trylock(&stats_m) == 0) {
