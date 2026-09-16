@@ -131,7 +131,11 @@ benefits.\source{P3L6, benefits of virtualization; Rosenblum and Garfinkel
 \end{description}
 
 Although IBM mainframes supported virtualization from the 1960s on, it
-remained confined to them until the late 1990s \cite{rosenblum2005}.
+remained confined to them until the late 1990s
+\cite{rosenblum2005}.\sidenote{The first such system was CP-40 with CMS, run
+by IBM's Cambridge Scientific Center from January 1967; CP-67 followed on the
+System/360 Model~67, whose hardware translated addresses.  The line continued
+as VM/370, announced in 1972, and survives as z/VM.}
 Mainframes were expensive and few.  Once commodity hardware had become
 cheap and its operating systems supported multitasking, it was simpler to
 buy another
@@ -147,7 +151,10 @@ it.
 
 \begin{example}
   A company runs 24 servers, each dedicated to one application and
-  averaging \SI{8}{\percent} CPU utilization.  Their combined load
+  averaging \SI{8}{\percent} CPU utilization.\margin{Low utilization is
+  the norm: Barroso and H\"olzle report that datacenter servers spend most of
+  their time between \SI{10}{\percent} and \SI{50}{\percent} CPU
+  utilization (\emph{The Datacenter as a Computer}).}  Their combined load
   corresponds to $24 \times 0.08 = 1.92$ fully used servers.  If each
   physical machine is loaded to at most \SI{70}{\percent}, leaving headroom
   for load peaks and for the overhead of virtualization, and memory and
@@ -180,7 +187,10 @@ hypervisor.  Bare-metal designs therefore often run a privileged
 \emph{service VM} next to the guest VMs (\cref{fig:l12-models}a).  The
 service VM runs a standard operating system with the device drivers, has
 direct access to the devices, and performs configuration and management
-tasks, so that the hypervisor itself stays small.
+tasks, so that the hypervisor itself stays small.\caution{The type~1 and
+type~2 labels do not split cleanly.  KVM is a module of Linux, so its
+hypervisor does run on the hardware; it counts as type~2 because a complete
+host OS remains around it.}
 
 \begin{figure}[htbp]
   \centering
@@ -324,7 +334,10 @@ are disabled for this VM and holds back the interrupts destined for it,
 while physical interrupts remain enabled so that the hypervisor and the
 other VMs continue to receive theirs.  Every trap costs a transition into
 the hypervisor, so the overhead of trap-and-emulate grows with the number
-of privileged operations that the guest performs.
+of privileged operations that the guest performs.\margin{The hardware
+transition alone is below 500 cycles on Haswell; a \texttt{VMCALL} into KVM
+and back measures about \num{1500} cycles (kvm-unit-tests
+\texttt{vmexit}).}
 
 \begin{figure}[htbp]
   \centering
@@ -350,12 +363,15 @@ of privileged operations that the guest performs.
 Before 2005, x86 processors had four rings but no root and non-root modes,
 so a hypervisor ran in ring~0 and deprivileged the guest OS to
 ring~1.\source{P3L6, x86 virtualization in the past; Robin and Irvine
-\cite{robin2000}.}  The architecture did not satisfy the condition of
-trap-and-emulate: Robin and Irvine \cite{robin2000} identified 17 sensitive
-instructions that do not trap when executed in a less privileged ring.  Executed in
-ring~1, they fail silently or reveal machine state that the hypervisor
-intends to hide, and trap-and-emulate alone cannot virtualize the
-processor correctly.
+\cite{robin2000}.}
+The architecture did not satisfy the condition of trap-and-emulate: Robin
+and Irvine \cite{robin2000} identified 17 sensitive instructions that do not
+trap when executed in a less privileged ring.\caution{The trick fails for
+64-bit guests: AMD64 long mode dropped segment limit checks, so a software
+VMM can no longer fence the guest off by segmentation.  They need the
+support of \cref{sec:l12-hw}.}  Executed in ring~1, they fail
+silently or reveal machine state that the hypervisor intends to hide, and
+trap-and-emulate alone cannot virtualize the processor correctly.
 
 The best-known examples are \texttt{PUSHF} and \texttt{POPF}, which save
 the flags register on the stack and restore it.  The flags register
@@ -450,7 +466,11 @@ applications in ring~3 run directly \cite{bugnion2012}.}
 
 \needspace{8\baselineskip}
 \begin{example}
-  A block of guest kernel code executes natively in \SI{5}{\micro\second}.
+  A block of guest kernel code executes natively in
+  \SI{5}{\micro\second}.\sidenote{Binary translation did not become obsolete
+  when hardware support arrived: on the first VT-x processors the software
+  VMM still won on most workloads, where exits were expensive and page
+  tables had to be shadowed either way \cite{adams2006}.}
   Translating it takes \SI{2}{\milli\second}, and because one instruction
   is replaced by a call into the hypervisor, the translated block takes
   \SI{6}{\micro\second}.  If the block runs \num{20000} times, translating
@@ -529,7 +549,10 @@ Page numbers make the same distinction between virtual page numbers,
 physical frame numbers and machine frame numbers.  The guest OS maintains
 page tables that map virtual to physical addresses, and the hypervisor
 maintains a mapping from physical to machine addresses
-(\cref{fig:l12-memory}).
+(\cref{fig:l12-memory}).\tip{Read the two arrows in order: virtual
+$\to$ physical belongs to the guest, physical $\to$ machine to the
+hypervisor.  The shadow page table is their composition, virtual $\to$
+machine.}
 
 \begin{figure}[htbp]
   \centering
@@ -562,7 +585,9 @@ tables consistent with them.
   \item It write-protects the memory that holds the guest page tables.
     When the guest OS adds or changes a mapping, the write traps; the
     hypervisor performs the write and updates the shadow page table with
-    the corresponding machine address.
+    the corresponding machine address.\margin{Write-protecting a page in
+    order to learn about a write is the mechanism of copy-on-write in
+    Lesson~8, used here to observe the guest rather than to copy a page.}
   \item When the guest OS switches between its processes, it loads another
     page table into the page table base register, a privileged operation
     that traps.  The hypervisor then installs the shadow page table of the
@@ -610,7 +635,10 @@ virtualization becomes a cooperation between guest and hypervisor.  The
 strict requirement that physical memory be contiguous and start at
 address~0 disappears.  In Xen the guest OS knows which machine frames it
 has been given, and its page tables map virtual addresses directly to
-machine addresses \cite{barham2003}.  The guest registers its page tables
+machine addresses \cite{barham2003}.\caution{The names differ between
+systems: what Xen and this lesson call physical and machine addresses, Intel
+calls guest-physical and host-physical, and VMware guest physical and host
+physical.}  The guest registers its page tables
 with the hypervisor explicitly, and from then on it has only read access to
 them.  To change a page table, the guest issues a hypercall, and the
 hypervisor validates the change---for example, that the new mapping refers
@@ -689,7 +717,10 @@ Lesson~11,\index{operating system bypass} gives the best performance.  The
 model has three drawbacks.
 \begin{itemize}
   \item Sharing the device is difficult: it must be reassigned from one VM
-    to another.
+    to another.\margin{SR-IOV (PCI-SIG, 2007) softens this: one card
+    presents a physical function and a number of virtual functions---up to
+    256 by the specification, in practice tens---each of which can be
+    assigned to a VM.}
   \item The machine must have exactly the type of device that the driver in
     the VM expects, since that driver operates the hardware directly.
   \item Migration is tricky, because part of the state of the VM resides
@@ -707,7 +738,10 @@ model has three drawbacks.
   invokes the hypervisor's own driver for the physical device.
 \end{definition}
 
-The key benefit is that the VM is decoupled from the physical device.  The
+The key benefit is that the VM is decoupled from the physical
+device.\margin{The emulated devices are deliberately old and common: QEMU's
+PC machine presents an Intel e1000 network card and an IDE disk controller,
+for which every guest OS already has a driver.}  The
 VM sees an emulated device, which can be the same on every machine,
 independently of the physical device; the device can be shared among VMs;
 migration becomes simpler; and the hypervisor deals with the specifics of
@@ -730,11 +764,14 @@ contain, and remain robust with, drivers for all supported devices.
 The front-end driver does not manipulate device registers that would have
 to be trapped and emulated.  It passes complete requests, such as a packet
 to send, to the back-end driver, in Xen through descriptor rings in memory
-shared between the two VMs.  This eliminates the emulation overhead of the
-hypervisor-direct model, and because all requests for a device pass
-through the back-end driver, the service VM can manage how the device is
-shared among the VMs.  The price is a modified guest: its drivers must be
-replaced by front-end drivers written for the hypervisor, so the model
+shared between the two VMs.\margin{Linux's virtio (Russell, 2008; an OASIS
+standard since 2016) is the common front-end/back-end interface; its
+\emph{virtqueues} are the shared memory of Lesson~9.}  This eliminates the
+emulation overhead of the hypervisor-direct model, and because all requests
+for a device pass through the back-end driver, the service VM can manage how
+the device is shared among the VMs.  The price is a modified guest: its
+drivers must be replaced by front-end drivers written for the hypervisor, so
+the model
 applies to paravirtualized guests and to guests in which such drivers have
 been installed.  \Cref{tab:l12-devices} summarizes the three models.
 
@@ -808,9 +845,11 @@ The extensions address the problems of the preceding sections.
     (EPT)\index{EPT|see{extended page table}}, maintained by the
     hypervisor, maps physical to machine addresses.  On a TLB miss the MMU
     walks both tables, and the TLB caches the resulting translation from
-    virtual to machine address.  The guest OS changes and switches its page
-    tables without VM exits, and shadow page tables become unnecessary.
-    AMD's equivalent is called nested page tables.
+    virtual to machine address.\tip{A walk through $g$ guest levels under
+    $n$ extended levels costs $(g+1)(n+1)-1$ references: 24 for $g=n=4$,
+    against 4 natively (AMD-V nested paging white paper).}  The guest OS
+    changes and switches its page tables without VM exits, and shadow page
+    tables become unnecessary.  AMD's equivalent is called nested page tables.
   \item[Tagged TLB] A \term{tagged TLB}[タグ付きTLB] marks each entry with
     an identifier of the VM to which it belongs.  Entries of different VMs
     coexist in the TLB, so a switch between VMs does not require flushing
@@ -831,11 +870,14 @@ such as KVM rely on them.
 Intel extended its support in stages, from the processor outwards.
 \emph{VT-x} covers the processor: root and non-root modes, VM exits and
 entries, the VM control structure, and, in later processors, extended page
-tables and tagged TLB entries.  \emph{VT-d} (directed I/O) adds to the
-chipset an I/O memory management unit that translates the addresses used
-in DMA (Lesson~11) and remaps interrupts, so that a device assigned to a VM
-in the passthrough model cannot access the memory of other
-VMs.  \emph{VT-c} (connectivity) brings virtualization
+tables and tagged TLB entries.\margin{VT-x shipped in November 2005 with
+the Pentium~4 662 and 672, AMD-V in May 2006.  The page table and TLB
+support came later: nested page tables and ASID tags with Barcelona (2007),
+extended page tables and the 16-bit VPID tag with Nehalem (2008).}
+\emph{VT-d} (directed I/O) adds to the chipset an I/O memory management unit
+that translates the addresses used in DMA (Lesson~11) and remaps interrupts,
+so that a device assigned to a VM in the passthrough model cannot access the
+memory of other VMs.  \emph{VT-c} (connectivity) brings virtualization
 support to network devices, with multiple queues per device and devices
 that present themselves as several virtual devices, each assignable to
 a VM.
