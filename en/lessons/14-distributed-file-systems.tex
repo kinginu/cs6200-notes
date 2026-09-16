@@ -128,13 +128,18 @@ number of clients the DFS can support.
 \begin{example}
   A client works with a \SI{1}{\gibi\byte} file over a network that
   transfers \SI[per-mode=symbol]{100}{\mebi\byte\per\second}; every request
-  costs a round trip of \SI{1}{\milli\second}.  If the client reads 50
+  costs a round trip of \SI{1}{\milli\second}.\caution{Network rates are
+  quoted in bits per second: \SI{1}{\giga\bit\per\second} carries at most
+  \SI{125}{\mega\byte\per\second}, so the rate assumed here is a
+  well-filled gigabit link.}  If the client reads 50
   blocks of \SI{4}{\kibi\byte}, the remote access model needs 50 requests,
   about \SI{50}{\milli\second}, whereas downloading the file takes
   $1024/100 \approx \SI{10.2}{\second}$.  If the client instead reads
   \num{200000} blocks, the round trips of the remote access model alone
   take \SI{200}{\second}, while the download still takes
-  \SI{10.2}{\second} and every read after it is local.
+  \SI{10.2}{\second} and every read after it is local.\tip{Downloading wins
+  once the client reads more than $S/(B\,t_{\mathrm{RTT}})$ blocks---the
+  number of round trips that fit into one download, about \num{10000} here.}
 \end{example}
 
 \subsection{A compromise}
@@ -212,7 +217,10 @@ as long as the requests are idempotent (Lesson~13), as a read or a write at
 an explicit offset is.  Its disadvantages are that it cannot support
 caching with consistency management, nor locking, and that every request
 must describe the operation completely---which file, which offset, how many
-bytes---so that more bits are transferred per request.  Its clients may
+bytes---so that more bits are transferred per request.\caution{Stateless
+refers to state about \emph{clients}.  The server still holds the files and
+their metadata; what it forgets between requests is who is reading what.}
+Its clients may
 still cache data and ask the server, when they open a file or
 periodically, whether their copy is current (client-driven validation,
 \cref{sec:l14-caching}, as in NFS), but the server can neither notify them
@@ -291,8 +299,10 @@ being slower than memory, though still faster than the network.  The
 server caches blocks as well, in its own buffer cache, which saves it disk
 accesses; how much it saves depends on the load, since the requests of
 many clients for different files interleave there and displace one
-another's data.  Once the same file is cached at several places, the
-copies can diverge.  Suppose that clients~1 and~2 both cache file~$F$ and
+another's data.\caution{`Faster than the network' assumes a slow network: a
+random block of a \num{7200}~rpm disk costs about \SI{13}{\milli\second}
+(OSTEP ch.~37), more than a round trip inside a datacenter.}  Once the same
+file is cached at several places, the copies can diverge.  Suppose that clients~1 and~2 both cache file~$F$ and
 that client~2 modifies its copy into $F'$ (\cref{fig:l14-caching}).  The
 modification must reach the server, and client~1 must learn that its copy
 of $F$ is stale.
@@ -315,7 +325,12 @@ DFS the coherence mechanism is implemented in software, and it is either
   \item[client-driven] the client asks the server, when it opens a file or
     periodically, whether its cached data are still current; or
   \item[server-driven] the server, which knows which clients cache a file,
-    notifies them when the file changes.
+    notifies them when the file changes.\sidenote{The Andrew File System,
+    built at Carnegie Mellon at the same time as Sprite, carries the
+    server-driven design further: a client caches whole files on its local
+    disk, and the server holds a \emph{callback} promise to warn it before
+    the file changes, so that an open costs nothing while the promise
+    stands.  OSTEP ch.~50 describes it.}
 \end{description}
 Client-driven checks keep the server simple but cost a request each and
 leave a client with stale data until its next check; server-driven
@@ -386,8 +401,9 @@ inconsistent views altogether.
 All copies of an immutable file are identical, so sharing it cannot
 produce inconsistency.  Services that store photos, for example, typically
 do not modify an uploaded photo in place; an edited photo is stored as a
-new file.  Finally, a DFS can offer \emph{transactions}: an application
-groups several updates, of one or several files, into a transaction, and
+new file.\margin{The same device as the copy-on-write of Lesson~8: the new
+version is written elsewhere and the old blocks are freed later.}  Finally,
+a DFS can offer \emph{transactions}: an application groups several updates, of one or several files, into a transaction, and
 the DFS applies them atomically---either all take effect or none
 does---as a database system does.
 
@@ -585,7 +601,10 @@ returns a file handle.
 
 The NFS client keeps the handle with its representation of the open file
 and passes it in every subsequent request, such as a read, a write or a
-request for the attributes of the file.  A server typically encodes in the
+request for the attributes of the file.\margin{The handle is
+\SI{32}{\byte} and of fixed size in NFSv2; later versions make it variable,
+at most \SI{64}{\byte} in NFSv3 \cite{rfc1813} and \SI{128}{\byte} in NFSv4
+\cite{rfc7530}.}  A server typically encodes in the
 handle an identifier of the file system, the inode number of the file, and
 a \emph{generation number} that changes whenever the inode is reused.  If
 the file is removed on the server, by a local process or by another
@@ -620,7 +639,12 @@ current use.\source{P4L2, NFS versions; RFC~1813 \cite{rfc1813}; RFC~7530
 \cite{rfc7530}; OSTEP ch.~49.}  They differ fundamentally in how they
 treat state.  NFSv3 is a stateless protocol, although in practice it is
 complemented by auxiliary protocols that keep state, such as a lock
-manager.  NFSv4 is stateful: opening files, locking and the delegations
+manager.\sidenote{NFSv3 is really a family of RPC programs: NFS itself
+\cite{rfc1813}, a MOUNT protocol that turns a path into the handle of an
+exported directory, a lock manager, and a status monitor with which the two
+ends tell each other that they have rebooted.  Each is registered with
+\texttt{rpcbind} (Lesson~13); NFSv4 folds them all into one protocol on
+port 2049.}  NFSv4 is stateful: opening files, locking and the delegations
 described below are part of the protocol.
 
 \subsection{Caching}
@@ -631,7 +655,9 @@ file, and checks for a newer version when it opens one.  In addition,
 while a file is in use, the client periodically asks the server whether the
 file has changed, by default every \SI{3}{\second} for files and every
 \SI{30}{\second} for directories.\margin{On Linux these periods are the
-mount options \texttt{acregmin} and \texttt{acdirmin}.}  The longer period
+mount options \texttt{acregmin} and \texttt{acdirmin}; \texttt{acregmax} and
+\texttt{acdirmax}, both \SI{60}{\second} by default, bound the interval from
+above.}  The longer period
 for directories is deliberate: the contents of a directory change far less
 often than the data of a file, while lookups in it are frequent, so
 checking it rarely saves many requests and costs only that a name created
@@ -659,7 +685,10 @@ for updates, and the server recalls the delegation when another client
 needs access to the file that conflicts with it.
 
 \begin{note}
-  NFS thus combines session semantics with periodic revalidation.  A
+  NFS thus combines session semantics with periodic revalidation.\margin{The
+  session-like half is called \emph{close-to-open} consistency: revalidate at
+  open, write back at close.  The \texttt{nocto} mount option turns off the
+  check at open.  \texttt{nfs(5)}.}  A
   periodic check can bring the changes of another client into a session
   that is still open, which pure session semantics excludes, and between
   two checks a client may read data that has already changed at the
@@ -692,7 +721,10 @@ or downgrade it again, without closing the file.
 \end{figure}
 
 \begin{example}
-  A server grants leases of \SI{30}{\second}.  Client~1 acquires a lock at
+  A server grants leases of \SI{30}{\second}.\margin{The protocol fixes no
+  duration: all leases of one server have the same length, which a client
+  reads from the server's \texttt{lease\_time} attribute \cite{rfc7530}.}
+  Client~1 acquires a lock at
   $t=0$ and renews the lease at \SI{25}{\second}, extending it to
   \SI{55}{\second}; it crashes at \SI{40}{\second}.  Client~2 requests the
   lock at \SI{45}{\second} and waits.  At \SI{55}{\second} the lease of
@@ -700,7 +732,9 @@ or downgrade it again, without closing the file.
   client~2 (\cref{fig:l14-lease}).  Had client~1 not crashed but merely lost
   contact with the server, it would have to stop using the lock at
   \SI{55}{\second}, because it could not know whether the lock had been
-  granted to another client.
+  granted to another client.\caution{Leases need no synchronized clocks: the
+  client starts its timer only when the grant arrives, so it always gives up
+  before the server does.}
 \end{example}
 
 \begin{keypoint}
@@ -756,7 +790,10 @@ observations and the conclusions drawn from them.
 From these observations the design of Sprite follows:
 \begin{itemize}
   \item Clients cache file blocks and write modified blocks back to the
-    server with a delay of 30 seconds, as described below.
+    server with a delay of 30 seconds, as described below.\margin{Linux does
+    the same for its page cache: flusher threads wake every
+    \SI{5}{\second} and write back data that has been dirty for more than
+    \SI{30}{\second} (\texttt{dirty\_expire\_centisecs}).}
   \item When a client opens a file that another client has been writing,
     the server first collects the dirty blocks from that client.
   \item Every open goes to the server, and directories are not cached at
@@ -773,7 +810,10 @@ dirty blocks that have not been modified during the last 30 seconds.
 Blocks that are still being modified are therefore not transferred
 repeatedly, and data deleted within 30 seconds of being written are never
 transferred at all.  A block reaches the server between 30 and 60 seconds
-after its last modification.
+after its last modification.\caution{Delayed write trades durability for
+traffic: a client crash loses every block not yet written back, up to a
+minute of work.  Sprite accepts this because most of those blocks would
+have been deleted anyway.}
 
 \begin{example}
   A client writes back at $t = 0, 30, 60, 90, \ldots$~seconds.  Block
@@ -799,7 +839,9 @@ The semantics Sprite provides depend on how a file is shared.
 \end{definition}
 
 Under sequential write sharing Sprite caches the file, and every client
-that opens it sees the data written by the previous writer.  Under
+that opens it sees the data written by the previous writer.\caution{%
+\emph{Sequential} here describes the clients, not the access pattern within
+the file: one client after another, not blocks read in order.}  Under
 concurrent write sharing Sprite does not cache the file; the server
 executes all reads and writes in order, which yields UNIX semantics.
 
@@ -852,7 +894,10 @@ clients have closed it.
   initially at version~4, as clients $R_1$, $W_1$, $W_2$ and $W_3$ open and
   close it.  In step~5 $W_1$ has closed $F$ but still holds dirty blocks,
   which the server collects before $W_2$ proceeds; the sharing is
-  sequential, and $W_2$ may cache $F$.  In step~6 $W_3$ opens $F$ while
+  sequential, and $W_2$ may cache $F$.\tip{Caching survives sequential
+  sharing because there is always a last writer whose blocks the server can
+  collect first; under concurrent sharing there is none, so the server must
+  serve every access itself.}  In step~6 $W_3$ opens $F$ while
   $W_2$ still has it open for writing (\cref{fig:l14-sprite}), and caching
   is disabled.  In step~7 $R_1$ finds that its cached blocks of version~4
   are outdated; it discards them and reads from the server.
