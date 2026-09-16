@@ -113,7 +113,10 @@ physical memory.
   \texttt{0x00402A10}.  Its page table maps this address to the physical
   address \texttt{0x1F3A0A10}.  Whenever the process reads or writes
   \texttt{x}, it uses \texttt{0x00402A10}; the translation to
-  \texttt{0x1F3A0A10} happens without its involvement.
+  \texttt{0x1F3A0A10} happens without its involvement.\tip{Translation
+  works on whole pages, \SI{4}{\kibi\byte} on x86, so the low 12 bits of an
+  address pass through it unchanged: both addresses here end in
+  \texttt{A10}.}
 \end{example}
 
 \subsection{Address space and memory management}
@@ -125,7 +128,11 @@ large portions, such as the region between the heap and the stack, are not
 allocated at any given time.  Second, there may not be enough physical
 memory for all the state that is allocated.  With 32-bit virtual addresses a single process
 can address $2^{32}$ bytes, that is \SI{4}{\gibi\byte}, and several processes
-together easily need more memory than the machine has.
+together easily need more memory than the machine has.\margin{On x86-64 the
+hardware translates 48-bit addresses and Linux gives each process the lower
+half of that range, \SI{128}{\tebi\byte}; the five-level paging of recent
+processors extends the addresses to 57 bits (Linux \emph{5-level paging}
+documentation).}
 
 The operating system therefore decides dynamically which portions of which
 address spaces reside where in physical memory.  Some portions may
@@ -182,7 +189,9 @@ state of the process.
 \end{definition}
 
 The fields of the PCB (\cref{fig:l02-pcb}) are maintained at different
-times:
+times:\caution{Linux has no separate per-process structure: one
+\texttt{struct task\_struct} describes one \emph{thread} (Lesson~3), and a
+process is a group of tasks that share an address space.}
 \begin{itemize}
   \item The PCB is created and initialized when the process is created; for
     example, the program counter is set to the first instruction of the
@@ -194,7 +203,11 @@ times:
     The program counter changes with every instruction, so the CPU maintains
     it in its own register.  The operating system collects the values that
     the CPU keeps for a process and saves them in the PCB whenever the
-    process stops running on the CPU.
+    process stops running on the CPU.\margin{\texttt{/proc/PID/status}
+    prints many of these fields: state, parent, number of threads, memory
+    limits, signal masks.  On x86-64 each task also owns a
+    \SI{16}{\kibi\byte} kernel stack (Linux \emph{Kernel Stacks}
+    documentation).}
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -241,7 +254,9 @@ Context switches are expensive, for two reasons:
     of the other.
   \item[Indirect cost] the effect on the processor cache.  A cache access
     takes on the order of a few cycles, whereas an access to main memory
-    takes on the order of hundreds of cycles.
+    takes on the order of hundreds of cycles.\margin{Intel Skylake:
+    L1 hit 4--5 cycles, L2 about 12, L3 about 44, DRAM some
+    \SI{50}{\nano\second} more (7-cpu.com).}
 \end{description}
 
 While a process runs, much of the data it uses is present in the processor
@@ -276,7 +291,11 @@ how frequently it switches contexts.
   The PCB holds everything the operating system needs to stop a process and
   resume it later.  A context switch saves the CPU state of one process into
   its PCB and restores another from its PCB; its hidden cost, the cold cache
-  it leaves behind, can far exceed the cost of the save and restore.
+  it leaves behind, can far exceed the cost of the save and
+  restore.\margin{Li et al.\ \cite{li2007} measure
+  \SI{3.8}{\micro\second} per switch between processes that touch no data,
+  and more than \SI{1000}{\micro\second} in total once their data no longer
+  fits in the cache.}
 \end{keypoint}
 
 \section{Process life cycle}
@@ -329,7 +348,11 @@ is in one of the following states (\cref{fig:l02-states}):
   \label{fig:l02-states}
 \end{figure}
 
-\Cref{tab:l02-trace} traces one process through its life cycle.  Note that
+\Cref{tab:l02-trace} traces one process through its life
+cycle.\caution{Linux does not separate ready from running: both are
+\texttt{TASK\_RUNNING}, which \texttt{ps} prints as R\@.  S and D are the
+two kinds of waiting, interruptible and uninterruptible, and T is a stopped
+process.}  Note that
 only one transition, the dispatch, gives the process the CPU; every other
 transition takes it away or leaves the process without it.
 
@@ -391,7 +414,9 @@ Unix called \texttt{fork} and \texttt{exec}:
   \item[\texttt{fork}] With the \term[fork]{\texttt{fork}}[fork] system
     call the operating system creates a new PCB for the child, copies the
     PCB of the parent into it, and gives the child a copy of the parent's
-    address space.  The child is a duplicate of the parent, with the same
+    address space.\caution{\texttt{fork} copies page tables, not memory:
+    a page is duplicated only when one side writes to it (copy-on-write,
+    Lesson~8).}  The child is a duplicate of the parent, with the same
     program and the same program counter, so after the call both parent and
     child continue at the instruction that follows \texttt{fork}.
   \item[\texttt{exec}] With the \term[exec]{\texttt{exec}}[exec] system
@@ -413,7 +438,12 @@ created.
 Android uses \texttt{fork} to start applications quickly.  Its application
 processes descend from \term{Zygote}[Zygote], a daemon started during boot
 whose sole purpose is to launch applications; it loads the runtime and the
-commonly used libraries once.
+commonly used libraries once.\sidenote{Because \texttt{fork} shares the
+pages of the parent copy-on-write, the runtime and the preloaded classes
+are not copied into each application: every application process starts with
+them already mapped, and they remain in one set of physical pages for as
+long as no one writes to them.  Zygote therefore saves start-up time and
+memory at once.}
 To launch an application, Zygote forks, and the child, which already
 contains everything Zygote has loaded, becomes the process of the
 application.
@@ -440,7 +470,10 @@ int main(void) {
 }
 \end{lstlisting}
   After a successful \texttt{execlp} the child executes the code of
-  \texttt{ls}; the call never returns.
+  \texttt{ls}; the call never returns.\margin{A process that has exited
+  keeps its PCB until its parent reads the exit code---here with
+  \texttt{waitpid}; until then it is a \emph{zombie} (state Z\@).  A child
+  whose parent exits first is adopted and reaped by \texttt{init}.}
 \end{example}
 
 \section{The CPU scheduler}
@@ -518,7 +551,10 @@ timeslice ten times as long, the useful fraction is $10/11 \approx
 A long timeslice is not free, however: while one process holds the CPU, the
 other ready processes wait for their turn.  Choosing a scheduler thus
 requires design decisions: what timeslice values are appropriate, and which
-metrics decide the process to run next.  Lesson~7 examines these questions.
+metrics decide the process to run next.  Lesson~7 examines these
+questions.\margin{Real values: Linux CFS shared a \SI{6}{\milli\second}
+period among the runnable tasks, with a floor of \SI{0.75}{\milli\second}
+each; Linux~6.6 EEVDF uses a base slice of \SI{0.7}{\milli\second}.}
 
 \subsection{Processes and I/O}
 
@@ -529,7 +565,10 @@ on the \emph{I/O queue} associated with that device.  The process remains
 waiting there until the device completes the operation and responds to the
 request.  The process is then ready again: depending on the load of the
 system it is placed on the ready queue, or, if no other process is waiting,
-it may be dispatched to the CPU right away.
+it may be dispatched to the CPU right away.\margin{The wait is long
+compared with everything else in this chapter: a \SI{4}{\kibi\byte} read
+takes tens of microseconds from an NVMe SSD and about
+\SI{10}{\milli\second} from a rotating disk.}
 
 \Cref{fig:l02-queues} shows the ways in which a process enters, or
 re-enters, the ready queue:
@@ -538,7 +577,10 @@ re-enters, the ready queue:
   \item its timeslice has expired;
   \item a new process has been created by a \texttt{fork}: the child is
     placed on the ready queue;
-  \item it was waiting for an interrupt, and the interrupt has occurred.
+  \item it was waiting for an interrupt, and the interrupt has
+    occurred.\margin{Handling the interrupt is not itself a context
+    switch: the handler runs in the kernel, in the context of whichever
+    process was interrupted (Lesson~5).}
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -620,7 +662,10 @@ Shared memory moves the cost of communication from the individual exchanges
 to the setup.  Once the region is mapped, an exchange involves no copy and
 no crossing into the kernel, but creating the mapping is itself costly, so
 which of the two mechanisms is cheaper follows from how many exchanges the
-processes make.
+processes make.\margin{Measured on Linux, a round trip through a pipe costs
+on the order of \SI{10}{\micro\second} and one through a Unix-domain socket
+somewhat more (lmbench \texttt{lat\_pipe}, \texttt{lat\_unix}); a minimal
+system call alone costs some \SI{100}{\nano\second}.}
 
 \needspace{7\baselineskip}
 \begin{example}
@@ -630,7 +675,9 @@ processes make.
   \SI{1}{\micro\second} after the mapping has been established at a
   one-time cost of \SI{300}{\micro\second}.  For $n$ messages, shared memory
   costs $300 + n$ and message passing $6n$ microseconds.  Shared memory is
-  cheaper only when $300 + n < 6n$, that is, for more than 60 messages.
+  cheaper only when $300 + n < 6n$, that is, for more than 60
+  messages.\tip{The break-even count is the setup cost divided by the
+  saving per exchange, here $300/(6-1) = 60$ messages.}
 \end{example}
 
 The IPC mechanisms of Unix-based systems and their use are the subject of
