@@ -131,7 +131,9 @@ Native POSIX Thread Library	NPTL	NPTL	5
 NPTL	NPTL	NPTL	5	see: Native POSIX Thread Library
 execution time	実行時間	じっこうじかん	6	completion time
 performance metric	性能指標	せいのうしひょう	6	
+testbed	テストベッド	てすとべっど	6	experimental environment
 throughput	スループット	するーぷっと	6	
+response time	応答時間	おうとうじかん	6	
 wait time	待ち時間	まちじかん	6	
 CPU utilization	CPU使用率	CPUしようりつ	6	
 service level agreement	SLA	SLA	6	
@@ -155,6 +157,7 @@ workload	ワークロード	わーくろーど	6
 trace	トレース	とれーす	6	
 synthetic workload	合成ワークロード	ごうせいわーくろーど	6	
 benchmark	ベンチマーク	べんちまーく	6	
+baseline	ベースライン	べーすらいん	6	reference system in an experiment
 runqueue	ランキュー	らんきゅー	7	cf. ready queue
 run-to-completion scheduling	実行完了型スケジューリング	じっこうかんりょうがたすけじゅーりんぐ	7	non-preemptive
 first-come first-served scheduling	先着順スケジューリング	せんちゃくじゅんすけじゅーりんぐ	7	

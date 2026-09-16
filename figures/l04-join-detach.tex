@@ -1,0 +1,40 @@
+% Joinable versus detached threads: lifetimes of the main thread and a child.
+% Usage: \input{figures/l04-join-detach}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  life/.style={line width=2pt, ln-accent},
+  gone/.style={draw=ln-muted, fill=ln-box, minimum height=3mm,
+               inner sep=0pt, anchor=west},
+  ev/.style={-{Stealth[length=1.6mm]}},
+  call/.style={font=\scriptsize\ttfamily, anchor=base, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center, text=ln-muted},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=base},
+  frame/.style={draw=ln-rule, rounded corners=2pt}]
+  % ---------------------------------------------------------- joinable
+  \draw[frame] (0,-13) rectangle (55,19);
+  \node[ttl] at (27.5,21) {\iflangja{ジョイン可能スレッド}{joinable thread}};
+  \node[anchor=west] at (1,10) {main};
+  \node[anchor=west] at (1,0) {\iflangja{子}{child}};
+  \draw[life] (11,10) -- (53,10);
+  \draw[ev] (19,10) -- (19,1.6);
+  \node[call] at (19,12.6) {pthread\_create};
+  \draw[life] (19,0) -- (31,0);
+  \node[gone, minimum width=13mm] (z) at (31,0) {};
+  \draw[ev] (44,10) -- (44,1.7);
+  \node[call] at (44,12.6) {pthread\_join};
+  \node[lab, anchor=north] at (37.5,-2.5)
+    {\iflangja{終了したが未ジョイン\\（資源を保持）}{terminated, not joined\\(resources kept)}};
+  % ---------------------------------------------------------- detached
+  \draw[frame] (61,-13) rectangle (116,19);
+  \node[ttl] at (88.5,21) {\iflangja{デタッチスレッド}{detached thread}};
+  \node[anchor=west] at (62,10) {main};
+  \node[anchor=west] at (62,0) {\iflangja{子}{child}};
+  \draw[life] (72,10) -- (101,10);
+  \draw[thick] (99.6,8.6) -- (102.4,11.4) (99.6,11.4) -- (102.4,8.6);
+  \node[call] at (101,12.6) {pthread\_exit};
+  \draw[ev] (78,10) -- (78,1.6);
+  \node[call] at (78,12.6) {pthread\_create};
+  \draw[life] (78,0) -- (111,0);
+  \draw[thick] (111,-2) -- (111,2);
+  \node[lab, anchor=north] at (100,-2.5)
+    {\iflangja{終了時に資源を解放}{resources released\\on termination}};
+\end{tikzpicture}

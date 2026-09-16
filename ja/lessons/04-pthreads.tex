@@ -1,0 +1,809 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{スレッドのケーススタディ: PThreads}
+\lessoninfo{
+  video={P2L3},
+  textbook={OSTEP \cite{ostep} ch.~27，30；Silberschatz ら \cite{silberschatz2018} ch.~4，7；Kerrisk \cite{kerrisk2010} ch.~29--30},
+  keywords={POSIX，POSIXスレッド，スレッド生成，スレッド属性，ジョイン可能スレッド，デタッチスレッド，スレッドへの引数，ミューテックス，trylock，条件変数，安全な使い方，生産者・消費者問題，有界バッファ},
+}
+
+第3章では，スレッドと，スレッドが協調するための機構を Birrell
+\cite{birrell1989} の抽象的な記法---\texttt{Fork} と \texttt{Join}，
+ミューテックス，条件変数---で述べた．この章では，これらの機構を提供し，
+ほとんどの Unix 系オペレーティングシステムがサポートしている具体的な
+インタフェースである POSIX スレッド，すなわち Pthreads を扱う．機構ごとに
+対応するデータ型と呼び出しを示し，実際のインタフェースが Birrell の
+モデルに付け加える細部---スレッド属性，デタッチスレッド，同期構成要素の
+初期化---と，それらを安全に使うための規則を述べる．最後に生産者・消費者
+プログラムの全体を示す．
+
+\section{POSIX スレッド}
+\label{sec:l04-posix}
+
+\term{POSIX}[Portable Operating System Interface]%
+\index{Portable Operating System Interface|see{POSIX}} は，オペレーティング
+システムがアプリケーションに提供するインタフェースを規定する IEEE 標準の
+一群である．\source{P2L3，レッスンの概要；POSIX.1 \cite{posix2017}；
+OSTEP ch.~27．}システムコールとライブラリ関数の名前，引数，意味を定めるが，
+オペレーティングシステムがそれらをどう実装するかは定めない．その目的は
+移植性である．POSIX に従って書かれたプログラムは，最初に書かれた
+オペレーティングシステムだけでなく，この標準に準拠するすべての
+オペレーティングシステムでコンパイルして実行できる．
+
+\begin{definition}[POSIXスレッド]
+  POSIX のうち，スレッドを生成・管理するためのインタフェースと，スレッドが
+  協調するための同期構成要素---ミューテックスと条件変数---を規定する部分を
+  \term[POSIXすれっど]{POSIXスレッド}[POSIX threads]%
+  \index{Pthreads|see{POSIXスレッド}}，または \emph{Pthreads} と呼ぶ．
+\end{definition}
+
+Pthreads は POSIX.1 基本標準の一部である．POSIX の他の部分と同様に，
+Pthreads も実装は規定しない．例えば Pthreads ライブラリは，第3章の
+マルチスレッドモデルのいずれに従ってスレッドをカーネルレベルスレッドに
+対応付けてもよい．
+その関数と型の名前は \texttt{pthread\_} で，定数の名前は
+\texttt{PTHREAD\_} で始まる．データ型は \texttt{\_t} で終わり，不透明で
+あるため，プログラムはインタフェースの関数を通じてのみそれらを操作する．
+
+このインタフェースは第3章の機構に忠実に対応している．
+\cref{tab:l04-birrell} は Birrell の各操作に対応する Pthreads の要素を
+挙げたものである．以下の節ではそれらを順に扱う．
+
+\begin{table}[htbp]
+  \centering
+  \caption{Birrell の機構（第3章）と対応する Pthreads の要素．
+    \texttt{t}，\texttt{m}，\texttt{c} はそれぞれスレッド，ミューテックス，
+    条件変数を表す．}
+  \label{tab:l04-birrell}
+  \small
+  \setlength{\tabcolsep}{2pt}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    操作 & Birrell & Pthreads \\
+    \midrule
+    スレッド型      & \texttt{Thread}           & \texttt{pthread\_t} \\
+    生成            & \texttt{Fork(proc, args)}
+                    & \texttt{pthread\_create(\&t, \&attr, proc, arg)} \\
+    ジョイン        & \texttt{Join(t)}          & \texttt{pthread\_join(t, \&status)} \\
+    \midrule
+    ミューテックス型 & \texttt{Mutex}            & \texttt{pthread\_mutex\_t} \\
+    ロック          & \texttt{Lock(m) \{}       & \texttt{pthread\_mutex\_lock(\&m)} \\
+    アンロック      & \texttt{\}}               & \texttt{pthread\_mutex\_unlock(\&m)} \\
+    \midrule
+    条件変数型      & \texttt{Condition}        & \texttt{pthread\_cond\_t} \\
+    wait            & \texttt{Wait(m, c)}       & \texttt{pthread\_cond\_wait(\&c, \&m)} \\
+    signal          & \texttt{Signal(c)}        & \texttt{pthread\_cond\_signal(\&c)} \\
+    broadcast       & \texttt{Broadcast(c)}     & \texttt{pthread\_cond\_broadcast(\&c)} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{スレッドの生成}
+\label{sec:l04-creation}
+
+Pthreads では，スレッドは Birrell の \texttt{Thread} に対応する
+\texttt{pthread\_t} 型の変数で表される．\source{P2L3，PThread の生成；
+OSTEP ch.~27；Kerrisk ch.~29．}この変数はスレッドを識別し，ライブラリは
+これを通じて，識別子，実行状態，そのスレッドを管理するために必要なその他の
+情報を持つスレッドのデータ構造に到達する．スレッドの生成とジョインには
+2つの関数を用いる．
+\begin{lstlisting}[language=C, numbers=none]
+#include <pthread.h>
+
+int pthread_create(pthread_t *thread,
+                   const pthread_attr_t *attr,
+                   void *(*start_routine)(void *),
+                   void *arg);
+int pthread_join(pthread_t thread, void **status);
+\end{lstlisting}
+
+\texttt{pthread\_create} は Birrell の \texttt{Fork(proc, args)} に対応
+する．生成された新しいスレッドは \texttt{start\_routine(arg)} の実行から
+始まり，そのスレッドの識別子は \texttt{*thread} に格納される．スタート
+ルーチンは \texttt{void~*} を受け取って \texttt{void~*} を返すので，任意の
+型のデータへのポインタをスレッドに渡せる．複数の引数は構造体にまとめ，その
+構造体へのポインタとして渡す．第2引数の \texttt{attr} に対応するものは
+Birrell の \texttt{Fork} にはなく，これについては後述する．この呼び出しは，
+スレッドが生成されれば 0 を，そうでなければ---例えばシステムにもう1つ
+スレッドを作るだけの資源がない場合には---エラー番号を返す．
+
+\texttt{pthread\_join} は \texttt{Join(t)} に対応し，\texttt{thread} が
+終了するまで呼び出し元のスレッドをブロックする．スレッドが終了するのは，
+そのスタートルーチンが return したとき，あるいは
+\texttt{pthread\_exit(status)} を呼んだときである．スタートルーチンが
+返した値，あるいは \texttt{pthread\_exit} に渡した値は，\texttt{*status}
+に格納される．結果を必要としない呼び出し元はここに \texttt{NULL} を渡す．
+\texttt{pthread\_create} と同様に，\texttt{pthread\_join} も成功したときは
+0 を，失敗したときはエラー番号を返す．
+
+\subsection{スレッド属性}
+\label{sec:l04-attr}
+
+\begin{definition}[スレッド属性]
+  スタックサイズ，ジョインできるかどうか，スケジューリング方針と優先度，
+  スコープなど，スレッドの生成時に設定されるスレッドの性質を
+  \term[すれっどぞくせい]{スレッド属性}[thread attribute]と呼ぶ．新しい
+  スレッドの属性は，\texttt{pthread\_attr\_t} 型の属性オブジェクトとして
+  \texttt{pthread\_create} に渡す．
+\end{definition}
+
+\Needspace{8\baselineskip}
+属性オブジェクトの代わりに \texttt{NULL} を渡すと，既定の属性を持つ
+スレッドが生成される．属性オブジェクト自体も不透明であり，関数を通じてのみ
+操作する．
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_attr_init(pthread_attr_t *attr);
+int pthread_attr_destroy(pthread_attr_t *attr);
+/* 属性 xxx ごとに: */
+int pthread_attr_setxxx(pthread_attr_t *attr, ...);
+int pthread_attr_getxxx(const pthread_attr_t *attr, ...);
+\end{lstlisting}
+\texttt{pthread\_attr\_init} はオブジェクトを既定値で埋める．この関数は，
+オブジェクトに他の関数を適用する前に呼ばなければならず，
+\texttt{pthread\_attr\_destroy} がそれを解放する．オブジェクトが参照される
+のは \texttt{pthread\_create} の実行中だけなので，スレッドが生成された後は
+すぐに破棄してよく，別のスレッドのために再利用してもよい．
+\cref{tab:l04-attributes} は，この講義で重要になる属性を挙げたものである．
+スコープ属性は，第3章のシステムスコープとプロセススコープのどちらかを選ぶ．
+\texttt{PTHREAD\_SCOPE\_SYSTEM} ではスレッドはシステム内のすべての
+スレッドと CPU を奪い合い，\texttt{PTHREAD\_SCOPE\_PROCESS} では自分の
+プロセスのスレッドとだけ奪い合う．\margin{Linux はシステムスコープしか
+サポートしておらず，\texttt{PTHREAD\_SCOPE\_PROCESS} を要求すると
+\texttt{ENOTSUP} で失敗する．}%
+\index{しすてむすこーぷ@システムスコープ}\index{ぷろせすすこーぷ@プロセススコープ}
+
+\begin{table}[htbp]
+  \centering
+  \caption{スレッド属性とそれを設定する関数．いずれにも対応する
+    \texttt{get} 関数がある．}
+  \label{tab:l04-attributes}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}>{\RaggedRight}p{24mm}l>{\RaggedRight\arraybackslash}p{36mm}@{}}
+    \toprule
+    属性 & 設定する関数 & 意味 \\
+    \midrule
+    スタックサイズ & \texttt{pthread\_attr\_setstacksize}
+                 & スレッドのスタックの大きさ \\
+    デタッチ状態 & \texttt{pthread\_attr\_setdetachstate}
+                 & ジョイン可能（既定）またはデタッチ
+                   （\cref{sec:l04-detached}） \\
+    スコープ     & \texttt{pthread\_attr\_setscope}
+                 & システムスコープまたはプロセススコープ \\
+    継承         & \texttt{pthread\_attr\_setinheritsched}
+                 & 方針と優先度を生成元から継承するか，オブジェクトから
+                   取るか \\
+    スケジューリング方針 & \texttt{pthread\_attr\_setschedpolicy}
+                 & 例: \texttt{SCHED\_OTHER}，\texttt{SCHED\_FIFO}，
+                   \texttt{SCHED\_RR} \\
+    優先度       & \texttt{pthread\_attr\_setschedparam}
+                 & 方針の中での優先度 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\Needspace{10\baselineskip}
+\section{デタッチスレッド}
+\label{sec:l04-detached}
+
+\begin{definition}[ジョイン可能スレッド]
+  \term[じょいんかのうすれっど]{ジョイン可能スレッド}[joinable thread]とは，
+  他のスレッドがジョインできるスレッドである．終了すると，その識別子と終了
+  ステータスは \texttt{pthread\_join} が回収するまで保持される．Pthreads の
+  スレッドは，デタッチされた状態で生成されるか後からデタッチされない限り，
+  ジョイン可能である．
+\end{definition}
+
+プロセスのスレッドは対等である．ジョイン可能なスレッドをジョインできるのは，
+それを生成したスレッドだけではなく，どのスレッドでもよい．\source{P2L3，
+PThread のデタッチ；Kerrisk ch.~29．}それでも通常の構成は，親スレッドが子を
+生成して後でジョインするというものであり，ジョインは結果を回収する以上の
+働きをする．終了したがジョインされていないジョイン可能なスレッドは
+\emph{ゾンビ}スレッドとして残る．その識別子と終了ステータスは，いずれかの
+スレッドがジョインするまで保持され，誰もジョインしなければプロセスが生きて
+いる間ずっと資源を占有する．さらにメインスレッドは，子が終わる前に
+\texttt{main} から return してはならない．return するとプロセス全体が終了し，
+実行中のすべてのスレッドもそれとともに終了するからである．
+
+\begin{definition}[デタッチスレッド]
+  \term[でたっちすれっど]{デタッチスレッド}[detached thread]とは，ジョイン
+  できないスレッドである．終了すると，その資源は直ちに解放される．
+\end{definition}
+
+\Needspace{6\baselineskip}
+スレッドは生成後に，自分自身または他のスレッドによってデタッチできる．
+また属性オブジェクトでデタッチ状態を設定すれば，デタッチされた状態で生成
+できる．
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_detach(pthread_t thread);
+
+pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+\end{lstlisting}
+デタッチされたスレッドを再びジョイン可能にすることはできない．デタッチ
+すればジョインは不要になる．誰もそのスレッドのステータスを回収する必要が
+なく，資源は終了と同時に回収される．一方でスレッド間の関係は変わらず，
+どちらの場合もスレッドは対等である．スレッドがプロセスを終了させずに自分
+だけ終了するには \texttt{pthread\_exit(status)} を呼ぶ．この呼び出しは
+呼び出し元のスレッドだけを終了させ，プロセスは最後のスレッドが終了するまで
+続く．残りのスレッドがジョイン可能かデタッチされているかは関係ない
+（\cref{fig:l04-join-detach}）．\caution{\texttt{main} からの return や
+\texttt{exit} の呼び出しは，デタッチスレッドも含めてプロセス全体を終了
+させる．}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l04-join-detach}
+  \caption{左: ジョインされる前に終了したジョイン可能な子は，
+    \texttt{pthread\_join} がステータスを回収するまで資源を保持する．
+    右: デタッチされた子は自分で資源を解放する．メインスレッドは
+    \texttt{pthread\_exit} で終了し，残りのスレッドがジョイン可能か
+    デタッチされているかによらずプロセスは動き続ける．}
+  \label{fig:l04-join-detach}
+\end{figure}
+
+\Needspace{9\baselineskip}
+\begin{example}
+  \label{ex:l04-detached}
+  メインスレッドは，システムスコープを持つデタッチされたログ出力スレッドを
+  起動して終了し，ログ出力スレッドに作業を終えさせる．ログ出力スレッドは
+  普通のスタートルーチンである．
+  \begin{lstlisting}[language=C, numbers=none]
+void *logger(void *arg) {        /* スレッドのメイン */
+  printf("logger: flushing records\n");
+  pthread_exit(NULL);
+}
+\end{lstlisting}
+  \Needspace{14\baselineskip}
+  メインスレッドは属性オブジェクトを用意し，ログ出力スレッドを生成して
+  終了する．
+  \begin{lstlisting}[language=C, numbers=none]
+int main(void) {
+  pthread_t tid;
+  pthread_attr_t attr;
+
+  pthread_attr_init(&attr);        /* 必須 */
+  pthread_attr_setdetachstate(&attr,
+                              PTHREAD_CREATE_DETACHED);
+  pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
+  pthread_create(&tid, &attr, logger, NULL);
+  pthread_attr_destroy(&attr);
+  pthread_exit(NULL);              /* return 0 は不可 */
+}
+\end{lstlisting}
+  \texttt{main} が \texttt{return 0} で終わっていたら，ログ出力スレッドが
+  何かを表示する前にプロセスが終了しうる．
+\end{example}
+
+\begin{keypoint}
+  Pthreads のスレッドは，デタッチされない限りジョイン可能である．ジョイン
+  可能なスレッドはすべてジョインするか，結果が誰にも必要ないスレッドは
+  デタッチする．プロセスを終了させてはならないメインスレッドは，return
+  する代わりに \texttt{pthread\_exit} を呼ぶ．
+\end{keypoint}
+
+\section{Pthreads プログラムのコンパイル}
+\label{sec:l04-compiling}
+
+Pthreads を使うプログラムには3つのものが必要である．\source{P2L3，
+PThreads プログラムのコンパイル；OSTEP ch.~27．}
+\begin{enumerate}
+  \item \textbf{ヘッダ．}Pthreads を使うソースファイルはすべて
+    \texttt{<pthread.h>} をインクルードする．このヘッダが型，定数，関数を
+    宣言する．
+  \item \textbf{コンパイラのフラグ．}プログラムは \texttt{-pthread} または
+    \texttt{-lpthread} を付けてコンパイル・リンクする．
+\begin{lstlisting}[numbers=none]
+gcc -o main main.c -pthread
+gcc -o main main.c -lpthread
+\end{lstlisting}
+    \texttt{-lpthread} は Pthreads ライブラリをリンクするだけだが，
+    \mbox{\texttt{-pthread}} はマルチスレッドのコードのためにプラット
+    フォームが必要とするプリプロセッサ定義も設定する．より移植性が高いのは
+    後者である．\margin{glibc~2.34 以降，Pthreads の関数は \texttt{libc}
+    自体の一部である．}
+  \item \textbf{戻り値の検査．}Pthreads の関数は，\texttt{errno} ではなく
+    戻り値で失敗を報告する．成功なら 0，そうでなければエラー番号である．
+    処理を続けられない呼び出し元は，例えば \texttt{strerror} でその番号を
+    報告して終了する．\texttt{pthread\_create} の結果を無視するプログラム
+    は，後になって，生成されなかったスレッドを，設定されなかった識別子を
+    使ってジョインしてしまうことがある．
+\end{enumerate}
+
+\section{スレッド生成の例}
+\label{sec:l04-examples}
+
+3つの小さなプログラムで，スレッドを生成してジョインする方法と，新しい
+スレッドにデータを届ける方法を示す．\source{P2L3，PThread の生成例
+1--3；OSTEP ch.~27．}
+
+\Needspace{23\baselineskip}
+\subsection{複数のスレッドの生成とジョイン}
+
+最初のプログラムは，既定の属性を持つスレッドを決まった数だけ生成し，その
+すべてを待つ．
+\begin{lstlisting}[language=C, numbers=none]
+#include <stdio.h>
+#include <pthread.h>
+#define NUM_THREADS 3
+
+void *greet(void *arg) {        /* スレッドのメイン */
+  printf("Hello from a worker\n");
+  return NULL;
+}
+
+int main(void) {
+  pthread_t tid[NUM_THREADS];
+  int i;
+
+  for (i = 0; i < NUM_THREADS; i++)  /* 生成     */
+    pthread_create(&tid[i], NULL, greet, NULL);
+  for (i = 0; i < NUM_THREADS; i++)  /* ジョイン */
+    pthread_join(tid[i], NULL);
+  return 0;
+}
+\end{lstlisting}
+このプログラムは2つの段階からなる．最初のループがスレッドを生成し，2番目の
+ループがそれらをジョインする．各ワーカーは1行を表示する．ワーカーは何の
+データも共有しないので同期は不要であり，すべてが同じ文字列を表示するので，
+出力はスレッドがスケジュールされる順序に依存しない．ジョインは，すべての
+ワーカーが自分の行を表示する前に \texttt{main} が return して---それに
+よってプロセスを終了させて---しまうのを防ぐ．
+
+\Needspace{12\baselineskip}
+\subsection{引数を渡す}
+
+各ワーカーが自分の番号を表示するようにしたいとする．スタートルーチンは
+引数を通じて番号を読む．
+\begin{lstlisting}[language=C, numbers=none]
+void *show_index(void *arg) {   /* スレッドのメイン */
+  int *p = (int *)arg;
+  int my_num = *p;
+  printf("Thread %d\n", my_num);
+  return NULL;
+}
+\end{lstlisting}
+\Needspace{4\baselineskip}
+素直に書くと，ループ変数のアドレスを渡すことになる．
+\begin{lstlisting}[language=C, numbers=none]
+for (i = 0; i < NUM_THREADS; i++)
+  pthread_create(&tid[i], NULL, show_index, &i);
+\end{lstlisting}
+このプログラムが $0$，$1$，$2$ を表示する保証はない．どの
+スレッドも同じアドレス，すなわち \texttt{main} のスタックフレームにある
+唯一の変数 \texttt{i} のアドレスを受け取り（\cref{fig:l04-args} 左），
+スレッドが値を読むのは \texttt{*p} を実行した時点である．その時点で
+\texttt{main} はすでに \texttt{i} を増やしているかもしれない．\texttt{i}
+はそのアドレスを持つすべてのスレッドから見えるので，あるスレッドが加えた
+変更はすべてのスレッドに見え，\texttt{main} が \texttt{i} を変更している
+間にそれを読むスレッドはデータ競合（第3章）にある．%
+\index{きょうごうじょうたい@競合状態}したがってワーカーは，別のワーカーに
+属する番号を表示することもあれば，生成ループの後でしか \texttt{i} が
+取らない値---ループ終了時の $3$ や，\texttt{i} を再利用するジョイン
+ループが設定した値---を表示することもある．\cref{tab:l04-arg-race} は
+起こりうる実行の1つを示す．
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l04-args}
+  \caption{左: すべてのスレッドがループ変数 \texttt{i} のアドレスを
+    受け取り，その値はスレッドの起動中に変化する．右: 各スレッドは自分
+    専用の配列要素のアドレスを受け取り，その値はスレッドの生成後に変化
+    しない．}
+  \label{fig:l04-args}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{\texttt{\&i} を渡すプログラムを3スレッドで実行した例．T0 は
+    \texttt{main} が \texttt{i} を増やした後に読み，T2 はジョインループが
+    \texttt{i} を 0 に戻した後に読む．自分の番号を表示するのは T1 だけで
+    あり，プログラムは 1，1，0 を表示する．}
+  \label{tab:l04-arg-race}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}clcl@{}}
+    \toprule
+    ステップ & メインスレッド & \texttt{i} & ワーカー \\
+    \midrule
+    1 & \texttt{\&i} で T0 を生成              & 0 & \\
+    2 & \texttt{i++}                           & 1 & \\
+    3 & \texttt{\&i} で T1 を生成              & 1 & \\
+    4 &                                        & 1 & T0 が \texttt{*p} を読む: 1 を表示 \\
+    5 &                                        & 1 & T1 が \texttt{*p} を読む: 1 を表示 \\
+    6 & \texttt{i++}，\texttt{\&i} で T2 を生成 & 2 & \\
+    7 & \texttt{i++}，生成ループ終了            & 3 & \\
+    8 & ジョインループ: \texttt{i = 0}，T0 をジョイン & 0 & \\
+    9 &                                        & 0 & T2 が \texttt{*p} を読む: 0 を表示 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\Needspace{10\baselineskip}
+\subsection{専用のデータを渡す}
+
+各スレッドが，自分だけに属し他のどのスレッドも変更しないデータのアドレスを
+受け取るようにすれば，競合はなくなる．
+\begin{lstlisting}[language=C, numbers=none]
+int t_num[NUM_THREADS];
+
+for (i = 0; i < NUM_THREADS; i++) {
+  t_num[i] = i;
+  pthread_create(&tid[i], NULL, show_index, &t_num[i]);
+}
+\end{lstlisting}
+各ワーカーは今度は \texttt{t\_num} の自分の要素を読む．その値はスレッドの
+生成前に設定され，その後は決して変化しない（\cref{fig:l04-args} 右）．
+すべての番号がちょうど一度ずつ表示される．ただし行の\emph{順序}は依然として
+決まらない．それはスレッドがどうスケジュールされるかに依存し，3行のどの
+並びも起こりうる．配列は \texttt{main} のスタックフレームにあり，
+\texttt{main} はすべてのスレッドをジョインするまで return しないので，
+スレッドがそれを使っている間このメモリは有効なままである．\caution{スレッド
+がデータを読む前に return しうる関数の局所変数のアドレスを，スレッドに
+渡してはならない．}
+
+\begin{keypoint}
+  アドレスで渡した引数は共有されるのであって，コピーされるのではない．各
+  スレッドには，そのスレッドが使い終わるまで生き続け，他のどのスレッドも
+  変更しない専用のデータ---配列の要素や，そのスレッドのために確保した
+  構造体---を与える．
+\end{keypoint}
+
+\Needspace{9\baselineskip}
+\section{ミューテックス}
+\label{sec:l04-mutex}
+
+Pthreads のミューテックスは，第3章のミューテックスと同様に，並行する
+スレッドの間の相互排除の問題を解決する．\source{P2L3，PThread の
+ミューテックス；OSTEP ch.~27--28；Silberschatz ら ch.~7．}%
+\index{みゅーてっくす@ミューテックス}ミューテックスの型は
+\texttt{pthread\_mutex\_t} であり，基本的な操作は2つである．
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_mutex_lock(pthread_mutex_t *mutex);
+int pthread_mutex_unlock(pthread_mutex_t *mutex);
+\end{lstlisting}
+意味は Birrell のミューテックスと同じである．空いているミューテックスを
+ロックしたスレッドがその所有者となり，他のスレッドが所有する
+ミューテックスをロックしようとしたスレッドは，それが解放されるまで
+ブロックする．違いは構文上のものだが，重要である．Birrell の
+\texttt{Lock(m)~\{\,\ldots\,\}} はブロックの終わりで暗黙にミューテックスを
+解放する．Pthreads ではクリティカルセクションは2つの呼び出しの間のコード
+であり，プログラムはそこから出るすべての経路---早期の return やエラー処理
+の経路も含めて---で明示的に \texttt{pthread\_mutex\_unlock} を呼ばなければ
+ならない．
+
+\Needspace{16\baselineskip}
+\begin{example}
+  \label{ex:l04-safe-insert}
+  第3章の安全なリスト挿入を C と Pthreads で書くと次のようになる．
+  \begin{lstlisting}[language=C, numbers=none]
+struct node { int value; struct node *next; };
+
+struct node *head = NULL;  /* 共有リスト */
+pthread_mutex_t list_m = PTHREAD_MUTEX_INITIALIZER;
+
+void safe_insert(int value) {
+  struct node *e = malloc(sizeof *e);
+  e->value = value;
+
+  pthread_mutex_lock(&list_m);
+  e->next = head;          /* クリティカルセクション */
+  head = e;
+  pthread_mutex_unlock(&list_m);
+}
+\end{lstlisting}
+  共有の先頭ポインタを読み書きする2つの文だけがクリティカルセクションに
+  ある．新しい要素の確保と値の設定は共有データに関わらないので，ロックを
+  取る前に行う．こうしてクリティカルセクションは短く保たれる．
+\end{example}
+
+\Needspace{11\baselineskip}
+\subsection{その他のミューテックス操作}
+
+基本的なミューテックスのインタフェースは，さらに3つの操作で完結する．
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_mutex_init(pthread_mutex_t *mutex,
+                       const pthread_mutexattr_t *attr);
+int pthread_mutex_trylock(pthread_mutex_t *mutex);
+int pthread_mutex_destroy(pthread_mutex_t *mutex);
+\end{lstlisting}
+\begin{description}
+  \item[\texttt{pthread\_mutex\_init}] は，最初に使う前にミューテックスを
+    初期化する．その属性オブジェクトは \texttt{pthread\_mutexattr\_t} 型で
+    あり，例えばプロセス間で共有してよいかどうか（第9章）といった
+    ミューテックスの振る舞いを指定する．\texttt{NULL} は既定値を選ぶ．
+    既定の属性を持つミューテックスは，\cref{ex:l04-safe-insert} のように，
+    マクロ \texttt{PTHREAD\_MUTEX\_INITIALIZER} を使って静的に初期化する
+    こともできる．
+  \item[\texttt{pthread\_mutex\_trylock}] は，ミューテックスが空いていれば
+    それをロックして 0 を返す．ミューテックスがロックされている場合は
+    ブロックせず，直ちにエラー \texttt{EBUSY} を返す．呼び出したスレッドは
+    別のことをして，後で再試行できる．
+  \item[\texttt{pthread\_mutex\_destroy}] は，不要になった
+    ミューテックスのデータ構造を解放する．ミューテックスはロックされて
+    いてはならない．
+\end{description}
+
+\Needspace{8\baselineskip}
+\begin{example}
+  あるスレッドが，主たる仕事を遅らせることなく，ミューテックスがたまたま
+  空いているときだけ補助的な統計情報を更新する．
+  \begin{lstlisting}[language=C, numbers=none]
+if (pthread_mutex_trylock(&stats_m) == 0) {
+  stats.requests += local_count;
+  pthread_mutex_unlock(&stats_m);
+  local_count = 0;
+}  /* 空きがなければ局所的に数え，後で再試行 */
+\end{lstlisting}
+\end{example}
+
+\subsection{ミューテックスの安全な使い方}
+
+ミューテックスに関する最もよくある誤りは，いくつかの規則で避けられる．
+\begin{itemize}
+  \item \textbf{共有データ1つにつきミューテックス1つ．}共有変数への
+    すべてのアクセスは，同じミューテックスを通らなければならない．異なる
+    コード経路が同じデータを異なるミューテックスで保護しても，互いに排除
+    し合うことはない．
+  \item \textbf{ミューテックスは，それを使うすべてのスレッドから見えなけれ
+    ばならない．}したがってミューテックスは大域スコープで，あるいはこれらの
+    スレッドすべてが到達できる構造体の中で宣言する．スレッド関数の局所変数
+    として宣言したミューテックスは，スレッドごとに別のミューテックスになる．
+  \item \textbf{ミューテックスは大域的な順序でロックする．}すべての
+    スレッドが同じ順序でミューテックスを獲得すれば，第3章のデッドロックは
+    起こりえない．\index{ろっくじゅんじょ@ロック順序}
+  \item \textbf{必ずアンロックし，正しいミューテックスをアンロックする．}%
+    アンロックを忘れると，そのミューテックスを必要とする他のすべての
+    スレッドがブロックする．誤ったミューテックスをアンロックすると，
+    一方のクリティカルセクションが保護されないまま，もう一方がロックされた
+    ままになる．
+\end{itemize}
+
+\section{条件変数}
+\label{sec:l04-condvar}
+
+\texttt{pthread\_cond\_t} 型の Pthreads の条件変数は，Birrell の3つの操作を
+提供する．\source{P2L3，PThread の条件変数；OSTEP ch.~27，30．}%
+\index{じょうけんへんすう@条件変数}
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_cond_wait(pthread_cond_t *cond,
+                      pthread_mutex_t *mutex);
+int pthread_cond_signal(pthread_cond_t *cond);
+int pthread_cond_broadcast(pthread_cond_t *cond);
+\end{lstlisting}
+意味は第3章のとおりである．\texttt{pthread\_cond\_wait} は \texttt{mutex}
+を保持した状態で呼び出す．この関数はミューテックスをアトミックに解放して
+呼び出したスレッドを \texttt{cond} の待ちキューに入れ，スレッドが起こされる
+と，戻る前にミューテックスを再獲得する．\texttt{pthread\_cond\_signal} は
+待っているスレッドの少なくとも1つを，\texttt{pthread\_cond\_broadcast} は
+そのすべてを起こす．どちらも，待っているスレッドがなければ何も起こらない．%
+\caution{引数の順序は Birrell の \texttt{Wait(m, c)} と逆である．
+\texttt{pthread\_cond\_wait} は条件変数を先に取る．}
+
+POSIX は，どのスレッドも signal していないのに
+\texttt{pthread\_cond\_wait} が戻ることを許しており，これもスプリアス
+ウェイクアップと呼ぶ．\index{すぷりあすうぇいくあっぷ@スプリアスウェイクアップ}%
+これは，利用できない通知によってスレッドが起こされる第3章の場合とは別の
+事象である．どちらも起こされたスレッドが先に進めない点は同じであり，どちらも
+同じ規則で処理される．すなわち，起こされたスレッドは述語を再検査する．
+したがって第3章の \texttt{while} ループは，単に望ましい習慣であるだけでなく
+必須である．
+\begin{lstlisting}[language=C, numbers=none]
+pthread_mutex_lock(&m);
+while (!predicate)
+  pthread_cond_wait(&c, &m);
+/* 述語が成り立ち m を保持している */
+update_shared_state();
+pthread_mutex_unlock(&m);
+\end{lstlisting}
+
+\Needspace{6\baselineskip}
+ミューテックスと同様に，条件変数も明示的に初期化・破棄する．
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_cond_init(pthread_cond_t *cond,
+                      const pthread_condattr_t *attr);
+int pthread_cond_destroy(pthread_cond_t *cond);
+\end{lstlisting}
+\texttt{pthread\_condattr\_t} 型の属性オブジェクトは，例えばプロセス間で
+共有されるかどうかといった条件変数の振る舞いを指定する．\texttt{NULL} は
+既定値を選び，静的初期化子 \texttt{PTHREAD\_COND\_INITIALIZER} も同じ既定値
+を与える．
+
+\subsection{条件変数の安全な使い方}
+
+\begin{itemize}
+  \item \textbf{待っているスレッドへの通知を忘れない．}述語が依存する状態を
+    変更したスレッドは必ず，その述語を待つスレッドがブロックしている条件
+    変数に signal または broadcast しなければならない．
+  \item \textbf{迷ったら broadcast する．}signal で足りるところで
+    broadcast しても正しさは保たれる．起こされたスレッドはそれぞれ述語を
+    再検査し，先に進めなければ再び待つからである．代償は性能であり，
+    これらのスレッドは無駄に起こされてスケジュールされる．
+  \item \textbf{signal や broadcast にミューテックスは必要ない．}通知する
+    かどうかの判断が，ミューテックスを保持している間しか読めない共有状態に
+    依存しない場合，通知はミューテックスを解放した後に発行できる．そう
+    すれば，起こされたスレッドは，signal したスレッドがまだ保持している
+    ミューテックスを待たされずに済む．この待ちが，第3章で調べたスプリアス
+    ウェイクアップの原因である．通知がまったくないのに
+    \texttt{pthread\_cond\_wait} が戻ることは依然としてありうるので，これに
+    よって \texttt{while} ループが不要になるわけではない．
+\end{itemize}
+
+\begin{keypoint}
+  Pthreads のミューテックスと条件変数は Birrell と同じ意味を持つ．それに
+  加わるのは，明示的なアンロック，明示的な初期化と破棄，そして属性
+  オブジェクトである．wait は \texttt{while} ループの中で行い，述語が変化
+  した可能性があるときは必ず通知し，通知するかどうかの判断が許すなら
+  アンロックの後に通知する．
+\end{keypoint}
+
+\section{生産者・消費者の例}
+\label{sec:l04-prodcons}
+
+第3章の生産者・消費者問題は，ここまでの内容によって Pthreads の完全な
+プログラムとして解ける．\source{P2L3，PThreads を用いた生産者と消費者の
+例；OSTEP ch.~30．}\index{せいさんしゃしょうひしゃもんだい@生産者・消費者問題}%
+生産者スレッドが共有の\emph{有界バッファ}---循環キューとして使う
+\texttt{BUF\_SIZE} 個のスロットの配列---に値を挿入し，消費者スレッドが
+挿入された順にそれらを取り出す．バッファは4つの変数で記述される．配列
+\texttt{buffer}，次に埋めるスロットの添字 \texttt{add}，次に空けるスロットの
+添字 \texttt{rem}，そしてバッファ内の値の個数 \texttt{num} である．どちらの
+添字も \texttt{BUF\_SIZE} を法として進むので，キューは配列の末尾で先頭に
+戻る（\cref{fig:l04-bounded-buffer}）．
+
+1つのミューテックス \texttt{m} がこれらの変数を保護する．生産者はバッファが
+満杯の間 \texttt{c\_prod} で待ち，消費者は空の間 \texttt{c\_cons} で待つ．
+共有状態はすべて，ミューテックスの安全な使い方が要求するとおり大域変数で
+あり，静的に初期化される．
+\begin{lstlisting}[language=C, numbers=none]
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#define BUF_SIZE  4     /* 共有バッファのスロット数  */
+#define NUM_ITEMS 10    /* 生産する値の個数          */
+
+int buffer[BUF_SIZE];   /* 共有循環バッファ          */
+int add = 0;            /* 次に埋めるスロット        */
+int rem = 0;            /* 次に空けるスロット        */
+int num = 0;            /* バッファ内の値の個数      */
+
+pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t c_cons = PTHREAD_COND_INITIALIZER;
+pthread_cond_t c_prod = PTHREAD_COND_INITIALIZER;
+
+void *producer(void *param);
+void *consumer(void *param);
+\end{lstlisting}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l04-bounded-buffer}
+  \caption{$\texttt{BUF\_SIZE}=4$ の生産者・消費者プログラム．1つの
+    ミューテックスがバッファの状態をすべて保護し，各スレッドは自分専用の
+    条件変数で待つ．}
+  \label{fig:l04-bounded-buffer}
+\end{figure}
+
+\Needspace{14\baselineskip}
+メインスレッドは2つのスレッドを生成してジョインする．
+\begin{lstlisting}[language=C, numbers=none]
+int main(void) {
+  pthread_t tid1, tid2;
+
+  if (pthread_create(&tid1, NULL, producer, NULL) != 0 ||
+      pthread_create(&tid2, NULL, consumer, NULL) != 0) {
+    fprintf(stderr, "cannot create threads\n");
+    exit(1);
+  }
+  pthread_join(tid1, NULL);   /* 生産者を待つ */
+  pthread_join(tid2, NULL);   /* 消費者を待つ */
+  printf("parent done\n");
+  return 0;
+}
+\end{lstlisting}
+
+生産者は値 $1,\dots,\texttt{NUM\_ITEMS}$ を挿入する．
+\begin{lstlisting}[language=C, numbers=none]
+void *producer(void *param) {
+  int i;
+  for (i = 1; i <= NUM_ITEMS; i++) {
+    pthread_mutex_lock(&m);
+    while (num == BUF_SIZE)         /* 満杯: 待つ */
+      pthread_cond_wait(&c_prod, &m);
+    buffer[add] = i;                /* 満杯でない */
+    add = (add + 1) % BUF_SIZE;
+    num++;
+    pthread_mutex_unlock(&m);
+    pthread_cond_signal(&c_cons);   /* 空でない   */
+    printf("produced %d\n", i);
+  }
+  return NULL;
+}
+\end{lstlisting}
+
+消費者は対称である．
+\begin{lstlisting}[language=C, numbers=none]
+void *consumer(void *param) {
+  int i, n;
+  for (n = 0; n < NUM_ITEMS; n++) {
+    pthread_mutex_lock(&m);
+    while (num == 0)                /* 空: 待つ   */
+      pthread_cond_wait(&c_cons, &m);
+    i = buffer[rem];                /* 空でない   */
+    rem = (rem + 1) % BUF_SIZE;
+    num--;
+    pthread_mutex_unlock(&m);
+    pthread_cond_signal(&c_prod);   /* 満杯でない */
+    printf("consumed %d\n", i);
+  }
+  return NULL;
+}
+\end{lstlisting}
+
+このプログラムは，この章と第3章の規則を適用している．
+\begin{itemize}
+  \item 各スレッドは \texttt{m} を保持したまま \texttt{while} ループで
+    述語を検査する．wait から戻ったときスレッドは再び \texttt{m} を保持
+    しており，バッファに触れる前に述語を再検査する．
+  \item 各スレッドはアンロックの後に signal するので，起こされたスレッドは
+    \texttt{m} を待たずに済む．誰も待っていないときの signal は何もしないが，
+    これは無害である．スレッドは待つ前に述語を検査するので，すでに起きた
+    変化を待つことは決してないからである．
+  \item 生産者は \texttt{c\_prod} だけで，消費者は \texttt{c\_cons} だけで
+    待つので，通知は必ず，それを利用できる種類のスレッドに届く．
+  \item 消費者は \texttt{NUM\_ITEMS} 個の値を取り出したら停止する．無限に
+    ループする消費者は決して終了せず，\texttt{main} の2番目の
+    \texttt{pthread\_join} は決して戻らない．
+\end{itemize}
+
+\Needspace{6\baselineskip}
+\begin{example}
+  \cref{tab:l04-prodcons-trace} は，消費者が動き出す前に生産者が先行して
+  バッファを満たす場合の実行を1つトレースしたものである．取り除かれた値は
+  \texttt{-} で示す．
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{$\texttt{BUF\_SIZE}=4$ における生産者（P）と消費者（C）の
+    トレース．buffer 列はスロット 0--3 を示し，\texttt{add}，\texttt{rem}，
+    \texttt{num} の値は各ステップの後のものである．}
+  \label{tab:l04-prodcons-trace}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}cl>{\ttfamily}lccc@{}}
+    \toprule
+    ステップ & イベント & \normalfont buffer & \texttt{add} & \texttt{rem} & \texttt{num} \\
+    \midrule
+     1 & P が 1 を挿入                        & 1 - - -  & 1 & 0 & 1 \\
+     2 & P が 2，3，4 を挿入                  & 1 2 3 4  & 0 & 0 & 4 \\
+     3 & P は満杯を見て \texttt{c\_prod} で待つ & 1 2 3 4 & 0 & 0 & 4 \\
+     4 & C が 1 を取り出し \texttt{c\_prod} に signal & - 2 3 4 & 0 & 1 & 3 \\
+     5 & P は \texttt{m} を再獲得，再検査して 5 を挿入 & 5 2 3 4 & 1 & 1 & 4 \\
+     6 & C が 2，3，4 を取り出す              & 5 - - -  & 1 & 0 & 1 \\
+     7 & C が 5 を取り出す                    & - - - -  & 1 & 1 & 0 \\
+     8 & C は空を見て \texttt{c\_cons} で待つ  & - - - - & 1 & 1 & 0 \\
+     9 & P が 6 を挿入し \texttt{c\_cons} に signal & - 6 - - & 2 & 1 & 1 \\
+    10 & C は \texttt{m} を再獲得，再検査して 6 を取り出す & - - - - & 2 & 2 & 0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}[章のまとめ]
+  POSIX スレッドは，Birrell の機構を具体的な型と呼び出しで実現する
+  （\cref{tab:l04-birrell}）．\texttt{pthread\_create} は，1つの
+  \texttt{void~*} 引数と，例えばスタックサイズ，スコープ，デタッチ状態を
+  設定する属性オブジェクトとともにスレッドを起動する．ジョイン可能な
+  スレッドはジョインしなければならず，デタッチされたスレッドは自分で資源を
+  解放し，\texttt{pthread\_exit} はプロセスを終了させずにスレッドを終了
+  させる．プログラムは \texttt{<pthread.h>} をインクルードし，
+  \texttt{-pthread} でビルドし，戻り値を検査し，各スレッドに専用の引数
+  データを与える．共有資源ごとに大域から見える1つのミューテックスを置き，
+  大域的な順序でロックして必ずアンロックする．条件変数は \texttt{while}
+  ループの中で wait し，述語が変化した可能性があるときは必ず通知し，通知
+  するかどうかの判断が許すならアンロックの後に通知する．生産者・消費者
+  プログラムがその例である．
+\end{keypoint}
+
+\end{document}

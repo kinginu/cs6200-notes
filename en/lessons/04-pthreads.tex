@@ -1,0 +1,805 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Threads Case Study: PThreads}
+\lessoninfo{
+  video={P2L3},
+  textbook={OSTEP \cite{ostep} ch.~27, 30; Silberschatz et al.\ \cite{silberschatz2018} ch.~4, 7; Kerrisk \cite{kerrisk2010} ch.~29--30},
+  keywords={POSIX, POSIX threads, thread creation, thread attributes, joinable thread, detached thread, thread arguments, mutex, trylock, condition variable, safety tips, producer-consumer problem, bounded buffer},
+}
+
+Lesson~3 described threads and the mechanisms with which they coordinate in
+the abstract notation of Birrell \cite{birrell1989}: \texttt{Fork} and
+\texttt{Join}, mutexes and condition variables.  This lesson studies a
+concrete interface that provides these mechanisms and that most Unix-like
+operating systems support: POSIX threads, or Pthreads.  For each mechanism
+it presents the corresponding data types and calls, the details that a real
+interface adds to Birrell's model---thread attributes, detached threads,
+initialization of synchronization constructs---and rules for using them
+safely.  It ends with a complete producer-consumer program.
+
+\section{POSIX threads}
+\label{sec:l04-posix}
+
+The \term{Portable Operating System Interface}[POSIX]%
+\index{POSIX|see{Portable Operating System Interface}} (POSIX) is a family
+of IEEE standards that specifies the interface an operating system provides
+to applications.\source{P2L3, lesson preview; POSIX.1 \cite{posix2017};
+OSTEP ch.~27.}  It defines the names, arguments and semantics of system
+calls and library functions, but not how an operating system implements
+them.  Its purpose is portability: a program written against POSIX can be
+compiled and run on every operating system that complies with the standard,
+not only on the one for which it was first written.
+
+\begin{definition}[POSIX threads]
+  The part of POSIX that specifies the interface for creating and managing
+  threads, together with the synchronization constructs with which threads
+  coordinate---mutexes and condition variables---, is called
+  \term{POSIX threads}[POSIXスレッド]\index{Pthreads|see{POSIX threads}}, or
+  \emph{Pthreads}.
+\end{definition}
+
+Pthreads is part of the base POSIX.1 standard.  Like the rest of POSIX, it
+leaves the implementation open: a Pthreads library may, for example, map its
+threads onto kernel-level threads according to any of the multithreading
+models of Lesson~3.  The names of its functions and types begin with
+\texttt{pthread\_} and those of its constants with \texttt{PTHREAD\_}; the
+data types end in \texttt{\_t} and are opaque, so a program manipulates them
+only through the functions of the interface.
+
+The interface closely follows the mechanisms of Lesson~3.
+\Cref{tab:l04-birrell} lists the Pthreads counterpart of each of Birrell's
+operations; the following sections take them in turn.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Birrell's mechanisms (Lesson~3) and their Pthreads counterparts.
+    \texttt{t}, \texttt{m} and \texttt{c} denote a thread, a mutex and a
+    condition variable.}
+  \label{tab:l04-birrell}
+  \small
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Operation & Birrell & Pthreads \\
+    \midrule
+    thread type    & \texttt{Thread}           & \texttt{pthread\_t} \\
+    create         & \texttt{Fork(proc, args)}
+                   & \texttt{pthread\_create(\&t, \&attr, proc, arg)} \\
+    join           & \texttt{Join(t)}          & \texttt{pthread\_join(t, \&status)} \\
+    \midrule
+    mutex type     & \texttt{Mutex}            & \texttt{pthread\_mutex\_t} \\
+    lock           & \texttt{Lock(m) \{}       & \texttt{pthread\_mutex\_lock(\&m)} \\
+    unlock         & \texttt{\}}               & \texttt{pthread\_mutex\_unlock(\&m)} \\
+    \midrule
+    condition type & \texttt{Condition}        & \texttt{pthread\_cond\_t} \\
+    wait           & \texttt{Wait(m, c)}       & \texttt{pthread\_cond\_wait(\&c, \&m)} \\
+    signal         & \texttt{Signal(c)}        & \texttt{pthread\_cond\_signal(\&c)} \\
+    broadcast      & \texttt{Broadcast(c)}     & \texttt{pthread\_cond\_broadcast(\&c)} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Thread creation}
+\label{sec:l04-creation}
+
+In Pthreads a thread is represented by a variable of type
+\texttt{pthread\_t}, the counterpart of Birrell's
+\texttt{Thread}.\source{P2L3, PThread creation; OSTEP ch.~27; Kerrisk
+ch.~29.}  It identifies the thread, and through it the library reaches the
+thread's data structure with its identifier, its execution state and the
+other information needed to manage it.  Threads are created and joined with
+two functions:
+\begin{lstlisting}[language=C, numbers=none]
+#include <pthread.h>
+
+int pthread_create(pthread_t *thread,
+                   const pthread_attr_t *attr,
+                   void *(*start_routine)(void *),
+                   void *arg);
+int pthread_join(pthread_t thread, void **status);
+\end{lstlisting}
+
+\texttt{pthread\_create} corresponds to \texttt{Fork(proc, args)}.  The new
+thread starts by executing \texttt{start\_routine(arg)}, and the identifier
+of the new thread is stored in \texttt{*thread}.  The start routine takes and
+returns a \texttt{void~*}, so that a pointer to data of any type can be
+passed to the thread; several arguments are packed into a structure and
+passed as a pointer to it.  The second argument, \texttt{attr}, has no
+counterpart in Birrell's \texttt{Fork}; it is described below.  The call
+returns 0 when the thread has been created and an error number otherwise,
+for instance when the system lacks the resources for another thread.
+
+\texttt{pthread\_join} corresponds to \texttt{Join(t)}: it blocks the caller
+until \texttt{thread} has terminated.  A thread terminates when its start
+routine returns or when it calls \texttt{pthread\_exit(status)}.  The value
+it returned, or passed to \texttt{pthread\_exit}, is stored in
+\texttt{*status}; a caller that does not need the result passes
+\texttt{NULL}.  Like \texttt{pthread\_create}, \texttt{pthread\_join}
+returns 0 on success and an error number on failure.
+
+\subsection{Thread attributes}
+\label{sec:l04-attr}
+
+\begin{definition}[Thread attribute]
+  A property of a thread that is set when the thread is created---such as
+  its stack size, whether it can be joined, its scheduling policy and
+  priority, or its scope---is a \term{thread attribute}[スレッド属性].  The
+  attributes of a new thread are passed to \texttt{pthread\_create} in an
+  attribute object of type \texttt{pthread\_attr\_t}.
+\end{definition}
+
+\Needspace{8\baselineskip}
+Passing \texttt{NULL} instead of an attribute object creates a thread with
+default attributes.  An attribute object is itself opaque and is manipulated
+only through functions:
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_attr_init(pthread_attr_t *attr);
+int pthread_attr_destroy(pthread_attr_t *attr);
+/* for each attribute xxx: */
+int pthread_attr_setxxx(pthread_attr_t *attr, ...);
+int pthread_attr_getxxx(const pthread_attr_t *attr, ...);
+\end{lstlisting}
+\texttt{pthread\_attr\_init} fills the object with the default values; it
+must be called before any other function is applied to the object, and
+\texttt{pthread\_attr\_destroy} releases it.  The object is consulted only
+while \texttt{pthread\_create} runs, so it can be destroyed, or reused for
+further threads, as soon as the thread exists.  \Cref{tab:l04-attributes}
+lists the attributes that matter in this course.  The scope attribute
+selects between the system scope and the process scope of Lesson~3: with
+\texttt{PTHREAD\_SCOPE\_SYSTEM} the thread competes for the CPU with all
+threads in the system, with \texttt{PTHREAD\_SCOPE\_PROCESS} only with the
+threads of its own process.\margin{Linux supports only system scope; a
+request for \texttt{PTHREAD\_SCOPE\_PROCESS} fails with
+\texttt{ENOTSUP}.}\index{system scope}\index{process scope}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Thread attributes and the functions that set them.  Each has a
+    matching \texttt{get} function.}
+  \label{tab:l04-attributes}
+  \small
+  \begin{tabular}{@{}>{\RaggedRight}p{18mm}l>{\RaggedRight\arraybackslash}p{42mm}@{}}
+    \toprule
+    Attribute & Set with & Meaning \\
+    \midrule
+    stack size   & \texttt{pthread\_attr\_setstacksize}
+                 & size of the thread's stack \\
+    detach state & \texttt{pthread\_attr\_setdetachstate}
+                 & joinable (default) or detached (\cref{sec:l04-detached}) \\
+    scope        & \texttt{pthread\_attr\_setscope}
+                 & system or process scope \\
+    inheritance  & \texttt{pthread\_attr\_setinheritsched}
+                 & inherit policy and priority from the creator, or take
+                   them from the object \\
+    scheduling policy & \texttt{pthread\_attr\_setschedpolicy}
+                 & e.g.\ \texttt{SCHED\_OTHER}, \texttt{SCHED\_FIFO},
+                   \texttt{SCHED\_RR} \\
+    priority     & \texttt{pthread\_attr\_setschedparam}
+                 & priority within the policy \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\Needspace{10\baselineskip}
+\section{Detached threads}
+\label{sec:l04-detached}
+
+\begin{definition}[Joinable thread]
+  A \term{joinable thread}[ジョイン可能スレッド] is a thread that another
+  thread can join: when it terminates, its identifier and exit status are
+  kept until a \texttt{pthread\_join} collects them.  A Pthreads thread is
+  joinable unless it is created detached or detached later.
+\end{definition}
+
+The threads of a process are peers: any of them, not only the thread that
+created it, may join a joinable thread.\source{P2L3, detaching PThreads;
+Kerrisk ch.~29.}  The usual arrangement is nevertheless that a parent
+thread creates children and joins them later, and the joins do more than
+collect results.  A joinable thread that has terminated but has not been
+joined remains a \emph{zombie} thread: its identifier and exit status are
+kept until some thread joins it, and if none ever does, they occupy
+resources for as long as the process lives.  A main thread must in addition
+not return from \texttt{main} before its children have finished, because
+returning ends the whole process and with it every thread that is still
+running.
+
+\begin{definition}[Detached thread]
+  A \term{detached thread}[デタッチスレッド] is a thread that cannot be
+  joined.  When it terminates, its resources are released immediately.
+\end{definition}
+
+\Needspace{6\baselineskip}
+A thread can be detached after its creation, by itself or by another
+thread, or it can be created detached by setting the detach state in its
+attribute object:
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_detach(pthread_t thread);
+
+pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+\end{lstlisting}
+A detached thread cannot be made joinable again.  Detaching removes the
+need to join: nobody has to collect the thread's status, and its resources
+are reclaimed as soon as it terminates.  It does not change the
+relation between the threads, which are peers in either case.  A thread
+ends without ending the process by calling \texttt{pthread\_exit(status)}:
+it terminates only the calling thread, and the process continues until its
+last thread has terminated, whether the remaining threads are joinable or
+detached (\cref{fig:l04-join-detach}).\caution{Returning from \texttt{main} or
+calling \texttt{exit} ends the whole process, detached threads included.}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l04-join-detach}
+  \caption{Left: a joinable child that terminates before it is joined keeps
+    its resources until \texttt{pthread\_join} collects its status.  Right:
+    a detached child releases its resources itself; the main thread ends
+    with \texttt{pthread\_exit}, which leaves the process running whether
+    the remaining threads are joinable or detached.}
+  \label{fig:l04-join-detach}
+\end{figure}
+
+\Needspace{9\baselineskip}
+\begin{example}
+  \label{ex:l04-detached}
+  The main thread starts a detached logging thread with system scope and
+  exits, leaving the logger to finish its work.  The logger is an ordinary
+  start routine:
+  \begin{lstlisting}[language=C, numbers=none]
+void *logger(void *arg) {            /* thread main */
+  printf("logger: flushing records\n");
+  pthread_exit(NULL);
+}
+\end{lstlisting}
+  \Needspace{14\baselineskip}
+  The main thread sets up the attribute object, creates the logger and
+  exits:
+  \begin{lstlisting}[language=C, numbers=none]
+int main(void) {
+  pthread_t tid;
+  pthread_attr_t attr;
+
+  pthread_attr_init(&attr);          /* required */
+  pthread_attr_setdetachstate(&attr,
+                              PTHREAD_CREATE_DETACHED);
+  pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM);
+  pthread_create(&tid, &attr, logger, NULL);
+  pthread_attr_destroy(&attr);
+  pthread_exit(NULL);                /* not: return 0 */
+}
+\end{lstlisting}
+  Had \texttt{main} ended with \texttt{return 0}, the process could
+  terminate before the logger prints anything.
+\end{example}
+
+\begin{keypoint}
+  A Pthreads thread is joinable unless it is detached.  Join every joinable
+  thread, or detach threads whose result nobody needs; a main thread that
+  must not end the process calls \texttt{pthread\_exit} instead of
+  returning.
+\end{keypoint}
+
+\section{Compiling Pthreads programs}
+\label{sec:l04-compiling}
+
+A program that uses Pthreads needs three things.\source{P2L3, compiling
+PThreads; OSTEP ch.~27.}
+\begin{enumerate}
+  \item \textbf{The header.}  Every source file that uses Pthreads includes
+    \texttt{<pthread.h>}, which declares the types, constants and
+    functions.
+  \item \textbf{The compiler flag.}  The program is compiled and linked
+    with \texttt{-pthread} or \texttt{-lpthread}:
+\begin{lstlisting}[numbers=none]
+gcc -o main main.c -pthread
+gcc -o main main.c -lpthread
+\end{lstlisting}
+    \texttt{-lpthread} only links the Pthreads library, whereas
+    \texttt{-pthread} also sets the preprocessor definitions that the
+    platform requires for multithreaded code; it is the more portable
+    choice.\margin{Since glibc~2.34 the Pthreads functions are part of
+    \texttt{libc} itself.}
+  \item \textbf{Checked return values.}  Pthreads functions report failure
+    through their return value, 0 on success and an error number
+    otherwise, rather than through \texttt{errno}; a caller that cannot
+    continue reports the number, e.g.\ with \texttt{strerror}, and exits.
+    A program that ignores the result of \texttt{pthread\_create} may later
+    join a thread that was never created, using an identifier that was
+    never set.
+\end{enumerate}
+
+\section{Thread creation examples}
+\label{sec:l04-examples}
+
+Three small programs show how threads are created and joined and how data
+reach a new thread.\source{P2L3, PThread creation examples 1--3; OSTEP
+ch.~27.}
+
+\Needspace{23\baselineskip}
+\subsection{Creating and joining several threads}
+
+The first program creates a fixed number of threads with default
+attributes and waits for all of them:
+\begin{lstlisting}[language=C, numbers=none]
+#include <stdio.h>
+#include <pthread.h>
+#define NUM_THREADS 3
+
+void *greet(void *arg) {            /* thread main */
+  printf("Hello from a worker\n");
+  return NULL;
+}
+
+int main(void) {
+  pthread_t tid[NUM_THREADS];
+  int i;
+
+  for (i = 0; i < NUM_THREADS; i++)  /* create */
+    pthread_create(&tid[i], NULL, greet, NULL);
+  for (i = 0; i < NUM_THREADS; i++)  /* join */
+    pthread_join(tid[i], NULL);
+  return 0;
+}
+\end{lstlisting}
+The program has two phases: the first loop creates the threads, the second
+joins them.  Each worker prints one line.  The workers share no data, so
+they need no synchronization, and because all of them print the same text,
+the output does not depend on the order in which they are scheduled.  The
+joins keep \texttt{main} from returning, and thereby terminating the
+process, before every worker has printed its line.
+
+\Needspace{12\baselineskip}
+\subsection{Passing an argument}
+
+Suppose each worker should print its own index.  The start routine reads
+the index through its argument:
+\begin{lstlisting}[language=C, numbers=none]
+void *show_index(void *arg) {       /* thread main */
+  int *p = (int *)arg;
+  int my_num = *p;
+  printf("Thread %d\n", my_num);
+  return NULL;
+}
+\end{lstlisting}
+\Needspace{4\baselineskip}
+An obvious attempt passes it the address of the loop variable:
+\begin{lstlisting}[language=C, numbers=none]
+for (i = 0; i < NUM_THREADS; i++)
+  pthread_create(&tid[i], NULL, show_index, &i);
+\end{lstlisting}
+The program does not reliably print $0$, $1$ and $2$.  Every thread receives
+the same address, that of the single variable \texttt{i} in the stack frame
+of \texttt{main} (\cref{fig:l04-args}, left), and a thread reads the value
+only when it executes \texttt{*p}.  By then \texttt{main} may already have
+incremented \texttt{i}.  Because \texttt{i} is visible to all threads that
+hold its address, a change made by one thread is seen by all of them, and a
+thread that reads \texttt{i} while \texttt{main} modifies it is in a data
+race (Lesson~3).\index{race condition}  A worker can therefore print an
+index that belongs to another worker, or even a value that \texttt{i} takes
+only after the creation loop: $3$ when the loop ends, or a value set by the
+join loop, which reuses \texttt{i}.  \Cref{tab:l04-arg-race} shows one
+possible execution.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l04-args}
+  \caption{Left: all threads receive the address of the loop variable
+    \texttt{i}, whose value changes while they start.  Right: each thread
+    receives the address of its own array element, which does not change
+    after the thread has been created.}
+  \label{fig:l04-args}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{One execution of the program that passes \texttt{\&i} with three
+    threads.  T0 reads \texttt{i} after \texttt{main} has incremented it and
+    T2 reads it after the join loop has reset it; only T1 prints its own
+    index, and the program prints 1, 1 and 0.}
+  \label{tab:l04-arg-race}
+  \small
+  \begin{tabular}{@{}clcl@{}}
+    \toprule
+    Step & Main thread & \texttt{i} & Workers \\
+    \midrule
+    1 & create T0 with \texttt{\&i}              & 0 & \\
+    2 & \texttt{i++}                             & 1 & \\
+    3 & create T1 with \texttt{\&i}              & 1 & \\
+    4 &                                          & 1 & T0 reads \texttt{*p}: prints 1 \\
+    5 &                                          & 1 & T1 reads \texttt{*p}: prints 1 \\
+    6 & \texttt{i++}, create T2 with \texttt{\&i} & 2 & \\
+    7 & \texttt{i++}, creation loop ends          & 3 & \\
+    8 & join loop: \texttt{i = 0}, join T0        & 0 & \\
+    9 &                                          & 0 & T2 reads \texttt{*p}: prints 0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\Needspace{10\baselineskip}
+\subsection{Passing private data}
+
+The race disappears if each thread receives the address of data that
+belongs to it alone and that no other thread modifies:
+\begin{lstlisting}[language=C, numbers=none]
+int t_num[NUM_THREADS];
+
+for (i = 0; i < NUM_THREADS; i++) {
+  t_num[i] = i;
+  pthread_create(&tid[i], NULL, show_index, &t_num[i]);
+}
+\end{lstlisting}
+Each worker now reads its own element of \texttt{t\_num}, whose value was
+set before the thread was created and never changes afterwards
+(\cref{fig:l04-args}, right).  Every index is printed exactly once.  The
+\emph{order} of the lines, however, is still not determined: it depends on
+how the threads are scheduled, and any permutation of the three lines can
+occur.  The array lives in the stack frame of \texttt{main}, which does not
+return before it has joined all threads, so the memory remains valid for as
+long as the threads use it.\caution{Never pass a thread the address of a
+local variable of a function that may return before the thread has read
+it.}
+
+\begin{keypoint}
+  An argument passed by address is shared, not copied.  Give every thread
+  its own data---an array element, or a structure allocated for it---that
+  outlives the thread's use of it and that no other thread modifies.
+\end{keypoint}
+
+\Needspace{9\baselineskip}
+\section{Mutexes}
+\label{sec:l04-mutex}
+
+Pthreads mutexes solve the mutual exclusion problem among concurrent
+threads, as mutexes do in Lesson~3.\source{P2L3, PThread mutexes; OSTEP
+ch.~27--28; Silberschatz et al.\ ch.~7.}\index{mutex}  A mutex has type
+\texttt{pthread\_mutex\_t}, and the two basic operations are
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_mutex_lock(pthread_mutex_t *mutex);
+int pthread_mutex_unlock(pthread_mutex_t *mutex);
+\end{lstlisting}
+The semantics are those of Birrell's mutex: a thread that locks a free
+mutex becomes its owner, and a thread that locks a mutex owned by another
+thread blocks until the mutex is released.  The difference is syntactic, but
+it matters.  Birrell's \texttt{Lock(m)~\{\,\ldots\,\}} releases the mutex
+implicitly at the end of the block; in Pthreads the critical section is the
+code between the two calls, and the program must call
+\texttt{pthread\_mutex\_unlock} explicitly on every path out of it,
+including early returns and error paths.
+
+\Needspace{16\baselineskip}
+\begin{example}
+  \label{ex:l04-safe-insert}
+  The safe list insertion of Lesson~3 in C with Pthreads:
+  \begin{lstlisting}[language=C, numbers=none]
+struct node { int value; struct node *next; };
+
+struct node *head = NULL;          /* shared list */
+pthread_mutex_t list_m = PTHREAD_MUTEX_INITIALIZER;
+
+void safe_insert(int value) {
+  struct node *e = malloc(sizeof *e);
+  e->value = value;
+
+  pthread_mutex_lock(&list_m);
+  e->next = head;                  /* critical section */
+  head = e;
+  pthread_mutex_unlock(&list_m);
+}
+\end{lstlisting}
+  Only the two statements that read and write the shared head pointer are
+  in the critical section; allocating and filling the new element involves
+  no shared data and is done before the lock is taken, which keeps the
+  critical section short.
+\end{example}
+
+\Needspace{11\baselineskip}
+\subsection{Other mutex operations}
+
+Three further operations complete the basic mutex interface:
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_mutex_init(pthread_mutex_t *mutex,
+                       const pthread_mutexattr_t *attr);
+int pthread_mutex_trylock(pthread_mutex_t *mutex);
+int pthread_mutex_destroy(pthread_mutex_t *mutex);
+\end{lstlisting}
+\begin{description}
+  \item[\texttt{pthread\_mutex\_init}] initializes a mutex before its first
+    use.  Its attribute object, of type \texttt{pthread\_mutexattr\_t},
+    specifies the behaviour of the mutex, for instance whether it may be
+    shared among processes (Lesson~9); \texttt{NULL} selects the defaults.
+    A mutex with default attributes can also be initialized statically, as
+    in \cref{ex:l04-safe-insert}, with \texttt{PTHREAD\_MUTEX\_INITIALIZER}.
+  \item[\texttt{pthread\_mutex\_trylock}] locks the mutex if it is free and
+    returns 0.  If the mutex is locked, it does not block but returns
+    immediately with the error \texttt{EBUSY}.  The calling thread can then
+    do something else and try again later.
+  \item[\texttt{pthread\_mutex\_destroy}] frees the data structures of a
+    mutex that is no longer needed.  The mutex must not be locked.
+\end{description}
+
+\Needspace{8\baselineskip}
+\begin{example}
+  A thread updates optional statistics only when the mutex happens to be
+  free, rather than delaying its main work:
+  \begin{lstlisting}[language=C, numbers=none]
+if (pthread_mutex_trylock(&stats_m) == 0) {
+  stats.requests += local_count;
+  pthread_mutex_unlock(&stats_m);
+  local_count = 0;
+}  /* else: keep counting locally, retry later */
+\end{lstlisting}
+\end{example}
+
+\subsection{Mutex safety tips}
+
+The most common errors with mutexes are avoided by a few rules.
+\begin{itemize}
+  \item \textbf{One mutex per piece of shared data.}  All accesses to a
+    shared variable must go through the same mutex.  If different code
+    paths protect the same data with different mutexes, they exclude
+    nothing from each other.
+  \item \textbf{A mutex must be visible to all threads that use it.}  It is
+    therefore declared at global scope, or in a structure that all these
+    threads reach.  A mutex declared as a local variable of the thread
+    function is a different mutex in every thread.
+  \item \textbf{Lock mutexes in a global order.}  If every thread acquires
+    mutexes in the same order, the deadlocks of Lesson~3 cannot occur.%
+    \index{lock ordering}
+  \item \textbf{Always unlock, and unlock the correct mutex.}  A forgotten
+    unlock blocks every other thread that needs the mutex; unlocking the
+    wrong mutex leaves one critical section unprotected and another one
+    locked.
+\end{itemize}
+
+\section{Condition variables}
+\label{sec:l04-condvar}
+
+Pthreads condition variables, of type \texttt{pthread\_cond\_t}, provide
+Birrell's three operations.\source{P2L3, PThread condition variables;
+OSTEP ch.~27, 30.}\index{condition variable}
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_cond_wait(pthread_cond_t *cond,
+                      pthread_mutex_t *mutex);
+int pthread_cond_signal(pthread_cond_t *cond);
+int pthread_cond_broadcast(pthread_cond_t *cond);
+\end{lstlisting}
+The semantics are those of Lesson~3.  \texttt{pthread\_cond\_wait} is called
+with \texttt{mutex} held; it atomically releases the mutex and places the
+calling thread on the wait queue of \texttt{cond}, and when the thread is
+woken up, it re-acquires the mutex before it returns.
+\texttt{pthread\_cond\_signal} wakes up at least one of the waiting
+threads, \texttt{pthread\_cond\_broadcast} all of them; both have no effect when no
+thread is waiting.\caution{The argument order is the reverse of Birrell's
+\texttt{Wait(m, c)}: \texttt{pthread\_cond\_wait} takes the condition
+variable first.}
+
+POSIX allows \texttt{pthread\_cond\_wait} to return even though no thread
+has signalled, and calls such a return a spurious wake-up
+too\index{spurious wake-up}; it is a different case from the one examined in
+Lesson~3, where a thread is woken by a notification that it cannot use.
+Both leave the woken thread unable to proceed, and both are handled by the
+same rule: a woken thread tests its predicate again, so the \texttt{while}
+loop of Lesson~3 is not merely good practice but required:
+\begin{lstlisting}[language=C, numbers=none]
+pthread_mutex_lock(&m);
+while (!predicate)
+  pthread_cond_wait(&c, &m);
+/* predicate holds and m is held */
+update_shared_state();
+pthread_mutex_unlock(&m);
+\end{lstlisting}
+
+\Needspace{6\baselineskip}
+Like mutexes, condition variables are initialized and destroyed
+explicitly:
+\begin{lstlisting}[language=C, numbers=none]
+int pthread_cond_init(pthread_cond_t *cond,
+                      const pthread_condattr_t *attr);
+int pthread_cond_destroy(pthread_cond_t *cond);
+\end{lstlisting}
+The attribute object of type \texttt{pthread\_condattr\_t} specifies the
+behaviour of the condition variable, for instance whether it is shared among
+processes; \texttt{NULL} selects the defaults, which the static initializer
+\texttt{PTHREAD\_COND\_INITIALIZER} also provides.
+
+\subsection{Condition variable safety tips}
+
+\begin{itemize}
+  \item \textbf{Do not forget to notify waiting threads.}  Whenever a thread
+    changes the state that a predicate depends on, it must signal or
+    broadcast the condition variable on which the threads that wait for
+    this predicate are blocked.
+  \item \textbf{When in doubt, broadcast.}  Broadcasting where a signal
+    would do is still correct, because every woken thread re-tests its
+    predicate and waits again if it cannot proceed; it costs performance,
+    since these threads are woken up and scheduled for nothing.
+  \item \textbf{A mutex is not needed to signal or broadcast.}  When the
+    decision to notify does not depend on shared state that can only be read
+    under the mutex, the notification can be issued after the mutex has been
+    released: the woken threads then do not have to wait for a mutex that
+    the signalling thread still holds, which is the cause of spurious
+    wake-ups examined in Lesson~3.  Returns from
+    \texttt{pthread\_cond\_wait} without any notification remain possible,
+    so this does not make the \texttt{while} loop unnecessary.
+\end{itemize}
+
+\begin{keypoint}
+  Pthreads mutexes and condition variables have Birrell's semantics; what
+  they add is explicit unlocking, explicit initialization and destruction,
+  and attribute objects.  Wait in a \texttt{while} loop, notify whenever
+  the predicate may have changed, and issue the notification after
+  unlocking where the decision to notify allows it.
+\end{keypoint}
+
+\section{A producer-consumer example}
+\label{sec:l04-prodcons}
+
+The producer-consumer problem of Lesson~3 can now be solved with a complete
+Pthreads program.\source{P2L3, producer and consumer example using
+PThreads; OSTEP ch.~30.}\index{producer-consumer problem}  A producer thread
+inserts values into a shared \emph{bounded buffer}, an array of
+\texttt{BUF\_SIZE} slots used as a circular queue, and a consumer thread
+removes them in the order in which they were inserted.  Four variables
+describe the buffer: the array \texttt{buffer}, the index \texttt{add} of the
+next slot to fill, the index \texttt{rem} of the next slot to empty, and the
+number \texttt{num} of values in the buffer.  Both indices advance modulo
+\texttt{BUF\_SIZE}, so the queue wraps around the end of the array
+(\cref{fig:l04-bounded-buffer}).
+
+One mutex \texttt{m} protects these variables; the producer waits on
+\texttt{c\_prod} while the buffer is full, the consumer on \texttt{c\_cons}
+while it is empty.  All shared state is global, as the mutex safety tips
+require, and initialized statically:
+\begin{lstlisting}[language=C, numbers=none]
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+
+#define BUF_SIZE  4     /* slots in the shared buffer */
+#define NUM_ITEMS 10    /* values to produce          */
+
+int buffer[BUF_SIZE];   /* shared circular buffer     */
+int add = 0;            /* next slot to fill          */
+int rem = 0;            /* next slot to empty         */
+int num = 0;            /* values in the buffer       */
+
+pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t c_cons = PTHREAD_COND_INITIALIZER;
+pthread_cond_t c_prod = PTHREAD_COND_INITIALIZER;
+
+void *producer(void *param);
+void *consumer(void *param);
+\end{lstlisting}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l04-bounded-buffer}
+  \caption{The producer-consumer program with $\texttt{BUF\_SIZE}=4$:
+    one mutex protects all buffer state, and each thread waits on its own
+    condition variable.}
+  \label{fig:l04-bounded-buffer}
+\end{figure}
+
+\Needspace{14\baselineskip}
+The main thread creates and joins the two threads:
+\begin{lstlisting}[language=C, numbers=none]
+int main(void) {
+  pthread_t tid1, tid2;
+
+  if (pthread_create(&tid1, NULL, producer, NULL) != 0 ||
+      pthread_create(&tid2, NULL, consumer, NULL) != 0) {
+    fprintf(stderr, "cannot create threads\n");
+    exit(1);
+  }
+  pthread_join(tid1, NULL);   /* wait for producer */
+  pthread_join(tid2, NULL);   /* wait for consumer */
+  printf("parent done\n");
+  return 0;
+}
+\end{lstlisting}
+
+The producer inserts the values $1,\dots,\texttt{NUM\_ITEMS}$:
+\begin{lstlisting}[language=C, numbers=none]
+void *producer(void *param) {
+  int i;
+  for (i = 1; i <= NUM_ITEMS; i++) {
+    pthread_mutex_lock(&m);
+    while (num == BUF_SIZE)         /* full: wait  */
+      pthread_cond_wait(&c_prod, &m);
+    buffer[add] = i;                /* not full    */
+    add = (add + 1) % BUF_SIZE;
+    num++;
+    pthread_mutex_unlock(&m);
+    pthread_cond_signal(&c_cons);   /* not empty   */
+    printf("produced %d\n", i);
+  }
+  return NULL;
+}
+\end{lstlisting}
+
+The consumer is symmetric:
+\begin{lstlisting}[language=C, numbers=none]
+void *consumer(void *param) {
+  int i, n;
+  for (n = 0; n < NUM_ITEMS; n++) {
+    pthread_mutex_lock(&m);
+    while (num == 0)                /* empty: wait */
+      pthread_cond_wait(&c_cons, &m);
+    i = buffer[rem];                /* not empty   */
+    rem = (rem + 1) % BUF_SIZE;
+    num--;
+    pthread_mutex_unlock(&m);
+    pthread_cond_signal(&c_prod);   /* not full    */
+    printf("consumed %d\n", i);
+  }
+  return NULL;
+}
+\end{lstlisting}
+
+The program applies the rules of this lesson and of Lesson~3.
+\begin{itemize}
+  \item Each thread tests its predicate in a \texttt{while} loop while
+    holding \texttt{m}.  When the wait returns, the thread holds \texttt{m}
+    again, and it re-tests the predicate before it touches the buffer.
+  \item Each thread signals after unlocking, so the woken thread does not
+    have to wait for \texttt{m}.  A signal when nobody waits has no effect;
+    this is harmless, because a thread tests the predicate before it waits
+    and therefore never waits for a change that has already happened.
+  \item Because producers wait only on \texttt{c\_prod} and consumers only
+    on \texttt{c\_cons}, a notification always reaches a thread of the kind
+    that can use it.
+  \item The consumer stops after \texttt{NUM\_ITEMS} values.  A consumer
+    that loops forever would never terminate, and the second
+    \texttt{pthread\_join} in \texttt{main} would never return.
+\end{itemize}
+
+\Needspace{6\baselineskip}
+\begin{example}
+  \Cref{tab:l04-prodcons-trace} traces one execution of the program in
+  which the producer runs ahead and fills the buffer before the consumer
+  starts.  Removed values are shown as \texttt{-}.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{A trace of the producer (P) and consumer (C) with
+    $\texttt{BUF\_SIZE}=4$.  The buffer column lists slots 0--3; the values
+    of \texttt{add}, \texttt{rem} and \texttt{num} are those after each
+    step.}
+  \label{tab:l04-prodcons-trace}
+  \small
+  \begin{tabular}{@{}cl>{\ttfamily}lccc@{}}
+    \toprule
+    Step & Event & \normalfont buffer & \texttt{add} & \texttt{rem} & \texttt{num} \\
+    \midrule
+     1 & P inserts 1                         & 1 - - -  & 1 & 0 & 1 \\
+     2 & P inserts 2, 3, 4                   & 1 2 3 4  & 0 & 0 & 4 \\
+     3 & P finds buffer full, waits on \texttt{c\_prod} & 1 2 3 4 & 0 & 0 & 4 \\
+     4 & C removes 1, signals \texttt{c\_prod} & - 2 3 4 & 0 & 1 & 3 \\
+     5 & P re-acquires \texttt{m}, re-tests, inserts 5 & 5 2 3 4 & 1 & 1 & 4 \\
+     6 & C removes 2, 3, 4                   & 5 - - -  & 1 & 0 & 1 \\
+     7 & C removes 5                         & - - - -  & 1 & 1 & 0 \\
+     8 & C finds buffer empty, waits on \texttt{c\_cons} & - - - - & 1 & 1 & 0 \\
+     9 & P inserts 6, signals \texttt{c\_cons} & - 6 - - & 2 & 1 & 1 \\
+    10 & C re-acquires \texttt{m}, re-tests, removes 6 & - - - - & 2 & 2 & 0 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}[Lesson summary]
+  POSIX threads implement Birrell's mechanisms with concrete types and
+  calls (\cref{tab:l04-birrell}).  \texttt{pthread\_create} starts a thread
+  with one \texttt{void~*} argument and an attribute object that sets, for
+  example, its stack size, scope and detach state; joinable threads must be
+  joined, detached threads release their resources themselves, and
+  \texttt{pthread\_exit} ends a thread without ending the process.
+  Programs include \texttt{<pthread.h>}, are built with \texttt{-pthread}
+  and check return values, and give every thread private argument data.
+  Each shared resource has one globally visible mutex, locked in a global
+  order and always unlocked; condition variables are waited on in a
+  \texttt{while} loop and notified whenever a predicate may have changed,
+  after unlocking where the decision to notify allows it, as in the
+  producer-consumer program.
+\end{keypoint}
+
+\end{document}

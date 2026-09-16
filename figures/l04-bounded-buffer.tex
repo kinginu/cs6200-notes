@@ -1,0 +1,44 @@
+% Producer-consumer with a bounded circular buffer of 4 slots,
+% one mutex and two condition variables.
+% Usage: \input{figures/l04-bounded-buffer}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  thr/.style={draw, rounded corners=2pt, fill=white, thick,
+              minimum width=21mm, minimum height=8mm, inner sep=1pt},
+  cell/.style={draw, fill=white, minimum width=9mm, minimum height=7mm,
+               inner sep=0pt, font=\footnotesize\ttfamily},
+  full/.style={cell, fill=ln-box},
+  >={Stealth[length=1.6mm]},
+  tt/.style={font=\scriptsize\ttfamily, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  note/.style={font=\scriptsize\sffamily, align=flush left,
+               text width=30mm, inner sep=0pt}]
+  % ------------------------------------------------ region protected by m
+  \draw[draw=ln-accent, dashed, rounded corners=3pt] (34,-15) rectangle (82,14);
+  \node[lab, anchor=south, text=ln-accent] at (58,14.5)
+    {\iflangja{\texttt{m} が保護: \texttt{buffer}, \texttt{add}, \texttt{rem}, \texttt{num}}%
+              {protected by \texttt{m}: \texttt{buffer}, \texttt{add}, \texttt{rem}, \texttt{num}}};
+  % ------------------------------------------------------------- buffer
+  \node[cell] (s0) at (44.5,0) {};
+  \node[full] (s1) at (53.5,0) {6};
+  \node[full] (s2) at (62.5,0) {7};
+  \node[cell] (s3) at (71.5,0) {};
+  \foreach \k in {0,...,3} {
+    \node[tt, text=ln-muted, anchor=north] at (44.5+9*\k,-3.8) {\k};
+  }
+  \draw[->] (71.5,9) node[tt, anchor=south] {add} -- (s3.north);
+  \draw[->] (53.5,9) node[tt, anchor=south] {rem} -- (s1.north);
+  \draw[->, ln-muted] (s3.south east) .. controls (80,-11) and (36,-11)
+    .. (s0.south west);
+  \node[tt, anchor=north] at (58,-9.8) {num = 2};
+  % ------------------------------------------------------------ threads
+  \node[thr] (p) at (13,0)  {\iflangja{生産者}{producer}};
+  \node[thr] (c) at (103,0) {\iflangja{消費者}{consumer}};
+  \draw[->, thick] (p.east) -- node[lab, above] {\iflangja{挿入}{insert}} (34,0);
+  \draw[->, thick] (82,0) -- node[lab, above] {\iflangja{取り出し}{remove}} (c.west);
+  \node[note, anchor=north west] at (0,-6)
+    {\iflangja{満杯の間 \texttt{c\_prod} で待つ．挿入後に \texttt{c\_cons} を signal}%
+              {waits on \texttt{c\_prod} while the buffer is full; signals \texttt{c\_cons} after inserting}};
+  \node[note, anchor=north east] at (116,-6)
+    {\iflangja{空の間 \texttt{c\_cons} で待つ．取り出し後に \texttt{c\_prod} を signal}%
+              {waits on \texttt{c\_cons} while the buffer is empty; signals \texttt{c\_prod} after removing}};
+\end{tikzpicture}
