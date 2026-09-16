@@ -1,0 +1,43 @@
+% Linux: the layers of a Linux system (left) and the structure of the kernel (right).
+% Usage: \input{figures/l01-linux}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  lay/.style={draw, rounded corners=1pt, fill=white, minimum width=40mm,
+              text width=38mm, align=center, inner sep=0.5pt},
+  bar/.style={draw, fill=ln-box, minimum width=72mm, minimum height=5mm,
+              inner sep=0.5pt},
+  hd/.style={draw, fill=ln-box, minimum width=23.2mm, minimum height=5mm,
+             inner sep=0.5pt, font=\scriptsize\sffamily\bfseries},
+  cell/.style={draw, fill=white, minimum width=23.2mm, text width=22.2mm,
+               minimum height=9mm, align=center, inner sep=0.5pt},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=base}]
+  % ---------------- layers
+  \node[ttl] at (20,54) {\iflangja{Linux システムの階層}{layers of a Linux system}};
+  \node[lay, minimum height=6mm] at (20,48.5) {\iflangja{ユーザ}{users}};
+  \node[lay, minimum height=10mm] at (20,39)
+    {\iflangja{標準ユーティリティ\\（シェル，エディタ，コンパイラ，…）}{standard utility programs\\(shell, editors, compilers, \dots)}};
+  \node[lay, minimum height=10mm] at (20,27.5)
+    {\iflangja{標準ライブラリ\\（open, close, read, write, fork, …）}{standard library\\(open, close, read, write, fork, \dots)}};
+  \node[lay, minimum height=8mm, fill=ln-box, draw=ln-accent, thick] at (20,15.5)
+    {\iflangja{Linux カーネル}{Linux kernel}};
+  \node[lay, minimum height=8mm] at (20,5.5)
+    {\iflangja{ハードウェア}{hardware}};
+  \draw[dashed, ln-rule, thick] (-1,21) -- (41,21);
+  % ---------------- kernel structure
+  \begin{scope}[xshift=46mm]
+  \node[ttl] at (36,54) {\iflangja{Linux カーネルの構成}{structure of the Linux kernel}};
+  \node[bar] at (36,46) {\iflangja{システムコール}{system calls}};
+  \node[hd] at (11.6,39.5) {I/O};
+  \node[hd] at (36,39.5)   {\iflangja{メモリ管理}{memory mgmt.}};
+  \node[hd] at (60.4,39.5) {\iflangja{プロセス管理}{process mgmt.}};
+  \foreach \y/\a/\b/\c in {
+      31.5/{\iflangja{端末，\\文字デバイスドライバ}{terminals, character\\device drivers}}/{\iflangja{仮想メモリ}{virtual memory}}/{\iflangja{シグナル処理}{signal handling}},
+      21.5/{\iflangja{ソケット，プロトコル，\\ネットワークドライバ}{sockets, protocols,\\network drivers}}/{\iflangja{ページング，\\ページ置換}{paging, page\\replacement}}/{\iflangja{プロセス・スレッドの\\生成と終了}{process and thread\\creation, termination}},
+      11.5/{\iflangja{ファイルシステム，\\ブロックデバイスドライバ}{file systems, block\\device drivers}}/{\iflangja{ページキャッシュ}{page cache}}/{\iflangja{CPU スケジューリング}{CPU scheduling}}} {
+    \node[cell] at (11.6,\y) {\a};
+    \node[cell] at (36,\y)   {\b};
+    \node[cell] at (60.4,\y) {\c};
+  }
+  \node[bar] at (36,3.5) {\iflangja{割り込み，ディスパッチャ}{interrupts, dispatcher}};
+  \end{scope}
+\end{tikzpicture}

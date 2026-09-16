@@ -1,0 +1,20 @@
+% Structure of Mac OS X: Mach microkernel with a BSD layer, I/O Kit and kernel extensions.
+% I/O Kit and kernel extensions run in kernel mode, so they lie inside the
+% kernel environment.
+% Usage: \input{figures/l01-macos}   (width ~96 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  blk/.style={draw, rounded corners=1pt, fill=white, align=center, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily\bfseries, text=ln-accent}]
+  \node[blk, minimum width=96mm, minimum height=7mm] at (48,43)
+    {\iflangja{アプリケーション環境とサービス}{application environments and services}};
+  \draw[draw=ln-accent, thick, fill=ln-box, rounded corners=2pt] (0,1) rectangle (96,38);
+  \node[lab, anchor=north west] at (1,37.5) {\iflangja{カーネル環境}{kernel environment}};
+  \node[blk, minimum width=92mm, minimum height=8mm] at (48,26)
+    {\textbf{BSD}\quad \iflangja{BSD コマンドライン，POSIX API，ネットワーク I/O}{BSD command line, POSIX API, network I/O}};
+  \node[blk, minimum width=92mm, minimum height=8mm] at (48,16)
+    {\textbf{Mach}\quad \iflangja{メモリ管理，スレッドスケジューリング，IPC・RPC}{memory management, thread scheduling, IPC and RPC}};
+  \node[blk, minimum width=45.5mm, minimum height=7mm] at (24.75,6.5)
+    {\textbf{I/O Kit}\quad \iflangja{デバイスドライバ}{device drivers}};
+  \node[blk, minimum width=45.5mm, minimum height=7mm] at (71.25,6.5)
+    {\iflangja{カーネル拡張}{kernel extensions}};
+\end{tikzpicture}

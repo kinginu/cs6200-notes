@@ -1,0 +1,37 @@
+% The operating system as the layer between applications and hardware.
+% Usage: \input{figures/l01-os-layers}   (width ~110 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  app/.style={draw, rounded corners=2pt, fill=white, minimum height=7mm,
+              minimum width=30mm, inner sep=1pt},
+  comp/.style={draw, fill=white, minimum height=7mm, minimum width=23mm,
+               inner sep=1pt, align=center, font=\scriptsize\sffamily},
+  hw/.style={draw, fill=ln-box, minimum height=8mm, minimum width=16mm,
+             inner sep=1pt, align=center, font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  >={Stealth[length=1.6mm]}]
+  % ---- applications
+  \foreach \x in {17,55,93} {
+    \node[app] at (\x,44) {\iflangja{アプリケーション}{application}};
+    \draw[<->] (\x,40.5) -- (\x,32);
+  }
+  \node[lab, anchor=west] at (94.5,36.2) {\iflangja{システムコール}{system calls}};
+  % ---- operating system
+  \draw[thick, draw=ln-accent, fill=ln-box, rounded corners=2pt]
+    (0,14) rectangle (110,32);
+  \node[font=\footnotesize\sffamily\bfseries, text=ln-accent, anchor=north west]
+    at (1,31.5) {\iflangja{オペレーティングシステム}{operating system}};
+  \node[comp] at (14,20.5)   {\iflangja{スケジューラ}{scheduler}};
+  \node[comp] at (41.3,20.5) {\iflangja{メモリマネージャ}{memory manager}};
+  \node[comp] at (68.6,20.5) {\iflangja{ファイルシステム}{file systems}};
+  \node[comp] at (96,20.5)   {\iflangja{デバイスドライバ}{device drivers}};
+  % ---- hardware
+  \foreach \x/\t in {8/{CPU},
+                     26.8/{\iflangja{メモリ}{memory}},
+                     45.6/{GPU},
+                     64.4/{\iflangja{ネットワーク\\カード}{network\\card}},
+                     83.2/{\iflangja{ディスク，\\SSD}{disk,\\SSD}},
+                     102/{\iflangja{USB\\デバイス}{USB\\devices}}} {
+    \node[hw] at (\x,4) {\t};
+    \draw[<->] (\x,8) -- (\x,14);
+  }
+\end{tikzpicture}

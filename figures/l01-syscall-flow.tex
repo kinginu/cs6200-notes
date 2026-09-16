@@ -1,0 +1,32 @@
+% Sequence of a system call: transition from user mode to kernel mode and back.
+% Usage: \input{figures/l01-syscall-flow}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  st/.style={draw, rounded corners=2pt, align=center, minimum height=9mm,
+             inner sep=1pt, font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  lvl/.style={font=\scriptsize\sffamily\bfseries, text=ln-muted},
+  >={Stealth[length=1.8mm]}]
+  % kernel-mode region below the dashed boundary
+  \fill[ln-box] (0,-6) rectangle (118,15);
+  \draw[dashed, ln-rule, thick] (0,15) -- (118,15);
+  \node[lvl, anchor=north west] at (0,32)
+    {\iflangja{ユーザモード（モードビット = 1）}{user mode (mode bit = 1)}};
+  \node[lvl, anchor=south west] at (0,-5.5)
+    {\iflangja{カーネルモード（モードビット = 0）}{kernel mode (mode bit = 0)}};
+  \node[st, fill=white, minimum width=24mm, text width=22mm] (a) at (13,23)
+    {\iflangja{ユーザプロセス\\実行中}{user process\\executing}};
+  \node[st, fill=white, minimum width=22mm, text width=20mm] (b) at (43,23)
+    {\iflangja{システムコール\\を呼び出す}{calls\\system call}};
+  \node[st, fill=white, thick, draw=ln-accent, minimum width=24mm, text width=22mm]
+    (c) at (68,4) {\iflangja{システムコール\\を実行}{execute\\system call}};
+  \node[st, fill=white, minimum width=24mm, text width=22mm] (d) at (93,23)
+    {\iflangja{システムコール\\から復帰}{return from\\system call}};
+  \draw[->] (a) -- (b);
+  \draw[->, thick, ln-accent] (b.south) |- (c.west);
+  \node[lab, anchor=east] at (42,8.5)
+    {\iflangja{トラップ\\モードビット = 0}{trap\\mode bit = 0}};
+  \draw[->, thick, ln-accent] (c.east) -| (d.south);
+  \node[lab, anchor=west] at (94,8.5)
+    {\iflangja{復帰\\モードビット = 1}{return\\mode bit = 1}};
+  \draw[->] (d.east) -- (118,23);
+\end{tikzpicture}
