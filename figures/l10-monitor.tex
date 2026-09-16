@@ -1,0 +1,46 @@
+% Structure of a monitor: entry queue, implicit lock, entry procedures,
+% shared data and condition-variable queues.
+% Usage: \input{figures/l10-monitor}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  box/.style={draw, rounded corners=2pt, fill=white, align=center, inner sep=2pt},
+  q/.style={draw, rounded corners=2pt, fill=ln-box, minimum width=22mm,
+            minimum height=7mm, inner sep=1pt},
+  th/.style={draw, circle, fill=white, minimum size=4.2mm, inner sep=0pt,
+             font=\tiny\sffamily},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  >={Stealth[length=1.8mm]}]
+  % monitor
+  \draw[thick, rounded corners=4pt, fill=ln-box] (32,-17) rectangle (84,19);
+  \node[font=\footnotesize\sffamily\bfseries, anchor=north west] at (33,18.5)
+    {\iflangja{モニタ}{monitor}};
+  \node[box, minimum width=44mm, minimum height=7mm] (data) at (58,6)
+    {\iflangja{共有データ}{shared data}\quad\texttt{buf}, \texttt{count}};
+  \node[box, minimum width=19mm, minimum height=6mm, font=\footnotesize\ttfamily] (put) at (46.5,-4) {put()};
+  \node[box, minimum width=19mm, minimum height=6mm, font=\footnotesize\ttfamily] (get) at (69.5,-4) {get()};
+  \node[lab, anchor=north] at (58,-8.5) {\iflangja{エントリ手続き}{entry procedures}\\
+    \iflangja{（内部で動くのは一度に1スレッド）}{(one thread inside at a time)}};
+  \draw[ln-muted] (put.north) -- (data.south -| put.north);
+  \draw[ln-muted] (get.north) -- (data.south -| get.north);
+  % entry queue
+  \node[q] (eq) at (13,0) {};
+  \foreach \i/\t in {0/T5,1/T4} { \node[th] at (7.5+6*\i,0) {\t}; }
+  \node[lab, anchor=south] at (13,3.5) {\iflangja{入口キュー}{entry queue}};
+  \draw[->] (eq.east) -- node[lab, above, pos=0.45] {\iflangja{ロック}{lock}} (32,0);
+  % condition queues
+  \node[q] (nf) at (105,9) {};
+  \node[th] at (99.5,9) {T2};
+  \node[lab, anchor=south] at (105,12.5) {\texttt{not\_full}};
+  \node[q] (ne) at (105,-9) {};
+  \node[th] at (99.5,-9) {T3};
+  \node[lab, anchor=south] at (105,-5.5) {\texttt{not\_empty}};
+  \draw[->] (84,9) -- (nf.west);
+  \draw[->] (84,-9) -- (ne.west);
+  \node[lab, anchor=south] at (89,11.5) {\texttt{wait}};
+  \node[lab] at (90,0) {\iflangja{ロック\\を解放}{releases\\lock}};
+  % signal path back to the entry queue
+  \draw[->] (ne.south) -- ++(0,-12) -| node[lab, pos=0.25, below]
+    {\texttt{signal} / \texttt{broadcast}:
+     \iflangja{起こされたスレッドはロックを再獲得する}{a woken thread re-acquires the lock}} (eq.south);
+  % exit
+  \draw[->] (58,19) -- ++(0,6) node[lab, anchor=south] {\iflangja{return（ロックを解放）}{return (releases lock)}};
+\end{tikzpicture}
