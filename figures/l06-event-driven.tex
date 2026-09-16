@@ -1,0 +1,41 @@
+% Event-driven web server: one dispatcher loop invokes the handler for each
+% event and keeps the state of every request explicitly.
+% Usage: \input{figures/l06-event-driven}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  box/.style={draw, rounded corners=2pt, fill=ln-box, align=center, inner sep=1pt},
+  hd/.style={box, minimum width=36mm, minimum height=6mm, font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center},
+  >={Stealth[length=1.6mm]}]
+  % event sources
+  \node[box, fill=white, minimum width=17mm, minimum height=9mm, font=\scriptsize\sffamily]
+    (net) at (8.5,12) {\iflangja{ネットワーク\\（ソケット）}{network\\(sockets)}};
+  \node[box, fill=white, minimum width=17mm, minimum height=9mm, font=\scriptsize\sffamily]
+    (dsk) at (8.5,-4) {\iflangja{ディスク\\（ファイル）}{disk\\(files)}};
+  % process
+  \draw[ln-rule, rounded corners=3pt] (22,-20) rectangle (116,24);
+  \node[lab, anchor=north west] at (23,23)
+    {\iflangja{1 プロセス・1 スレッド・1 アドレス空間}{one process, one thread, one address space}};
+  \node[box, fill=ln-accent!15, minimum width=30mm, minimum height=14mm]
+    (disp) at (43,6) {\iflangja{イベントディスパッチャ}{event dispatcher}\\[0.5mm]
+      \scriptsize\iflangja{イベントを待つループ}{loop: wait for events}\\
+      \scriptsize(\texttt{epoll}, \texttt{select}, \texttt{poll})};
+  \draw[->] (net.east) -- node[lab, above, sloped] {FD} (disp.west |- 0,9);
+  \draw[->] (dsk.east) -- node[lab, below, sloped] {FD} (disp.west |- 0,3);
+  \node[lab, text=ln-muted, anchor=north, align=center] at (10,-9.5)
+    {\iflangja{非同期I/O\\またはヘルパ経由}{asynchronous I/O\\or a helper}};
+  % handlers
+  \node[hd] (h1) at (96,16) {\iflangja{接続の受け付け}{accept connection}};
+  \node[hd] (h2) at (96,8)  {\iflangja{要求の読み込みと解析}{read and parse request}};
+  \node[hd] (h3) at (96,0)  {\iflangja{ヘッダの送信}{send header}};
+  \node[hd] (h4) at (96,-8) {\iflangja{ファイル読込・データ送信}{read file, send data}};
+  \foreach \h in {h1,h2,h3,h4} { \draw[->] (disp.east) -- (\h.west); }
+  \node[lab, anchor=north] at (95,-11.8)
+    {\iflangja{ハンドラは最後まで実行して戻る}{handlers run to completion and return}};
+  % per-request state
+  \node[box, fill=white, minimum width=30mm, align=left, font=\scriptsize\sffamily,
+    anchor=north] (st) at (43,-4.5)
+    {C1: \iflangja{要求を待つ}{waiting for request}\\
+     C2: \iflangja{送信を待つ}{waiting to send}\\
+     C3: \iflangja{ファイルを待つ}{waiting for file data}};
+  \node[lab, anchor=north] at (st.south) {\iflangja{要求ごとの状態}{per-request state}};
+\end{tikzpicture}

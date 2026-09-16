@@ -1,0 +1,945 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Thread Performance Considerations}
+\lessoninfo{
+  video={P2L5},
+  textbook={OSTEP \cite{ostep} ch.~26, 33; Silberschatz et al.\ \cite{silberschatz2018} ch.~4--5; Kerrisk \cite{kerrisk2010} ch.~49--50, 63; Pai et al.\ \cite{pai1999}},
+  keywords={performance metric, execution time, throughput, response time, multi-process model, multithreaded model, event-driven model, event dispatcher, asynchronous I/O, helper, AMPED, Flash, workload, baseline},
+}
+
+Lessons~3--5 introduced threads, their programming interface and their
+implementation, and argued that multithreading makes applications faster
+and more efficient.  This lesson asks how such a claim is evaluated.  It
+shows that which design is better depends on the performance metric and on
+the workload, compares the multi-process, multithreaded and event-driven
+architectures of a web server, and follows the evaluation of the Flash web
+server of Pai et al.\ \cite{pai1999} as a case study in the design of
+experiments.
+
+\section{Comparing threading models}
+\label{sec:l06-compare}
+
+Lesson~3 compared the boss-workers and pipeline patterns by the total time
+they need to complete a batch of requests.  That is only one of several
+reasonable criteria, and a different criterion can reverse the
+verdict.\source{P2L5, which threading model is better.}  Consider a server
+with five threads that receives a batch of $n$ requests, each of which
+needs \SI{125}{\milli\second} of processing:
+\begin{itemize}
+  \item in the boss-workers configuration one thread is the boss, whose own
+    time per request is negligible, and $w = 4$ threads are workers, each of
+    which processes a whole request in $t = \SI{125}{\milli\second}$;
+  \item in the pipeline configuration each of the $k = 5$ threads is a
+    stage, and every stage takes $s = \SI{25}{\milli\second}$.
+\end{itemize}
+With boss-workers the requests complete in groups of $w$, so request $i$
+completes at time $\lceil i/w \rceil\, t$; in the pipeline request $i$
+completes at $(k + i - 1)\, s$.  Two metrics can be derived from these
+completion times.  The time to complete the whole batch is the completion
+time of the last request.  The \emph{average completion time} of a request
+is
+\begin{equation}
+  \overline{T}_{\mathrm{bw}}(n) = \frac{t}{n} \sum_{i=1}^{n}
+    \Bigl\lceil \frac{i}{w} \Bigr\rceil ,
+  \qquad
+  \overline{T}_{\mathrm{pl}}(n) = k\, s + \frac{(n-1)\, s}{2} .
+  \label{eq:l06-mean-completion}
+\end{equation}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l06-completion}
+  \caption{Completion times of nine requests.  Each circle gives the number
+    of requests completing at that time: boss-workers with four workers
+    completes four requests every \SI{125}{\milli\second}, the five-stage
+    pipeline one request every \SI{25}{\milli\second} after the first
+    \SI{125}{\milli\second}.  Dashed lines mark the average completion
+    times.}
+  \label{fig:l06-completion}
+\end{figure}
+
+\begin{example}
+  \label{ex:l06-completion}
+  For a batch of $n = 9$ requests (\cref{fig:l06-completion}), boss-workers
+  completes four requests at \SI{125}{\milli\second}, four at
+  \SI{250}{\milli\second} and the last at \SI{375}{\milli\second}; the
+  pipeline completes the first request at \SI{125}{\milli\second} and then
+  one every \SI{25}{\milli\second}, the last at \SI{325}{\milli\second}.
+  The pipeline finishes the batch sooner.  By
+  \cref{eq:l06-mean-completion}, however, the average completion time is
+  $(4 \cdot 125 + 4 \cdot 250 + 375)/9 \approx \SI{208.3}{\milli\second}$
+  for boss-workers and $125 + 8 \cdot 25/2 = \SI{225}{\milli\second}$ for
+  the pipeline, so boss-workers serves the average request sooner.  For
+  $n = 40$ the pipeline wins by both metrics: it finishes the batch at
+  \SI{1100}{\milli\second} rather than \SI{1250}{\milli\second}, with an
+  average of \SI{612.5}{\milli\second} rather than
+  \SI{687.5}{\milli\second}.
+\end{example}
+
+Boss-workers completes $w$ requests at once after $t$, so many requests
+finish early, whereas the pipeline delivers only one request per stage
+time.  In steady state, however, the pipeline completes $1/s = 40$ requests
+per second against $w/t = 32$ for boss-workers, and in a large batch this
+higher rate dominates.  Which model is better thus depends both on the
+metric and on the number of requests.
+
+\needspace{6\baselineskip}
+\section{Usefulness of threads}
+\label{sec:l06-useful}
+
+The earlier lessons gave several reasons for using
+threads.\source{P2L5, are threads useful, visual metaphor; OSTEP ch.~26.}
+\begin{itemize}
+  \item \textbf{Parallelization}: on several CPUs, threads that work on
+    parts of the same task speed it up.
+  \item \textbf{Specialization}: threads dedicated to particular tasks work
+    with a hot cache and can be given different priorities.
+  \item \textbf{Efficiency}: threads share an address space, so they need
+    less memory than processes and communicate and synchronize more cheaply.
+  \item \textbf{Hiding idle time}: even on a single CPU, another thread can
+    run while one thread waits for I/O.
+\end{itemize}
+Whether these benefits make a thread-based design useful depends on what is
+measured, and different parties measure different things.  For an
+application that multiplies matrices, the relevant measure is its execution
+time.  For a web service it is the number of client requests handled per
+unit time, and the time a client waits for a response---which may be
+reported as the average, the maximum or a percentile, such as the 95th
+percentile.  For the owner of the hardware it is the utilization of
+resources such as the CPU.  Three measures thus recur for any system that
+serves requests: how many requests it completes per unit time, how long a
+request takes to be answered, and how much of the capacity of the system is
+in use.
+
+\begin{example}
+  A server handles 200 requests: 180 receive a response after
+  \SI{20}{\milli\second}, and 20 after \SI{400}{\milli\second}.  The average
+  response time is $(180 \cdot 20 + 20 \cdot 400)/200 =
+  \SI{58}{\milli\second}$.  The 95th percentile is the smallest value that
+  at least 95\,\% of the requests do not exceed; in sorted order the 190th
+  response time is \SI{400}{\milli\second}, so the 95th percentile is
+  \SI{400}{\milli\second}.  The average hides the fact that one request in
+  ten waits twenty times longer than most.
+\end{example}
+
+\needspace{6\baselineskip}
+\section{Performance metrics}
+\label{sec:l06-metrics}
+
+A statement that one design performs better than another is meaningful
+only with respect to a metric.\source{P2L5, performance metrics; really
+are threads useful; Silberschatz et al.\ ch.~5.}
+
+\begin{definition}[Performance metric]
+  A measurement standard for a system, that is, a measurable, quantifiable
+  property of the system of interest that can be used to evaluate its
+  behaviour, for instance to compare it with alternative implementations,
+  is a \term{performance metric}[性能指標].
+\end{definition}
+
+Ideally a metric is obtained by experiments with real software deployed on
+real machines under real workloads.  This is often infeasible---the
+machines may not be available, the software may not be finished, and real
+users cannot be asked to wait for an experiment---so measurements come
+instead from small experiments designed to be representative of realistic
+settings, or from simulation.  An environment of this kind, set up to run
+experiments and obtain metrics, is called a \term{testbed}[テストベッド].
+
+The most common metrics are the following.
+\begin{description}
+  \item[Execution time] The \term{execution time}[実行時間] of a task is the
+    time from its start to its completion.  It is the natural metric for a
+    batch computation such as a matrix multiplication.
+  \item[Throughput] The \term{throughput}[スループット] of a system is the
+    number of tasks, such as requests, that it completes per unit time.  It
+    differs from the \emph{request rate}, the number of requests that
+    arrive per unit time: a system that cannot keep up with the request rate
+    still completes requests only at its throughput, and the backlog grows.
+  \item[Response time] The \term{response time}[応答時間] of a request is
+    the time from its issue until the client receives the response,
+    including any time the request waits before it is processed.  Over many
+    requests it is summarized by an average, a maximum or a percentile.
+  \item[Wait time] The \term{wait time}[待ち時間] of a task is the time from
+    its submission until it starts to execute.  It matters when users care
+    about when their jobs start rather than when they finish.
+  \item[CPU utilization] The \term{CPU utilization}[CPU使用率] is the
+    fraction of time during which the CPU performs useful work; utilization
+    metrics for other resources are defined in the same way.
+\end{description}
+
+Many further metrics relate performance to what it costs or to what a
+particular party cares about (\cref{tab:l06-metrics}).  Providers of a
+service often commit to performance targets in a
+\term{service level agreement}[SLA]\index{SLA|see{service level agreement}}
+(SLA), for example that 99\,\% of requests receive a response within
+\SI{200}{\milli\second}; the percentage of requests that violate the
+agreement is then itself a metric.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Performance metrics and the parties that are typically
+    interested in them.}
+  \label{tab:l06-metrics}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.25\linewidth}>{\raggedright\arraybackslash}p{0.45\linewidth}>{\raggedright\arraybackslash}p{0.22\linewidth}@{}}
+    \toprule
+    Metric & Measures & Of interest to \\
+    \midrule
+    execution time & time to complete a task & users of batch jobs \\
+    throughput, request rate & tasks completed, requests arriving per unit
+      time & operators \\
+    response time & time until a request is answered & clients \\
+    wait time & time until a task starts & users \\
+    CPU utilization & fraction of time the CPU is busy & operators \\
+    platform efficiency & throughput relative to the resources used &
+      data center operators \\
+    performance per dollar, per watt & performance relative to cost or power
+      & operators, buyers \\
+    SLA violations & percentage of requests that miss the agreed target &
+      providers, clients \\
+    client-perceived performance & quality as seen by a client, e.g.\ the
+      frame rate of a video & clients \\
+    aggregate performance & a metric averaged over many tasks or clients &
+      operators \\
+    average resource usage & e.g.\ the memory used over time & operators \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{It depends}
+
+The question whether threads are useful therefore has no single answer.
+The answer depends on the metric, as \cref{sec:l06-compare} showed for
+average and total completion time, and it depends on the workload: the
+better of two threading models changed with the number of requests.  The
+same holds for most design decisions in operating systems.  Different kinds
+of graphs favour different shortest-path algorithms, different patterns of
+file access favour different file system designs, and different request
+loads favour different server architectures.
+
+\begin{keypoint}
+  No design is best in general.  A comparison is meaningful only for a
+  stated metric and a stated workload, and the answer to \enquote{which is
+  better?}\ is typically \enquote{it depends}.
+\end{keypoint}
+
+\needspace{6\baselineskip}
+\section{Multi-process and multithreaded servers}
+\label{sec:l06-mp-mt}
+
+The remainder of the lesson compares ways of structuring a concurrent
+server, using as the example a web server that serves static
+files.\source{P2L5, multi-process vs.\ multithreaded; Silberschatz et
+al.\ ch.~4.}  A client sends a request,
+the server processes it in the steps of \cref{fig:l06-web-steps}, and it
+responds by sending the file.  Some steps, such as parsing the request and
+computing the response header, need only CPU time.  Others may block:
+accepting a connection waits for a client, reading the request and sending
+the data wait for the network, and finding and reading the file may wait
+for the disk.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l06-web-steps}
+  \caption{Processing steps of a simple web server for static content.
+    Bars below a step show which resource it may have to wait for.}
+  \label{fig:l06-web-steps}
+\end{figure}
+
+A server that executes these steps for one request at a time serves a
+single client and keeps all others waiting, even while it is itself
+blocked.  The simplest remedy is to run several copies of it.
+
+\begin{definition}[Multi-process model]
+  In the \term{multi-process model}[マルチプロセスモデル] (MP) a server
+  consists of several processes, each of which runs a single-threaded
+  server that executes all the steps for one request at a time
+  (\cref{fig:l06-mp-mt}a).
+\end{definition}
+
+The multi-process model is easy to program, since each process is an
+ordinary sequential program.  Its costs follow from the separate address
+spaces.  Many processes need much memory, which leaves less memory for
+caching files.  Switching between processes is costly.  State that the
+processes should share, such as a cache of file data or of response
+headers, is hard and expensive to maintain, because it requires IPC or
+explicitly shared memory.  Finally, all processes must accept connections on
+the same port, which requires some care in setting them up; typically a
+parent process creates the listening socket and then forks the server
+processes, which inherit the socket and all call \texttt{accept} on it.
+
+\begin{definition}[Multithreaded model]
+  In the \term{multithreaded model}[マルチスレッドモデル] (MT) a server is a
+  single process whose threads, sharing one address space, each process
+  requests concurrently (\cref{fig:l06-mp-mt}b).
+\end{definition}
+
+The threads can be organized in several ways: every thread may execute all
+the steps, accepting connections itself; or, in the boss-workers pattern of
+Lesson~3, a boss thread accepts connections and passes them to workers; or
+the steps may be the stages of a pipeline.  In every organization the
+threads share the address space, so shared state such as a cache is
+directly accessible, the memory footprint is smaller, and context switches
+between threads are cheap.  In return, the implementation is not simple: the
+shared state requires synchronization, with the overhead and the risk of
+errors that come with it.  The model also relies on the operating system to
+support kernel-level threads, which was not universal when these
+architectures were first compared but is no longer a concern.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l06-mp-mt}
+  \caption{(a) The multi-process model: every process executes all
+    processing steps (cells) of one request and keeps its own copy of state
+    such as a cache.  (b) The multithreaded model: threads in one address
+    space execute the steps and share the state.}
+  \label{fig:l06-mp-mt}
+\end{figure}
+
+\needspace{6\baselineskip}
+\section{The event-driven model}
+\label{sec:l06-event}
+
+A third architecture achieves concurrency without multiple execution
+contexts.\source{P2L5, event-driven model; OSTEP ch.~33; Kerrisk
+\cite{kerrisk2010} ch.~63.}
+
+\begin{definition}[Event-driven model]
+  An application that runs as a single process with a single thread of
+  control in a single address space, and performs its work in response to
+  events, follows the \term{event-driven model}[イベント駆動モデル].
+\end{definition}
+
+At the centre of such an application is the
+\term{event dispatcher}[イベントディスパッチャ], a loop that
+repeatedly waits for events and, depending on the event, invokes one or more
+of the handlers registered for it (\cref{fig:l06-event-driven}).  For a web
+server the events include the arrival of a connection request, the arrival
+of request data on a connection, the completion of a send, which means that
+the connection can take more data, and the completion of a disk read.
+Pai et al.\ call a server built in this way an instance of the
+\term{single-process event-driven model}[単一プロセスイベント駆動モデル]%
+\index{SPED|see{single-process event-driven model}} (SPED).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l06-event-driven}
+  \caption{An event-driven web server.  The dispatcher waits for events on
+    file descriptors (FDs)---sockets that are ready, and disk reads whose
+    completion is reported by asynchronous I/O or by a helper
+    (\cref{sec:l06-helpers})---and invokes the handler for each event.  The
+    state of every request in progress is kept in an explicit record.}
+  \label{fig:l06-event-driven}
+\end{figure}
+
+An \term{event handler}[イベントハンドラ] is the code executed in response
+to one event; invoking it is simply a call to that code.  A handler runs to
+completion.  If it would have to block, it does not wait: it initiates the
+blocking operation, records how far the request has progressed, and returns
+control to the dispatcher, and the completion of the operation later
+arrives as another event.  Dispatcher and handlers together form a state
+machine.  The information that a thread would keep implicitly, in its
+program counter and on its stack, is kept explicitly in a record for each
+request.\margin{OSTEP calls this explicit bookkeeping \emph{manual stack
+management}.}
+
+\subsection{Concurrent execution}
+
+Although it has a single thread, an event-driven server processes many
+requests concurrently.  Every request in progress is at some step of its
+processing.  The dispatcher executes one step of one request, then turns to
+the next event, which may belong to a different request, so that the
+processing of the requests is interleaved.  \Cref{tab:l06-trace} traces
+three connections; after step~6, for instance, one thread has three
+requests in progress, each at a different step.  The trace assumes that the
+completion of a file read arrives as an event, which requires asynchronous
+I/O or the helpers of \cref{sec:l06-helpers}; finding the file may have to
+wait for the disk as well.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Trace of an event-driven server with three connections.  States:
+    R waiting for the request, F waiting for file data, S waiting until
+    the connection can take more data, --- not yet connected.}
+  \label{tab:l06-trace}
+  \small
+  \begin{tabular}{@{}c>{\raggedright\arraybackslash}p{0.25\linewidth}>{\raggedright\arraybackslash}p{0.33\linewidth}ccc@{}}
+    \toprule
+    Step & Event & Handler action & C1 & C2 & C3 \\
+    \midrule
+    1 & connection request & accept C1 & R & --- & --- \\
+    2 & connection request & accept C2 & R & R & --- \\
+    3 & request on C1 & parse, find file, start read & F & R & --- \\
+    4 & connection request & accept C3 & F & R & R \\
+    5 & request on C2 & parse, find file, start read & F & F & R \\
+    6 & file data for C1 & send header and data & S & F & R \\
+    7 & request on C3 & parse, find file, start read & S & F & F \\
+    8 & C1 can take data & send the rest, close & done & F & F \\
+    9 & file data for C2 & send header and data & done & S & F \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Why the model works}
+
+Lesson~3 showed that on a single CPU, switching to another thread while a
+thread waits for I/O pays off when the idle time exceeds the cost of the two
+context switches, $t_{\mathrm{idle}} > 2\, t_{\mathrm{ctx}}$.  When there is
+no idle time, context switches are pure overhead: they consume CPU cycles
+that could have processed requests.  The event-driven model obtains the
+benefit without the cost.  It processes a request until the request has to
+wait, then processes another request, and no context switch is involved.
+On a machine with several CPUs, the model is applied once per CPU: several
+event-driven processes, each with its own dispatcher, share the incoming
+connections.
+
+\subsection{Implementation}
+
+The event sources of a web server are accessed through file descriptors:
+sockets for the network, files for the disk, and pipes to the helpers
+introduced below.  For a socket or a pipe an event is the readiness of its
+descriptor for input or output; for a regular file, readiness says nothing
+about whether a read must wait for the disk, a limitation to which
+\cref{sec:l06-helpers} returns.  To find out which descriptors are ready,
+the dispatcher uses one of three system calls.
+\texttt{select} and \texttt{poll} receive the whole set of descriptors of
+interest on every call; the kernel checks all of them, and the application
+scans the result, although typically only a few are ready.  Their cost
+therefore grows with the number of open connections.  \texttt{epoll},
+available on Linux, eliminates most of this overhead: descriptors are
+registered once, and each call returns only those that are ready.
+
+\begin{example}
+  The skeleton of a dispatcher built on \texttt{epoll}, with the state of
+  each request in a \texttt{struct conn}:
+  \begin{lstlisting}[language=C, numbers=none]
+struct conn {                   /* one per request */
+    int fd;
+    void (*handler)(struct conn *);   /* next step */
+    /* buffers, file, offset, ... */
+};
+
+int ep = epoll_create1(0);
+/* handlers register descriptors with epoll_ctl */
+for (;;) {                                /* dispatcher */
+    struct epoll_event ev[64];
+    int n = epoll_wait(ep, ev, 64, -1);   /* wait */
+    for (int i = 0; i < n; i++) {
+        struct conn *c = ev[i].data.ptr;
+        c->handler(c);           /* runs to completion */
+    }
+}
+\end{lstlisting}
+  The handler of the listening socket accepts a connection, allocates a
+  \texttt{struct conn} whose handler reads the request, and registers the
+  new descriptor.  Every handler performs one step and sets
+  \texttt{handler} to the step that follows.
+\end{example}
+
+The benefits of the model follow from its single address space and single
+flow of control.  A request in progress costs only its state record, not a
+thread with its stack, so the memory requirement is small.  There are no
+context switches between execution contexts.  And since handlers never run
+concurrently, no synchronization is needed.
+
+\begin{keypoint}
+  An event-driven server interleaves the processing of many requests in one
+  thread: a dispatcher waits for events on file descriptors and runs a
+  handler for each.  It saves memory, context switches and synchronization,
+  provided that no handler blocks.
+\end{keypoint}
+
+\needspace{6\baselineskip}
+\section{Blocking operations and helpers}
+\label{sec:l06-helpers}
+
+The event-driven model has one serious problem: a handler that blocks
+blocks the entire process.\source{P2L5, asynchronous I/O, helpers;
+OSTEP ch.~33; Pai et al.}  While the single thread waits for the
+disk, the dispatcher does not run, and no other request makes progress, not
+even a request whose data are ready to be sent.  Readiness notification
+does not help with disk reads: \texttt{select} and \texttt{poll} always
+report a regular file as ready, even when reading it must wait for the
+disk, and \texttt{epoll} does not accept regular files at all.
+
+\begin{definition}[Asynchronous I/O]
+  With \term{asynchronous I/O}[非同期I/O] a system call that starts an I/O
+  operation returns before the operation has completed, and the calling
+  thread continues to execute.  The kernel obtains from the call all the
+  information it needs to carry out the operation, and either learns where
+  to deliver the results or tells the caller where to retrieve them later.
+\end{definition}
+
+Asynchronous I/O requires support from the kernel, for example kernel-level
+threads that carry out the blocking part of the operation, or from the
+device, for example a device that transfers the data by direct memory access
+(DMA, Lesson~11) and signals completion with an interrupt.  It fits the
+event-driven model well: the completion of an asynchronous operation is one
+more event for the dispatcher.\margin{POSIX defines \texttt{aio\_read} and
+\texttt{aio\_write}; glibc implements them with threads.}
+
+Asynchronous calls are not always available, however, and where they exist
+they may not be supported for every kind of device.  An event-driven server
+then delegates its blocking operations.
+
+\begin{definition}[Helper]
+  A \term{helper}[ヘルパ] is a thread or process that an event-driven server
+  uses only to execute blocking operations on behalf of its dispatcher.
+\end{definition}
+
+The dispatcher passes an operation to a helper through a pipe, and the
+helper reports completion through a second pipe, since a pipe carries data
+in one direction only; a socket pair serves both directions at once.  Because
+pipes and sockets are file descriptors, the dispatcher waits for these reports
+with \texttt{select} or \texttt{poll} like for any other event.  The helper
+blocks; the dispatcher, and with it all other requests, does not.  An
+event-driven process combined with helper processes forms the
+\term{asymmetric multi-process event-driven model}[非対称マルチプロセス\allowbreak イベント駆動モデル]%
+\index{AMPED|see{asymmetric multi-process event-driven model}} (AMPED).
+The model is \emph{asymmetric} because the helpers perform only particular
+operations, unlike the equivalent processes or threads of the MP and MT
+models.  Pai et al.\ used helper processes because, at the time, not every
+operating system supported kernel-level threads.  With helper threads
+instead of processes, the server follows the
+\term{asymmetric multithreaded event-driven model}[非対称マルチスレッド\allowbreak イベント駆動モデル]%
+\index{AMTED|see{asymmetric multithreaded event-driven model}} (AMTED).
+
+Helpers resolve the portability problem of the basic event-driven model:
+the server does not depend on asynchronous I/O support in the kernel.  They
+also keep the memory footprint smaller than that of a worker for every
+request, since helpers are needed only for the operations that are blocked
+at the same time, not for every connection.  On the other hand, the
+approach applies only to certain classes of applications, and on a
+multiprocessor it complicates the routing of events: each event, including
+the completion reported by a helper, must reach the dispatcher that handles
+the corresponding request.
+
+\begin{example}
+  A server has 2\,000 open connections, of which at most 25 wait for the
+  disk at any time.  In the multithreaded model each connection needs a
+  thread; with \SI{64}{\kilo\byte} per thread for its stack and data
+  structures, the threads use \SI{128}{\mega\byte}.  An AMPED server keeps a
+  state record of, say, \SI{2}{\kilo\byte} per connection
+  (\SI{4}{\mega\byte}) and 25 helper processes, each of which costs, say,
+  \SI{1}{\mega\byte} for its private pages, page tables and kernel
+  structures (\SI{25}{\mega\byte}), about \SI{29}{\mega\byte} in total.  The
+  difference can be used to cache file data, which in turn reduces the
+  number of requests that must wait for the disk.
+\end{example}
+
+\Cref{tab:l06-models} summarizes the four architectures.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Architectures of a concurrent web server.}
+  \label{tab:l06-models}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.19\linewidth}>{\raggedright\arraybackslash}p{0.165\linewidth}>{\raggedright\arraybackslash}p{0.165\linewidth}>{\raggedright\arraybackslash}p{0.165\linewidth}>{\raggedright\arraybackslash}p{0.165\linewidth}@{}}
+    \toprule
+    & MP & MT & SPED & AMPED \\
+    \midrule
+    Execution contexts & a process per concurrent request & a thread per
+      concurrent request & one & one, plus helpers \\
+    Memory per request & address space & thread stack and structures &
+      state record & state record \\
+    Context switches & between processes & between threads & none & only
+      for blocking operations \\
+    Synchronization & through IPC & locks on shared state & none & none \\
+    Blocking disk I/O & blocks one process & blocks one thread & blocks the
+      server & blocks one helper \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\needspace{6\baselineskip}
+\section{The Flash web server}
+\label{sec:l06-flash}
+
+Pai et al.\ built an event-driven web server based on the AMPED
+model.\source{P2L5, Flash; Pai et al.; Kerrisk ch.~49--50.}  In their server,
+\term{Flash}[Flash], helpers perform the disk operations that may block,
+that is, translating the path name of a request into a file, which may have
+to read directories, and reading file data; they communicate with the
+dispatcher through pipes.  Flash accesses file data through memory-mapped
+files (Lesson~9), so a page of a file is read from disk when it is first
+accessed.
+
+Before a handler sends file data, the dispatcher uses the system call
+\texttt{mincore} to test whether the pages of the data are in memory
+(\cref{fig:l06-flash}).  If they are, a handler sends the data at once, and
+this cannot block.  If they are not, the dispatcher passes the request to a
+helper through a pipe.  The helper accesses the pages, which brings them
+into memory and may block, and then reports completion to the dispatcher
+through a pipe.
+The dispatcher receives the report as an event and invokes the handler,
+which now finds the data in memory.  Most requests to a web server are for
+popular files whose data are already in memory; for these requests Flash
+avoids the helpers and the cost of communicating with them, which can be a
+large saving.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l06-flash}
+  \caption{Serving file data in Flash.  (1)~The dispatcher tests with
+    \texttt{mincore} whether the data are in memory.  (2)~If they are, a
+    handler sends them directly.  (3)~Otherwise a helper is asked through a
+    pipe to access the pages, reading them from disk.  (4)~Its completion
+    report is an event, after which the handler sends the data.}
+  \label{fig:l06-flash}
+\end{figure}
+
+\begin{example}
+  The test in C, using the headers \texttt{sys/mman.h},
+  \texttt{unistd.h} and \texttt{stdbool.h}, for file data mapped at a
+  page-aligned address:
+  \begin{lstlisting}[language=C, numbers=none]
+static bool in_memory(void *addr, size_t len)
+{
+    size_t pg = (size_t)sysconf(_SC_PAGESIZE);
+    size_t n = (len + pg - 1) / pg;
+    unsigned char vec[n];            /* 1 byte per page */
+    if (mincore(addr, len, vec) != 0)
+        return false;
+    for (size_t i = 0; i < n; i++)
+        if (!(vec[i] & 1))           /* page not resident */
+            return false;
+    return true;
+}
+
+/* dispatcher, before file data are sent */
+if (in_memory(c->map, c->len))
+    send_data(c);                    /* cannot block */
+else
+    ask_helper(c);                   /* through a pipe */
+\end{lstlisting}
+\end{example}
+
+\subsection{Additional optimizations}
+
+Flash combines the architecture with optimizations that reduce the work per
+request.
+\begin{description}
+  \item[Application-level caching] Flash caches both data and the results
+    of computations: the translation of the path name in a request to a
+    file, the response headers, which depend only on the file, and the
+    mapped files themselves.  A hit in the cache of path names also saves a
+    request to a helper and back.
+  \item[Gather I/O] The response header and the file data are sent with a
+    single vector I/O operation, \texttt{writev}, which passes several
+    memory regions at once and so saves a system call; a network interface
+    with scatter-gather DMA can transfer non-contiguous buffers without
+    first assembling them in one.
+  \item[Alignment] The kernel copies the regions given to \texttt{writev}
+    into a contiguous buffer of its own, and the copy is slower when the
+    regions are not aligned to the machine word.  Flash therefore pads every
+    response header to a multiple of 32 bytes, by lengthening
+    variable-length header fields, so that the file data that follow the
+    header are copied at an aligned position.\caution{Despite its usual
+    name, \emph{alignment for DMA}, this optimization makes the copy into
+    kernel buffers cheaper rather than avoiding it.}
+\end{description}
+These optimizations were novel in 1999 and are common in web servers today.
+They are independent of the server architecture, a fact that matters for
+the evaluation in \cref{sec:l06-methodology}.
+
+\needspace{6\baselineskip}
+\section{The Apache web server}
+\label{sec:l06-apache}
+
+The open-source \term{Apache}[Apache] HTTP server shows how a production
+server combines the models.\source{P2L5, Apache web server.}  Its
+\emph{core} provides the basic server skeleton, which accepts connections
+and manages the execution contexts---in Apache~2 through a module of its
+own, as the note at the end of the section describes.  The functionality
+that processes a request is implemented by \emph{modules}, each of which
+registers handlers at \emph{hooks}, the stages of request processing
+(\cref{fig:l06-apache}a).  As a request
+progresses, the core invokes the handlers registered for each stage, a flow
+of control that resembles the event-driven model; unlike event handlers,
+however, these handlers run on the thread assigned to the request and may
+block.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l06-apache}
+  \caption{The Apache web server.  (a) Modules register handlers at the
+    stages of request processing that the core provides.  (b) Several
+    processes, each a boss (B) with a pool of workers (W); dashed circles are
+    workers created as load increases.}
+  \label{fig:l06-apache}
+\end{figure}
+
+The execution contexts combine the multi-process and multithreaded models
+(\cref{fig:l06-apache}b).  Apache runs several processes, and each process
+is a boss-workers server with a dynamic thread pool.  Both the number of
+threads in each pool and the number of processes are adjusted to the load,
+for instance by the number of idle workers or of pending
+connections.
+
+\begin{note}
+  In Apache~2 the skeleton is itself a module: accepting connections and
+  managing the processes and threads is the task of a
+  \emph{multi-processing module}, which selects the structure of the
+  execution contexts.  \texttt{prefork} uses processes only, \texttt{worker}
+  is the hybrid described here, and \texttt{event} adds an event loop that
+  watches idle connections.
+\end{note}
+
+\needspace{6\baselineskip}
+\section{Experimental methodology}
+\label{sec:l06-methodology}
+
+An experimental comparison must answer three questions: which systems are
+compared, with which inputs, and by which metrics.\source{P2L5, experimental
+methodology; Pai et al.}  The evaluation of Flash illustrates each.
+
+\subsection{Comparison points}
+
+Flash was compared with servers of every architecture discussed in this
+lesson (\cref{tab:l06-comparison-points}).  The MP, MT and SPED servers
+were built from the code of Flash and differ from it only in their
+architecture; they share its optimizations.  Differences among them can
+therefore be attributed to the architecture.  Two independent servers show
+where Flash stands among the servers in use at the time.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Servers compared in the evaluation of Flash.}
+  \label{tab:l06-comparison-points}
+  \small
+  \begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.72\linewidth}@{}}
+    \toprule
+    Server & Architecture \\
+    \midrule
+    MP     & multi-process: each process has a single thread and handles one
+             request at a time \\
+    MT     & multithreaded, boss-workers \\
+    SPED   & single-process event-driven, without helpers \\
+    Zeus   & version 1.30, a commercial SPED server, run with two processes
+             in the trace-based experiments \\
+    Apache & version 1.3.1, multi-process \\
+    Flash  & AMPED \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Workloads}
+
+\begin{definition}[Workload]
+  The \term{workload}[ワークロード] of an experiment is the set of inputs
+  presented to the system under test; for a web server, the sequence of
+  requests with their arrival times and the files they request.
+\end{definition}
+
+A workload should be realistic, reproducing for instance the distribution
+of web page requests over time that real servers see, and it should be
+controlled and reproducible, so that every server is measured with the same
+input.  A \term{trace}[トレース], a record of the requests observed by a
+real system that the experiment replays, meets both requirements.  A
+\term{synthetic workload}[合成ワークロード] is generated by a program from
+chosen parameters; it is less realistic, but it lets each parameter be
+varied systematically.  Flash was evaluated with two traces collected at
+web servers of Rice University: the \emph{CS trace} of the computer science
+department, with a large set of files, and the \emph{Owlnet trace} of a
+server hosting the personal pages of students, with a smaller set.  A
+synthetic workload repeatedly requested a single file whose size was varied.
+
+\subsection{Metrics}
+
+A web server is measured by the data it delivers and by the clients it
+serves, in two metrics:
+\begin{equation}
+  \begin{aligned}
+    \text{bandwidth} &= \frac{\text{total bytes transferred}}{\text{total time}} ,\\[1mm]
+    \text{connection rate} &= \frac{\text{total client connections}}{\text{total time}} .
+  \end{aligned}
+  \label{eq:l06-bandwidth}
+\end{equation}
+Both were evaluated as functions of the file size.  A larger file lets the
+server amortize the fixed cost of a connection over more bytes, which raises
+the bandwidth, but it also means more work per connection, which lowers the
+connection rate.  A simple model makes this precise.  If serving a file of
+size $S$ costs a fixed time $c$ per connection plus $b$ per byte, a server
+that handles one connection at a time achieves
+\begin{equation}
+  R(S) = \frac{1}{c + b\,S} ,
+  \qquad
+  B(S) = S \cdot R(S) = \frac{S}{c + b\,S} \;<\; \frac{1}{b} ,
+  \label{eq:l06-amortize}
+\end{equation}
+where $R$ is the connection rate and $B$ the bandwidth.
+
+\begin{example}
+  With $c = \SI{1}{\milli\second}$ and $b = \SI{0.02}{\milli\second}$ per
+  kilobyte, a file of \SI{10}{\kilo\byte} takes \SI{1.2}{\milli\second}:
+  $R \approx 833$ connections per second and
+  $B \approx \SI[per-mode=symbol]{8.3}{\mega\byte\per\second}$.  A file of
+  \SI{100}{\kilo\byte} takes \SI{3}{\milli\second}: $R \approx 333$
+  connections per second, but $B \approx \SI[per-mode=symbol]{33.3}{\mega\byte\per\second}$.
+  As the file grows, $B$ approaches $1/b = \SI[per-mode=symbol]{50}{\mega\byte\per\second}$
+  while $R$ keeps falling.
+\end{example}
+
+\needspace{6\baselineskip}
+\section{Experimental results}
+\label{sec:l06-results}
+
+The results of the evaluation depend above all on whether the requested
+data are in memory.\source{P2L5, experimental results, summary of
+performance results; Pai et al.}
+\Cref{tab:l06-results} summarizes the findings described below.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Summary of the performance results of the Flash evaluation.}
+  \label{tab:l06-results}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.21\linewidth}>{\raggedright\arraybackslash}p{0.24\linewidth}>{\raggedright\arraybackslash}p{0.47\linewidth}@{}}
+    \toprule
+    Workload & Ranking & Reason \\
+    \midrule
+    data in cache & SPED $>$ Flash & Flash tests for memory presence
+      unnecessarily \\
+    & SPED, Flash $>$ MT, MP & synchronization and context-switching
+      overhead \\
+    \midrule
+    disk-heavy & Flash $>$ SPED & SPED blocks, lacking asynchronous I/O \\
+    & Flash $>$ MT, MP & Flash is more memory-efficient and switches
+      contexts less \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{description}
+  \item[Single file (best case)] With the synthetic workload every request
+    is for the same file, which is always cached.  The bandwidth, $n$
+    requests times the file size divided by the time, was measured for file
+    sizes up to \SI{200}{\kilo\byte}.  All servers show a similar trend.
+    SPED performs best.  Flash comes close, but it pays for the
+    \texttt{mincore} test on every request, which here is never needed.
+    Zeus shows an anomaly at some file sizes, which Pai et al.\ attribute to
+    the alignment problem described above.  MT and MP are slower because of
+    synchronization and context switching, and Apache, which lacks the
+    optimizations, is slowest.
+  \item[Owlnet trace] The data set is small and mostly fits in the cache,
+    so the trends resemble the best case.  Occasionally, however, a request
+    needs the disk.  SPED then blocks entirely, while the helpers of Flash
+    keep it serving other requests.
+  \item[CS trace] The data set is larger, and many requests need disk I/O.
+    Among the servers built from the Flash code, SPED performs worst,
+    because it lacks asynchronous I/O.  MT is better than MP: its smaller
+    memory footprint leaves more memory for caching files, which reduces
+    disk I/O, and sharing state between threads is cheaper than the IPC that
+    processes need.  Flash performs best: its small footprint leaves more
+    memory for caching, so fewer requests need blocking I/O, and it needs no
+    synchronization.  Apache is again the slowest of all the servers
+    measured.
+  \item[Optimizations] Measurements of Flash with various combinations of
+    the caches of path names, response headers and mapped files show that
+    each optimization contributes substantially.  Apache would have
+    benefited from them too.
+\end{description}
+
+\begin{keypoint}
+  When the data are in memory, the event-driven servers win, and the extra
+  test of Flash costs a little.  When the workload needs the disk, the
+  helpers of Flash avoid blocking, and its small memory footprint leaves
+  more memory for caching, which reduces disk I/O.  Flash performs well
+  across workloads rather than best for each.
+\end{keypoint}
+
+\needspace{6\baselineskip}
+\section{Designing and running experiments}
+\label{sec:l06-design}
+
+An experiment is worth running only if it is relevant: it must support a
+statement about a solution that others believe in and care
+about.\source{P2L5, advice on designing experiments, advice on running
+experiments.}
+
+\subsection{Relevance and metrics}
+
+Relevance depends on the stakeholders.  For a web server, clients care about
+response time, while the operator of the server cares about throughput and
+costs.  A new design that improves both response time and throughput is
+clearly valuable; one that improves one metric without degrading the other
+is still an improvement; one that improves one metric at the expense of the
+other may be useful to some stakeholders, provided the degraded metric
+remains acceptable.  Another possible goal is to keep the response time
+unchanged as the request rate grows.  The goals thus determine which metrics
+to measure and how to configure the experiments.
+
+Metrics should be chosen accordingly.  Standard metrics reach a broader
+audience, because readers know how to interpret and compare them; for the
+same reason, experiments often use a \term{benchmark}[ベンチマーク], a
+standardized workload with rules for running it and reporting the results
+that a community has agreed upon.  Beyond that, the metrics should answer
+the questions of who cares about the result, what they care about and why:
+client performance calls for response time or the number of requests that
+time out, and operator costs for throughput and costs.
+
+\subsection{Configuration space}
+
+The behaviour of a system depends on many factors, which together form its
+configuration space:
+\begin{itemize}
+  \item \textbf{system resources}: hardware, such as the CPUs and memory,
+    and software, such as the number of threads or the sizes of queues;
+  \item \textbf{workload}: for a web server, the request rate, the number of
+    concurrent requests, the file sizes and the access pattern.
+\end{itemize}
+Since the whole space cannot be explored, an experiment chooses a subset of
+the configuration parameters, picks a range of values for each parameter
+that is varied, and uses a relevant workload.  The best-case and worst-case
+scenarios should be included.  The combinations of factors should be
+useful: many combinations merely repeat the same point.
+
+Two rules govern comparisons.  First, compare \emph{apples to apples}: two
+configurations whose results are compared must differ only in the factor
+under study.  If one server is measured with a light
+workload on a large machine and another with a heavy workload on a small
+machine, no conclusion about the servers is possible, because the difference
+may come from the workload, from the resources or from the servers.
+Second, compare against a \term{baseline}[ベースライン]: a reference system
+whose performance is understood, such as the state of the art, the most
+common practice, or an ideal best-case or worst-case scenario.  A claim
+that a design is better is a claim that it is better than a baseline.
+
+\subsection{Running experiments}
+
+Once the experiments are designed, each test case is run many times, the
+metrics are computed over the runs, for example as averages together with
+their spread, and the results are represented in a form, typically a graph,
+that makes the point clearly.  Finally, conclusions must be drawn:
+measurements that are not interpreted with respect to the goals of the
+experiment do not support any statement.
+
+\begin{example}
+  A team wants to show that a new AMPED server reduces the 95th-percentile
+  response time of a photo-sharing site without lowering throughput.  The
+  hardware is fixed at one server machine, and the workload is a trace of
+  the site replayed at increasing request rates of 1\,000, 2\,000, 4\,000,
+  8\,000 and 16\,000 requests per second.  A best case, with every file in
+  memory, and a worst case, with a data set four times larger than memory,
+  bound the range.  The baseline is the multithreaded server currently in
+  use.  With two servers, five rates, two cases and five repetitions each,
+  the study consists of $2 \cdot 5 \cdot 2 \cdot 5 = 100$ runs, and it
+  reports for every configuration the mean of the percentile and of the
+  throughput together with their spread.
+\end{example}
+
+\needspace{11\baselineskip}
+\begin{keypoint}[Lesson summary]
+  Which design is better depends on the metric and on the workload.  A
+  concurrent server can use processes (MP), threads (MT) or one
+  event-driven thread (SPED); helpers turn blocking operations into events
+  when asynchronous I/O is unavailable (AMPED, AMTED).  Flash, an AMPED
+  server, comes close to SPED when data are cached and matches or exceeds
+  the alternatives when the workload needs the disk; Apache combines
+  processes with dynamic thread pools.  Sound experiments choose relevant
+  metrics and workloads, compare configurations that differ in the factor
+  under study, compare against a baseline, repeat runs and draw conclusions.
+\end{keypoint}
+
+\end{document}

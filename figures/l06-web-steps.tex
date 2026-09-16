@@ -1,0 +1,35 @@
+% Processing steps of a simple web server for static content; the bars
+% mark the steps that may wait for the network or for the disk.
+% Usage: \input{figures/l06-web-steps}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  st/.style={draw, rounded corners=1.5pt, fill=ln-box, align=center,
+    minimum width=14.6mm, minimum height=9mm, inner sep=0.5pt},
+  num/.style={font=\scriptsize\sffamily, text=ln-muted, anchor=south},
+  net/.style={draw=none, fill=ln-accent!60},
+  dsk/.style={draw=none, fill=ln-caution!60},
+  >={Stealth[length=1.2mm]}]
+  \node[st] (s1) at (7.3,0)   {\iflangja{接続の\\受け付け}{accept\\connection}};
+  \node[st] (s2) at (24.2,0)  {\iflangja{要求の\\読み込み}{read\\request}};
+  \node[st] (s3) at (41.1,0)  {\iflangja{要求の\\解析}{parse\\request}};
+  \node[st] (s4) at (58.0,0)  {\iflangja{ファイル\\の検索}{find\\file}};
+  \node[st] (s5) at (74.9,0)  {\iflangja{ヘッダ\\の計算}{compute\\header}};
+  \node[st] (s6) at (91.8,0)  {\iflangja{ヘッダ\\の送信}{send\\header}};
+  \node[st] (s7) at (108.7,0) {\iflangja{ファイル\\読込・送信}{read file,\\send data}};
+  \foreach \i [evaluate=\i as \j using int(\i+1)] in {1,...,6} {
+    \draw[->] (s\i.east) -- (s\j.west);
+  }
+  \foreach \i in {1,...,7} { \node[num] at (s\i.north) {\i}; }
+  % may wait for the network
+  \foreach \x in {7.3,24.2,91.8,108.7} {
+    \fill[net] (\x-7.3,-6.2) rectangle (\x+7.3,-5.0);
+  }
+  % may wait for the disk
+  \foreach \x in {58.0,108.7} {
+    \fill[dsk] (\x-7.3,-8.2) rectangle (\x+7.3,-7.0);
+  }
+  % legend
+  \fill[net] (22,-12.6) rectangle (27,-11.4);
+  \node[anchor=west] at (28,-12) {\iflangja{ネットワークを待つ可能性}{may wait for the network}};
+  \fill[dsk] (68,-12.6) rectangle (73,-11.4);
+  \node[anchor=west] at (74,-12) {\iflangja{ディスクを待つ可能性}{may wait for the disk}};
+\end{tikzpicture}

@@ -1,0 +1,41 @@
+% Multi-process and multithreaded web servers.  Each row of seven cells is
+% the sequence of processing steps of one request.
+% Usage: \input{figures/l06-mp-mt}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  proc/.style={draw, rounded corners=2pt, fill=white},
+  cell/.style={draw, fill=ln-box, minimum width=3.6mm, minimum height=4mm,
+    inner sep=0pt},
+  cache/.style={draw, fill=ln-accent!15, align=center, inner sep=0.5pt,
+    font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west},
+  >={Stealth[length=1.4mm]}]
+  % (a) multi-process.  The Japanese label of the cache box is wider than the
+  % English one, so the cells start further left and the box sits further in.
+  \iflangja{\def\lnMPcell{12.9}\def\lnMPcache{47.9}}%
+           {\def\lnMPcell{13.8}\def\lnMPcache{48}}%
+  \node[ttl] at (0,31) {\iflangja{(a) マルチプロセス}{(a) multi-process}};
+  \foreach \y/\n in {22/1,12/2,2/3} {
+    \draw[proc] (0,\y-4) rectangle (54,\y+4);
+    \node[lab] at (5.5,\y) {P\n};
+    \foreach \i in {0,...,6} { \node[cell] at (\lnMPcell+4.4*\i,\y) {}; }
+    \node[cache, minimum width=11mm, minimum height=6mm] at (\lnMPcache,\y)
+      {\iflangja{キャッシュ}{cache}};
+  }
+  \node[lab, text=ln-muted, anchor=north] at (27,-2.8)
+    {\iflangja{プロセスごとに別のアドレス空間}{a separate address space per process}};
+  % (b) multithreaded.  Same adjustment for the wider Japanese shared-state box.
+  \iflangja{\def\lnMTsh{107.6}\def\lnMTlab{65.5}\def\lnMTcell{70.1}\def\lnMTarr{98.3}}%
+           {\def\lnMTsh{109.5}\def\lnMTlab{66.5}\def\lnMTcell{73.8}\def\lnMTarr{102}}%
+  \node[ttl] at (62,31) {\iflangja{(b) マルチスレッド}{(b) multithreaded}};
+  \draw[proc] (62,-2) rectangle (116,26);
+  \node[cache, minimum width=11mm, minimum height=17mm] (sh) at (\lnMTsh,12)
+    {\iflangja{共有\\状態\\（キャッシュ）}{shared\\state\\(cache)}};
+  \foreach \y/\n in {19/1,12/2,5/3} {
+    \node[lab] at (\lnMTlab,\y) {T\n};
+    \foreach \i in {0,...,6} { \node[cell] at (\lnMTcell+4.4*\i,\y) {}; }
+    \draw[<->] (\lnMTarr,\y) -- (sh.west |- 0,\y);
+  }
+  \node[lab, text=ln-muted, anchor=north] at (89,-2.8)
+    {\iflangja{1つのアドレス空間を共有}{one shared address space}};
+\end{tikzpicture}
