@@ -1,0 +1,46 @@
+% Sprite: per-file state on clients and server, and the messages when W3
+% opens a file that W2 has open for writing (concurrent write sharing).
+% Usage: \input{figures/l14-sprite}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  machine/.style={draw, rounded corners=0.8mm},
+  st/.style={font=\scriptsize\sffamily, anchor=north west, inner sep=0pt},
+  lab/.style={font=\scriptsize\sffamily, align=center, inner sep=0.8pt},
+  who/.style={font=\scriptsize\sffamily\bfseries, anchor=north west}]
+  % client W2 (writer)
+  \draw[machine, fill=white] (0,27) rectangle (46,47);
+  \node[who] at (1,46.5) {\iflangja{クライアント $W_2$（書き込み中）}{client $W_2$ (writing)}};
+  \node[st] at (2,41.5) {\begin{tabular}{@{}l@{\quad}l@{}}
+      \iflangja{キャッシュ}{caching} & \iflangja{有効 → 無効}{on $\to$ off}\\
+      \iflangja{ブロック}{blocks} & 0, 1, 5\\
+      \iflangja{ダーティ}{dirty} & 1 (41\,s), 5 (44\,s)\\
+      \iflangja{版}{version} & 6
+    \end{tabular}};
+  % client W3 (opening)
+  \draw[machine, fill=white] (72,27) rectangle (118,47);
+  \node[who] at (73,46.5) {\iflangja{クライアント $W_3$（open 中）}{client $W_3$ (opening)}};
+  \node[st] at (74,41.5) {\begin{tabular}{@{}l@{\quad}l@{}}
+      \iflangja{キャッシュ}{caching} & \iflangja{無効}{off}\\
+      \iflangja{ブロック}{blocks} & ---\\
+      \iflangja{版}{version} & 7
+    \end{tabular}};
+  % server
+  \draw[machine, fill=ln-box] (33,-8) rectangle (85,13);
+  \node[who] at (34,12.5) {\iflangja{サーバ}{server}};
+  \node[st] at (35,7.5) {\begin{tabular}{@{}l@{\quad}l@{}}
+      \iflangja{読み手}{readers} & ---\\
+      \iflangja{書き手}{writers} & $W_2$, $W_3$\\
+      \iflangja{版}{version} & $6 \to 7$\\
+      \iflangja{キャッシュ可能}{cacheable} & \iflangja{可 → 不可}{yes $\to$ no}
+    \end{tabular}};
+  % (1) open by W3
+  \draw[->, thick] (108,27) |- (85,2);
+  \node[lab, anchor=south] at (96,2.6) {\iflangja{(1) open\\（書き込み）}{(1) open\\for writing}};
+  % (2) dirty blocks from W2
+  \draw[<->, thick, ln-accent] (33,2) -| (12,27);
+  \node[lab, anchor=west, text=ln-accent] at (13,16.5) {\iflangja{(2) ダーティ\\ブロック}{(2) dirty\\blocks}};
+  % (3) disable caching
+  \draw[->, densely dashed, ln-caution, thick] (59,13) -- (59,20) -| (36,27);
+  \draw[->, densely dashed, ln-caution, thick] (59,20) -| (82,27);
+  \node[lab, anchor=south, text=ln-caution, fill=white] at (59,20.6) {\iflangja{(3) キャッシュ無効化}{(3) disable caching}};
+\end{tikzpicture}

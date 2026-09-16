@@ -1,0 +1,36 @@
+% Caching state in a DFS: client 2 modifies its cached copy of F, writes it
+% back, and client 1 learns that its copy is stale, either by asking the
+% server (client-driven) or by being notified (server-driven).
+% Usage: \input{figures/l14-caching}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  machine/.style={draw, rounded corners=0.8mm},
+  doc/.style={draw, fill=white, minimum width=9mm, minimum height=6mm, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  who/.style={font=\scriptsize\sffamily\bfseries, anchor=north west}]
+  % client 1
+  \draw[machine, fill=white] (0,25) rectangle (42,39);
+  \node[who] at (1,38.5) {\iflangja{クライアント 1}{client 1}};
+  \node[lab, anchor=west] at (3,30) {\iflangja{キャッシュ：}{cache:}};
+  \node[doc] at (27,30) {$F$};
+  \node[lab, text=ln-caution, anchor=west] at (32,30) {\iflangja{古い}{stale}};
+  % client 2
+  \draw[machine, fill=white] (76,25) rectangle (118,39);
+  \node[who] at (77,38.5) {\iflangja{クライアント 2}{client 2}};
+  \node[lab, anchor=west] at (79,30) {\iflangja{キャッシュ：}{cache:}};
+  \node[doc, fill=ln-accent!20, thick] (f2) at (103,30) {$F'$};
+  \node[lab, anchor=north, text=ln-accent] at (103,37.8) {\iflangja{(1) 書き込み}{(1) write}};
+  % server
+  \draw[machine, fill=ln-box] (38,0) rectangle (80,12);
+  \node[who] at (39,11.5) {\iflangja{サーバ}{server}};
+  \node[doc, fill=ln-accent!20] at (66,5) {$F'$};
+  % (2) write back
+  \draw[->, thick, ln-accent] (112,25) |- (80,4)
+    node[lab, pos=0.25, left, text=ln-accent] {\iflangja{(2) 書き戻し}{(2) write back}};
+  % (3a) client-driven validation
+  \draw[->, densely dashed] (10,25) |- (38,4);
+  \node[lab, anchor=south] at (24,4.6) {\iflangja{(3a) クライアント駆動：\\「$F$ は最新か？」}{(3a) client-driven:\\is $F$ current?}};
+  % (3b) server-driven notification
+  \draw[->, densely dashed, ln-caution] (52,12) -- (52,18) -| (34,25);
+  \node[lab, anchor=west, text=ln-caution, align=left] at (53,17.5) {\iflangja{(3b) サーバ駆動：\\「$F$ は変更された」}{(3b) server-driven:\\$F$ has changed}};
+\end{tikzpicture}

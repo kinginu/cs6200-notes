@@ -1,0 +1,56 @@
+% DFS models: (a) client and server on different machines, (b) replicated
+% file servers, (c) partitioned file servers, (d) peers.
+% Usage: \input{figures/l14-models}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  cl/.style={draw, fill=white, minimum width=12mm, minimum height=5mm, inner sep=1pt},
+  sv/.style={draw, fill=ln-box, minimum width=15mm, minimum height=8mm, inner sep=1pt, align=center},
+  pe/.style={draw, fill=ln-accent!12, minimum width=15mm, minimum height=8mm, inner sep=1pt, align=center},
+  net/.style={line width=1.2pt, ln-muted},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % (a) one server
+  \begin{scope}[shift={(0,33)}]
+    \node[ttl] at (0,27) {\iflangja{(a) 単一のファイルサーバ}{(a) single file server}};
+    \draw[net] (3,13) -- (53,13);
+    \foreach \x in {10,28,46} {
+      \node[cl] at (\x,20) {\iflangja{クライアント}{client}};
+      \draw (\x,17.5) -- (\x,13);
+    }
+    \node[lab, anchor=south] at (19,13.3) {\iflangja{ネットワーク}{network}};
+    \node[sv] at (28,4) {\iflangja{サーバ}{server}\\A--F};
+    \draw (28,8) -- (28,13);
+  \end{scope}
+  % (b) replicated
+  \begin{scope}[shift={(62,33)}]
+    \node[ttl] at (0,27) {\iflangja{(b) 複製されたファイルサーバ}{(b) replicated file servers}};
+    \draw[net] (3,13) -- (53,13);
+    \foreach \x in {10,28,46} {
+      \node[cl] at (\x,20) {\iflangja{クライアント}{client}};
+      \draw (\x,17.5) -- (\x,13);
+      \node[sv] at (\x,4) {\iflangja{サーバ}{server}\\A--F};
+      \draw (\x,8) -- (\x,13);
+    }
+  \end{scope}
+  % (c) partitioned
+  \begin{scope}[shift={(0,0)}]
+    \node[ttl] at (0,27) {\iflangja{(c) 分割されたファイルサーバ}{(c) partitioned file servers}};
+    \draw[net] (3,13) -- (53,13);
+    \foreach \x/\f in {10/{A, B},28/{C, D},46/{E, F}} {
+      \node[cl] at (\x,20) {\iflangja{クライアント}{client}};
+      \draw (\x,17.5) -- (\x,13);
+      \node[sv] at (\x,4) {\iflangja{サーバ}{server}\\\f};
+      \draw (\x,8) -- (\x,13);
+    }
+  \end{scope}
+  % (d) peers
+  \begin{scope}[shift={(62,0)}]
+    \node[ttl] at (0,27) {\iflangja{(d) ピア}{(d) peers}};
+    \draw[net] (3,19) -- (53,19);
+    \foreach \x/\f in {10/{A, B},28/{C, D},46/{E, F}} {
+      \node[pe] at (\x,10) {\iflangja{ピア}{peer}\\\f};
+      \draw (\x,14) -- (\x,19);
+    }
+    \node[lab, anchor=north] at (28,5)
+      {\iflangja{各ピアがクライアントでありサーバでもある}{each peer is both client and server}};
+  \end{scope}
+\end{tikzpicture}

@@ -1,0 +1,37 @@
+% Remote file service: (a) upload/download model, (b) remote access model,
+% (c) the compromise in which clients cache some blocks.
+% Usage: \input{figures/l14-remote}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  machine/.style={draw, fill=white, rounded corners=0.8mm},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  who/.style={font=\scriptsize\sffamily\itshape, text=ln-muted, anchor=north west},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % \lblocks{x0}{y0}{list of block indices to fill}{fill colour}
+  \def\lblocks#1#2#3#4{%
+    \foreach \i in {0,...,5} { \draw[fill=white] (#1+\i*4,#2) rectangle ++(4,4); }
+    \foreach \i in {#3} { \draw[fill=#4] (#1+\i*4,#2) rectangle ++(4,4); }}
+  \foreach \px/\t in {0/{\iflangja{(a) アップロード・ダウンロード}{(a) upload/download}},
+                      40/{\iflangja{(b) 遠隔アクセス}{(b) remote access}},
+                      80/{\iflangja{(c) 折衷案}{(c) compromise}}} {
+    \node[ttl] at (\px,44) {\t};
+    \draw[machine] (\px+1,26) rectangle (\px+37,39);
+    \node[who] at (\px+1.5,38.6) {\iflangja{クライアント}{client}};
+    \draw[machine, fill=ln-box] (\px+1,0) rectangle (\px+37,11);
+    \node[who] at (\px+1.5,10.6) {\iflangja{サーバ}{server}};
+    \lblocks{\px+7}{1.8}{0,...,5}{ln-muted!45}
+  }
+  % (a) whole file at the client
+  \lblocks{7}{28}{0,...,5}{ln-accent!45}
+  \draw[->, thick] (9,11.5) -- node[lab, right, pos=0.7] {\iflangja{ダウンロード}{download}} (9,25.5);
+  \draw[->, thick] (29,25.5) -- node[lab, left, pos=0.7] {\iflangja{アップロード}{upload}} (29,11.5);
+  % (b) nothing at the client, every operation to the server
+  \node[lab, text=ln-muted] at (59,30) {\iflangja{ローカルにはデータなし}{no file data kept locally}};
+  \foreach \x in {50,54,58} { \draw[->] (\x,25.5) -- (\x,11.5); }
+  \foreach \x in {62,66,70} { \draw[<-] (\x,25.5) -- (\x,11.5); }
+  \node[lab, fill=white, inner sep=0.6pt] at (60,18.5) {\iflangja{すべての操作}{every operation}};
+  % (c) some blocks cached, frequent interaction
+  \lblocks{87}{28}{1,2}{ln-accent!45}
+  \draw[->, thick] (89,11.5) -- node[lab, right, pos=0.25] {\iflangja{ブロック}{blocks}} (89,25.5);
+  \draw[->, thick] (109,25.5) -- node[lab, left, pos=0.25] {\iflangja{open，検証，\\書き戻し}{open, check,\\write back}} (109,11.5);
+\end{tikzpicture}

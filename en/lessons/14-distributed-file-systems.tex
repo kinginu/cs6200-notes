@@ -1,0 +1,905 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Distributed File Systems}
+\lessoninfo{
+  video={P4L2},
+  textbook={OSTEP \cite{ostep} ch.~49--50; Silberschatz et al.\ \cite{silberschatz2018} ch.~15, 19; Nelson et al.\ \cite{nelson1988}},
+  keywords={distributed file system, replication, partitioning, upload/download model, stateless server, stateful server, UNIX semantics, session semantics, lease, NFS, file handle, Sprite, delayed write, concurrent write sharing},
+}
+
+The virtual file system of Lesson~11 hides from applications where the
+files they use reside, and the remote procedure calls of Lesson~13 allow a
+process to have operations performed on another machine.  A distributed
+file system combines the two: it stores files on machines connected by a
+network and serves them to clients that use the ordinary file system
+interface.  This lesson examines the design space of such systems---how
+the work is divided between clients and servers, what state a server
+keeps, how cached copies are kept consistent and what a client observes
+when files are shared---and then studies two concrete designs: NFS, and
+Sprite, whose design was derived from measurements of how files are used.
+
+\section{Distributed file systems}
+\label{sec:l14-dfs}
+
+Operating systems hide the details of storage behind the file system
+interface.\source{P4L2, lesson preview, visual metaphor, distributed file
+systems, DFS models; Silberschatz et al.\ ch.~19.}  Beneath
+it, the virtual file system passes each operation to the file system in
+which the file resides, and that file system may keep its files on a local
+device or on other machines of a network.
+
+\begin{definition}[Distributed file system]
+  A \term{distributed file system}[分散ファイルシステム]%
+  \index{DFS|see{distributed file system}} (DFS) is a file system whose
+  files are stored on, and served by, machines connected by a network, and
+  which processes access through the ordinary file system interface
+  whether or not a file resides on their own machine.
+\end{definition}
+
+Three properties characterize a DFS:
+\begin{itemize}
+  \item It is accessed through a well-defined interface.  Applications use
+    the same system calls as for local files, and the VFS passes each
+    operation on a remote file to the DFS.
+  \item It must maintain a consistent state.  When several clients use the
+    same files, the DFS must track which client accesses which file,
+    propagate updates and keep cached copies coherent.
+  \item It may mix several distribution models.  Files can be replicated or
+    partitioned among several servers, and the roles of client and server
+    need not reside on different machines.
+\end{itemize}
+
+The distribution models are shown in \cref{fig:l14-models}.
+\begin{description}
+  \item[Client and server on different machines] A single file server
+    stores all files, and clients on other machines access them over the
+    network.
+  \item[Distributed file server] The file service itself runs on several
+    machines.  In a \emph{replicated} file server every machine holds all
+    files; in a \emph{partitioned} file server each machine holds a part of
+    the files.  \Cref{sec:l14-replication} compares the two.
+  \item[Peers] Files are stored on and served from all machines.
+\end{description}
+
+In the last model the distinction between clients and servers is blurred.
+Such an organization is called \term{peer-to-peer}[ピアツーピア]: every
+machine is a peer that both uses and provides the file service.  Each peer
+stores a portion of the files and carries part of the load by serving
+requests, typically those for the files stored on it.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l14-models}
+  \caption{DFS models.  (a) A single server stores all files.  (b) Every
+    server of a replicated file server holds all files.  (c) Each server of
+    a partitioned file server holds some of the files.  (d) All machines
+    are peers that store files and serve them.}
+  \label{fig:l14-models}
+\end{figure}
+
+\section{Remote file service}
+\label{sec:l14-remote}
+
+Even with a single server, the work of accessing a remote file can be
+divided between client and server in very different ways.\source{P4L2,
+remote file service: extremes, remote file service: a compromise; OSTEP
+ch.~49--50; Silberschatz et al.\ ch.~19.}  Two extremes bound the design space
+(\cref{fig:l14-remote}).
+
+\begin{definition}[Upload/download model]
+  In the \term{upload/download model}[アップロード・ダウンロードモデル] a
+  client that accesses a file downloads the entire file from the server,
+  performs all operations on its local copy, and uploads the entire file to
+  the server when it is done.
+\end{definition}
+
+File transfer with FTP and version control systems such as Subversion work
+in this way.  Reads and writes are performed locally at the client and
+are therefore fast.  But the entire file is transferred even when the
+client needs only a small part of it, and the server gives up control: once
+a file has been downloaded, the server knows neither what the client does
+with it nor when the modified file will be uploaded.
+
+\begin{definition}[Remote access model]
+  In the \term{remote access model}[遠隔アクセスモデル], also called true
+  remote file access, the file remains on the server and every operation on
+  it---every read and every write---is sent to the server.  Nothing is done
+  locally at the client.
+\end{definition}
+
+Because every access passes through the server, file access is
+centralized, and consistency is as easy to reason about as for a local
+file system shared by several processes.  But every file operation pays
+for a network round trip and for processing at the server, and since the
+server executes every operation of every client, its capacity limits the
+number of clients the DFS can support.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l14-remote}
+  \caption{Remote file service.  (a) The client downloads the whole file
+    and uploads it when done.  (b) The file stays at the server, which
+    performs every operation.  (c) The client caches some blocks but
+    interacts with the server frequently.}
+  \label{fig:l14-remote}
+\end{figure}
+
+\begin{example}
+  A client works with a \SI{1}{\gibi\byte} file over a network that
+  transfers \SI[per-mode=symbol]{100}{\mebi\byte\per\second}; every request
+  costs a round trip of \SI{1}{\milli\second}.  If the client reads 50
+  blocks of \SI{4}{\kibi\byte}, the remote access model needs 50 requests,
+  about \SI{50}{\milli\second}, whereas downloading the file takes
+  $1024/100 \approx \SI{10.2}{\second}$.  If the client instead reads
+  \num{200000} blocks, the round trips of the remote access model alone
+  take \SI{200}{\second}, while the download still takes
+  \SI{10.2}{\second} and every read after it is local.
+\end{example}
+
+\subsection{A compromise}
+
+Practical DFSs lie between the extremes and combine two principles:
+\begin{enumerate}
+  \item Clients may keep parts of files, individual blocks, locally.
+    Operations on local blocks have low latency, and the requests they
+    save reduce the load on the server, so that a server can support more
+    clients.
+  \item Clients must interact with the server, and do so frequently: when
+    they open a file, to check whether their local blocks are still
+    current, and to send their modifications back.  The server thereby
+    gains insight into what the clients are doing and control over which
+    accesses it permits, which makes consistency easier to maintain.
+\end{enumerate}
+The price is a more complex server, and file sharing semantics that differ
+from those of a local file system: a client that works on local copies of
+blocks cannot observe every change made by another client at the moment
+it happens (\cref{sec:l14-semantics}).
+
+\section{Stateless and stateful file servers}
+\label{sec:l14-state}
+
+The division of work between client and server determines what the
+server must remember about its clients.\source{P4L2, stateless vs.\
+stateful file server; OSTEP ch.~49; Silberschatz et al.\ ch.~19.}
+Conversely, the state that a server keeps determines which of the models
+of \cref{sec:l14-remote} it can support.
+
+\begin{definition}[Stateless server]
+  A \term{stateless server}[ステートレスサーバ] keeps no information about
+  its clients between requests: neither which files are open, nor which
+  data a client has cached, nor where in a file a client is reading.  Every
+  request is self-contained and carries all information needed to serve
+  it.
+\end{definition}
+
+\begin{definition}[Stateful server]
+  A \term{stateful server}[ステートフルサーバ] maintains information about
+  its clients: which clients access which files, in which mode, and which
+  data they have cached or locked.
+\end{definition}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Stateless and stateful file servers.}
+  \label{tab:l14-state}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.2\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}@{}}
+    \toprule
+    & Stateless server & Stateful server \\
+    \midrule
+    Suited to & upload/download and remote access models & the compromise
+      model \\
+    Requests & self-contained; more bits per request & may refer to state
+      kept by the server \\
+    Supports & neither consistent caching nor locking & locking, caching,
+      incremental operations \\
+    Server resources & none for client state & memory and CPU time for state
+      and consistency \\
+    After a failure & restart and continue & state must be checkpointed and
+      recovered \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A stateless server suffices for the two extreme models but not for the
+compromise, because keeping the blocks cached by clients consistent
+requires knowing which clients have cached which files.  Its advantages
+are that it spends no memory or CPU time on client state, and that it
+recovers from a failure simply by restarting: no state has been lost, and
+a client whose request went unanswered sends it again.  Resending is safe
+as long as the requests are idempotent (Lesson~13), as a read or a write at
+an explicit offset is.  Its disadvantages are that it cannot support
+caching with consistency management, nor locking, and that every request
+must describe the operation completely---which file, which offset, how many
+bytes---so that more bits are transferred per request.  Its clients may
+still cache data and ask the server, when they open a file or
+periodically, whether their copy is current (client-driven validation,
+\cref{sec:l14-caching}, as in NFS), but the server can neither notify them
+of a change nor guarantee that their copies are coherent.
+
+A stateful server is required for the compromise model.  Because it knows
+what its clients do, it can support locking, client caching with
+consistency guarantees, and incremental operations such as reading the
+next block of a file.  The price is twofold.  When the server fails, its
+state is lost unless the server checkpoints it (Lesson~8)%
+\index{checkpointing} and a recovery mechanism restores it; and
+maintaining the state and enforcing consistency costs server resources,
+how much depending on the caching mechanism and the consistency protocol.
+\Cref{tab:l14-state} summarizes the comparison.
+
+\begin{example}
+  A client reads a \SI{12}{\kibi\byte} file in three requests of
+  \SI{4}{\kibi\byte}, and the server restarts after the second
+  (\cref{tab:l14-state-ex}).  The stateless server receives the file and the
+  offset with every read; with a file handle of 32 bytes (the fixed size
+  in NFSv2), an 8-byte offset and a 4-byte count, each request carries 44
+  bytes of arguments.  The stateful server records the open
+  file and its offset, so that a read needs only a 4-byte descriptor and
+  the count, 8 bytes.  After the restart, however, the stateful server no
+  longer knows descriptor~5, and the third read fails unless the state is
+  recovered, whereas the stateless server serves it as if nothing had
+  happened.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Reading a file from a stateless and a stateful server that
+    restarts after the second read.}
+  \label{tab:l14-state-ex}
+  \small
+  \begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.38\linewidth}>{\raggedright\arraybackslash}p{0.38\linewidth}@{}}
+    \toprule
+    Step & Stateless server & Stateful server \\
+    \midrule
+    open & \texttt{lookup(dir,"data")} returns handle $h$ &
+      \texttt{open("data")} returns 5; offset 0 recorded \\
+    read 1 & \texttt{read($h$,0,4096)} & \texttt{read(5,4096)}; offset
+      4096 \\
+    read 2 & \texttt{read($h$,4096,4096)} & \texttt{read(5,4096)}; offset
+      8192 \\
+    restart & nothing lost & open files and offsets lost \\
+    read 3 & \texttt{read($h$,8192,4096)} served & \texttt{read(5,4096)}
+      fails \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}
+  Practical DFSs let clients cache blocks while interacting frequently
+  with the server, a compromise between the upload/download and the remote
+  access models.  The compromise requires a stateful server, which
+  supports caching, locking and incremental operations at the cost of
+  server resources and of recovery after failures.  A stateless server is
+  simpler and survives failures by restarting, but cannot guarantee that
+  client caches are consistent.
+\end{keypoint}
+
+\section{Caching state in a DFS}
+\label{sec:l14-caching}
+
+In the compromise model clients maintain a portion of the state of a file
+locally, typically some of its blocks, and perform operations such as
+open, read and write on this cached state.\source{P4L2, caching state in a
+DFS; OSTEP ch.~49--50; Silberschatz et al.\ ch.~19.}  A client holds these
+blocks in its own memory, like the buffer cache of Lesson~11: the fastest
+place, but one that is limited in size and lost when the client
+crashes.\margin{The clients of NFS (\cref{sec:l14-nfs}) and of Sprite
+(\cref{sec:l14-sprite}) cache blocks in memory.}  On a local disk or SSD a
+client can cache more data and keep them across a crash, at the price of
+being slower than memory, though still faster than the network.  The
+server caches blocks as well, in its own buffer cache, which saves it disk
+accesses; how much it saves depends on the load, since the requests of
+many clients for different files interleave there and displace one
+another's data.  Once the same file is cached at several places, the
+copies can diverge.  Suppose that clients~1 and~2 both cache file~$F$ and
+that client~2 modifies its copy into $F'$ (\cref{fig:l14-caching}).  The
+modification must reach the server, and client~1 must learn that its copy
+of $F$ is stale.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l14-caching}
+  \caption{Client 2 modifies its cached copy of $F$ and writes it back.
+    Client 1 learns that its copy is stale either by asking the server
+    (client-driven) or by being notified (server-driven).}
+  \label{fig:l14-caching}
+\end{figure}
+
+The problem is that of cache coherence\index{cache coherence} on shared
+memory multiprocessors (Lesson~10), where a write by one CPU makes the
+copies of a memory location in the caches of the other CPUs stale and, on
+a cache-coherent platform, the hardware updates or invalidates them.  In a
+DFS the coherence mechanism is implemented in software, and it is either
+\begin{description}
+  \item[client-driven] the client asks the server, when it opens a file or
+    periodically, whether its cached data are still current; or
+  \item[server-driven] the server, which knows which clients cache a file,
+    notifies them when the file changes.
+\end{description}
+Client-driven checks keep the server simple but cost a request each and
+leave a client with stale data until its next check; server-driven
+notification requires a stateful server.  When and how often either
+mechanism acts is determined by the file sharing semantics that the DFS
+provides (\cref{sec:l14-semantics}).
+
+\section{File sharing semantics}
+\label{sec:l14-semantics}
+
+On a single machine, when process~A writes to a file that process~B also
+has open, B's next read returns the new data: both processes access the
+file through the same buffer cache, so every write is visible
+immediately.\source{P4L2, file sharing semantics on a DFS; Silberschatz et
+al.\ ch.~15; OSTEP ch.~49--50.}  In a DFS whose clients cache data, a write by
+client~A first changes only A's cache.  It reaches the server when A sends
+it there, and client~B sees it only after B has obtained it from the
+server.  The guarantees about when one client observes the writes of
+another form the \emph{file sharing semantics} of a DFS.
+
+\begin{definition}[UNIX semantics]
+  Under \term{UNIX semantics}[UNIXセマンティクス] every write to a file is
+  visible immediately to every subsequent read, on any machine.
+\end{definition}
+
+UNIX semantics is what applications expect from a local file system.  In
+a DFS it requires every write to be propagated before any other client
+reads the file, which makes it expensive to provide.
+
+\begin{definition}[Session semantics]
+  Under \term{session semantics}[セッションセマンティクス] a client obtains
+  the current version of a file from the server when it opens the file,
+  and writes its changes back to the server when it closes the file.  The
+  period between an open and the corresponding close is a \emph{session};
+  changes made by other clients during a session are not visible in it.
+\end{definition}
+
+Session semantics is easy to reason about, but it may be insufficient.
+Clients that share a file while both have it open do not see each other's
+changes, and the longer the sessions last, the longer the copies of
+different clients remain inconsistent.
+
+With \emph{periodic updates} a client writes its changes back to the
+server periodically, and cached data are invalidated or revalidated
+periodically.  The period bounds the time during which clients can observe
+inconsistent data, and the DFS may offer explicit operations such as
+\texttt{flush} or \texttt{sync} with which an application forces its changes
+to the server at once.  A client's right to use its cached data is thus
+limited in time: the client holds a lease on the data.
+
+\begin{definition}[Lease]
+  A \term{lease}[リース] is a right that a server grants to a client for a
+  limited period of time, such as the right to use cached data or to hold
+  a lock.  When the period expires, the right is lost unless the client has
+  renewed it.
+\end{definition}
+
+A lease on cached data need not be exclusive: several clients can hold
+leases on the same file at the same time.  Two further approaches avoid
+inconsistent views altogether.
+
+\begin{definition}[Immutable file]
+  An \term{immutable file}[不変ファイル] is never modified after it has
+  been created.  To change its contents, a new file is created, and the old
+  one may be deleted.
+\end{definition}
+
+All copies of an immutable file are identical, so sharing it cannot
+produce inconsistency.  Services that store photos, for example, typically
+do not modify an uploaded photo in place; an edited photo is stored as a
+new file.  Finally, a DFS can offer \emph{transactions}: an application
+groups several updates, of one or several files, into a transaction, and
+the DFS applies them atomically---either all take effect or none
+does---as a database system does.
+
+\begin{example}
+  \label{ex:l14-semantics}
+  File $F$ initially contains \texttt{x}.  Client~A opens $F$ at
+  $t=\SI{0}{\second}$, writes \texttt{y} at \SI{4}{\second} and closes $F$
+  at \SI{10}{\second}.  Client~B opens $F$ at \SI{2}{\second}, reads it at
+  \SI{6}{\second} and \SI{12}{\second} and closes it at \SI{14}{\second};
+  it opens $F$ again at \SI{15}{\second} and reads it at \SI{16}{\second}
+  (\cref{fig:l14-semantics}).  For periodic updates, assume that A's client
+  writes back dirty data every \SI{5}{\second}, at 5, 10, 15,
+  \ldots~seconds, and that B's client revalidates its cache at 3, 8, 13,
+  \ldots~seconds.  \Cref{tab:l14-semantics} lists what B reads.  Under
+  session semantics B sees \texttt{y} only in its second session.  Under
+  periodic updates it sees \texttt{y} after its first revalidation that
+  follows A's write-back, \SI{4}{\second} after the write; in general no
+  write stays invisible to B for longer than the sum of the two periods,
+  \SI{10}{\second}.
+\end{example}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l14-semantics}
+  \caption{The scenario of \cref{ex:l14-semantics}.  Shaded bars are
+    sessions.  (a) Under session semantics A writes back at close and B
+    fetches the file at open.  (b) Under periodic updates A writes back at
+    \SI{5}{\second} and B revalidates every \SI{5}{\second} (dashed).}
+  \label{fig:l14-semantics}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Contents of $F$ read by client B in \cref{ex:l14-semantics}.}
+  \label{tab:l14-semantics}
+  \small
+  \begin{tabular}{@{}lccc@{}}
+    \toprule
+    Read by B at & UNIX semantics & Session semantics & Periodic updates \\
+    \midrule
+    \SI{6}{\second}  & \texttt{y} & \texttt{x} & \texttt{x} \\
+    \SI{12}{\second} & \texttt{y} & \texttt{x} & \texttt{y} \\
+    \SI{16}{\second} & \texttt{y} & \texttt{y} & \texttt{y} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\needspace{6\baselineskip}
+\section{Files and directories}
+\label{sec:l14-dirs}
+
+No single semantics is the best choice for every DFS.\source{P4L2, file
+vs.\ directory service.}  The right choice
+depends on the workload: how often files are shared, how often they are
+written, and how important a consistent view is to the applications.
+Knowing these access patterns allows the designer to optimize for the
+common case\index{optimize for the common case} (Lesson~1).
+
+A DFS serves two kinds of files whose workloads differ.  A regular file is
+typically used by one client at a time, and a delay before other clients
+see its changes is rarely noticed.  A directory is shared far more
+often---every client that creates, removes or renames a file in a shared
+directory modifies it---and an inconsistent view of a directory is
+harmful: two clients could, for instance, both create a file of the same
+name.  A DFS can therefore apply different policies to the two, for
+example session semantics for files and UNIX semantics for directories,
+or periodic updates with less frequent write-back for files than for
+directories.
+
+\begin{keypoint}
+  File sharing semantics define when one client observes the writes of
+  another.  UNIX semantics makes every write visible immediately but is
+  expensive in a DFS; session semantics propagates changes at close and
+  open; periodic updates bound the inconsistency by the update period;
+  immutable files and transactions avoid inconsistent views altogether.
+  The choice follows the workload, and files and directories may be
+  treated differently.
+\end{keypoint}
+
+\section{Replication and partitioning}
+\label{sec:l14-replication}
+
+A file service that runs on several machines distributes the files among
+them in one of two ways (\cref{fig:l14-models}b and~c).\source{P4L2,
+replication and partitioning; Silberschatz et al.\ ch.~19.}
+
+\begin{definition}[Replication]
+  With \term{replication}[レプリケーション] every server machine holds a
+  complete copy, a \emph{replica}, of all files.
+\end{definition}
+
+Replication balances the load, since a read can be served by any replica,
+and it provides availability and fault tolerance: when a machine fails,
+the others continue to serve all files.  Writes, however, become more
+complex.  Either every write is performed synchronously on all replicas,
+which makes writes slow, or it is performed on one replica and propagated
+to the others afterwards, in which case the replicas differ for a while.
+Replicas that have diverged must be reconciled, for example by voting, in
+which the contents held by a majority of the replicas prevail.
+
+\begin{definition}[Partitioning]
+  With \term{partitioning}[パーティショニング] each server machine holds a
+  subset of the files, and the subsets together make up the file system.
+\end{definition}
+
+Partitioning improves availability compared with a single server, since
+the failure of a machine affects only the files it holds.  It scales with
+the size of the file system: more files need only more machines.  A write
+to a single file involves only the machine that holds it, so writes remain
+simple.  On the other hand, the portion of the data held by a failed
+machine is lost, and balancing the load is harder: if popular files are
+concentrated on a few machines, these become hot spots.
+\Cref{tab:l14-repl} compares the two approaches.  They can also be
+combined: the files are partitioned, and every partition is replicated on
+several machines.%
+\begin{marginfigure}
+  \centering
+  \input{figures/l14-combined}
+  \caption{Two partitions, each replicated on two machines.}
+  \label{fig:l14-combined}
+\end{marginfigure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Replication and partitioning.}
+  \label{tab:l14-repl}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.2\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}@{}}
+    \toprule
+    & Replication & Partitioning \\
+    \midrule
+    Capacity & that of one machine & sum over all machines \\
+    Reads & served by any replica; load balanced & served by the machine
+      holding the file; hot spots possible \\
+    Writes & on all replicas, synchronously or propagated later; replicas
+      must be reconciled & on one machine; simple \\
+    Machine failure & no files lost & the files of that machine lost \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{example}
+  Four server machines can store 250 files each.  Replicated, the DFS
+  holds 250 files, and the failure of one machine---indeed of any
+  three---loses none of them.  Partitioned, it holds \num{1000} files, and
+  the failure of one machine loses $250/1000 = \SI{25}{\percent}$ of them.
+  Combined as in \cref{fig:l14-combined}, with two partitions of 250 files
+  each replicated on two machines, the DFS holds 500 files; the failure of
+  one machine loses none of them, and only the failure of both machines of
+  the same partition loses \SI{50}{\percent}.
+\end{example}
+
+\section{The Network File System}
+\label{sec:l14-nfs}
+
+The \term{Network File System}[NFS]\index{NFS|see{Network File System}}
+(NFS), developed at Sun Microsystems in the 1980s \cite{sandberg1985}, is a
+widely used DFS in which clients access files that reside on a remote
+server.\source{P4L2, NFS design; Sandberg et al.\ \cite{sandberg1985};
+OSTEP ch.~49; Silberschatz et al.\ ch.~15.}  Its structure is shown in
+\cref{fig:l14-nfs}.  An application on the client performs ordinary file
+system calls.  The VFS finds that the file belongs to an NFS file system
+and passes the operation to the \emph{NFS client}, a file system
+implementation that turns the operation into a remote procedure call to
+the server.  There the \emph{NFS server} component receives the request,
+performs the operation on the server's files through the server's own VFS
+and local file system, and returns the result, which travels back to the
+application.  NFS is built on Sun RPC\index{Sun RPC} and its data
+representation XDR (Lesson~13).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l14-nfs}
+  \caption{NFS.  The client's VFS passes operations on NFS files to the NFS
+    client, which sends them as RPC requests to the NFS server; the server
+    performs them through its VFS and local file system.}
+  \label{fig:l14-nfs}
+\end{figure}
+
+Which remote files a client can reach is determined when an NFS file
+system is attached to the client's directory tree.  A server
+\emph{exports} some of its directories, and a client makes an exported
+directory available with the \term{mount}[マウント] operation, which
+attaches it to a local directory, the \emph{mount point}.  Paths below the
+mount point then name files on the server.  When a process opens such a
+file, the NFS client looks up its path at the server, and the server
+returns a file handle.
+
+\begin{definition}[File handle]
+  A \term{file handle}[ファイルハンドル] is the byte sequence by which the
+  NFS client and the NFS server identify a file in their requests.  The
+  server creates it, encoding the server-local identity of the file---the
+  file system and the file within it---and the client treats it as opaque.
+\end{definition}
+
+The NFS client keeps the handle with its representation of the open file
+and passes it in every subsequent request, such as a read, a write or a
+request for the attributes of the file.  A server typically encodes in the
+handle an identifier of the file system, the inode number of the file, and
+a \emph{generation number} that changes whenever the inode is reused.  If
+the file is removed on the server, by a local process or by another
+client, requests with the handle fail with the error \emph{stale file
+handle}: the handle refers to a file that no longer exists, and the
+generation number prevents it from silently referring to a new file that
+has reused the inode.
+
+\begin{example}
+  The directory \texttt{/home} of a client is mounted from a server; the
+  mount operation has given the client the file handle of the exported
+  directory.  The program below does not know this; its comments show the
+  principal NFSv3 requests that the calls cause when nothing is cached.
+  \begin{lstlisting}[language=C, numbers=none]
+char buf[4096];
+int fd = open("/home/ana/log.txt", O_RDONLY);
+        /* LOOKUP "ana" in the handle of /home;
+           LOOKUP "log.txt" in the handle of ana:
+           the server returns the file handle   */
+ssize_t n = read(fd, buf, sizeof buf);
+        /* READ(file handle, offset 0, 4096)    */
+close(fd);  /* read-only: no request is needed  */
+\end{lstlisting}
+\end{example}
+
+\section{NFS versions}
+\label{sec:l14-nfs-versions}
+
+NFS has been in use since the 1980s and has gone through several
+versions, of which NFSv3 \cite{rfc1813} and NFSv4 \cite{rfc7530} are in
+current use.\source{P4L2, NFS versions; RFC~1813 \cite{rfc1813}; RFC~7530
+\cite{rfc7530}; OSTEP ch.~49.}  They differ fundamentally in how they
+treat state.  NFSv3 is a stateless protocol, although in practice it is
+complemented by auxiliary protocols that keep state, such as a lock
+manager.  NFSv4 is stateful: opening files, locking and the delegations
+described below are part of the protocol.
+
+\subsection{Caching}
+
+For files that are not accessed concurrently, NFS provides session-based
+semantics: a client writes its changes back to the server when it closes a
+file, and checks for a newer version when it opens one.  In addition,
+while a file is in use, the client periodically asks the server whether the
+file has changed, by default every \SI{3}{\second} for files and every
+\SI{30}{\second} for directories.\margin{On Linux these periods are the
+mount options \texttt{acregmin} and \texttt{acdirmin}.}  The longer period
+for directories is deliberate: the contents of a directory change far less
+often than the data of a file, while lookups in it are frequent, so
+checking it rarely saves many requests and costs only that a name created
+or removed by another client is seen late.  The policy is the opposite of
+the example in \cref{sec:l14-dirs}, and it is acceptable because the
+operations that modify a directory go to the server in any case and are
+serialized there.
+
+\begin{example}
+  Client~B last checked file $F$ with the server at
+  $t=\SI{20.0}{\second}$, so its information about $F$ is considered
+  current until \SI{23.0}{\second}.  Client~A closes $F$ at
+  \SI{21.0}{\second}, writing its changes back.  A read by B at
+  \SI{22.5}{\second} is served from B's cache and returns the old data; the
+  first read by B after \SI{23.0}{\second} makes B check with the server,
+  discover the change and fetch the new data.  A file that A creates at
+  \SI{21.0}{\second} in a directory that B checked at \SI{20.0}{\second}
+  may remain invisible to B until \SI{50.0}{\second}.
+\end{example}
+
+NFSv4 can avoid these checks.  The server may \emph{delegate} a file to a
+client for a period of time.  While the delegation lasts, the client
+opens the file and uses its cached data without checking with the server
+for updates, and the server recalls the delegation when another client
+needs access to the file that conflicts with it.
+
+\begin{note}
+  NFS thus combines session semantics with periodic revalidation.  A
+  periodic check can bring the changes of another client into a session
+  that is still open, which pure session semantics excludes, and between
+  two checks a client may read data that has already changed at the
+  server; UNIX semantics is therefore not provided.
+\end{note}
+
+\subsection{Locking}
+
+Locking in NFSv4 is based on leases.\margin{The lock manager of NFSv3 is a
+protocol of its own, the Network Lock Manager (NLM).}  The server grants a
+lock for a limited period, and before this lease expires the client must
+either release the lock or renew the lease.
+If a client fails or becomes unreachable, its lease runs out, and the
+server can grant the lock to other clients without waiting indefinitely
+for the failed one (\cref{fig:l14-lease}).  NFSv4 additionally supports
+\emph{share reservations}: when a client opens a file, it declares the
+access it requires---reading, writing or both---and the access it denies
+to other clients.  Reservations that share reading but deny writing to
+others act like a reader-writer lock\index{reader-writer lock}
+(Lesson~10); a client can upgrade its reservation from reading to writing,
+or downgrade it again, without closing the file.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l14-lease}
+  \caption{Lease-based locking.  Client 1 renews its lease at
+    \SI{25}{\second} and crashes at \SI{40}{\second}; when the lease
+    expires at \SI{55}{\second}, the server grants the lock to client 2.}
+  \label{fig:l14-lease}
+\end{figure}
+
+\begin{example}
+  A server grants leases of \SI{30}{\second}.  Client~1 acquires a lock at
+  $t=0$ and renews the lease at \SI{25}{\second}, extending it to
+  \SI{55}{\second}; it crashes at \SI{40}{\second}.  Client~2 requests the
+  lock at \SI{45}{\second} and waits.  At \SI{55}{\second} the lease of
+  client~1 expires without renewal, and the server grants the lock to
+  client~2 (\cref{fig:l14-lease}).  Had client~1 not crashed but merely lost
+  contact with the server, it would have to stop using the lock at
+  \SI{55}{\second}, because it could not know whether the lock had been
+  granted to another client.
+\end{example}
+
+\begin{keypoint}
+  NFS clients reach remote files through the VFS, the NFS client and RPC,
+  and identify files by server-generated file handles.  NFSv3 is
+  stateless and NFSv4 stateful.  NFS combines session-based caching with
+  periodic checks, by default every \SI{3}{\second} for files and every
+  \SI{30}{\second} for directories; NFSv4 adds delegations, lease-based
+  locking and share reservations.
+\end{keypoint}
+
+\section{The Sprite distributed file system}
+\label{sec:l14-sprite}
+
+The distributed operating system \term{Sprite}[Sprite] was developed at
+the University of California, Berkeley, in the 1980s; its file system let
+the workstations of a network share files stored on servers.\source{P4L2,
+Sprite distributed file system, Sprite DFS access pattern analysis, Sprite
+DFS from analysis to design; Nelson et al.\ \cite{nelson1988}.}  Nelson,
+Welch and Ousterhout \cite{nelson1988} describe how its file system caches
+data.  The paper is instructive above all for its design process: each
+design decision is derived from, and justified by, an analysis of how
+files are actually accessed.  \Cref{tab:l14-sprite-analysis} lists the
+observations and the conclusions drawn from them.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Access patterns and their consequences for the design of
+    Sprite.}
+  \label{tab:l14-sprite-analysis}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.4\linewidth}>{\raggedright\arraybackslash}p{0.54\linewidth}@{}}
+    \toprule
+    Observation & Consequence \\
+    \midrule
+    \SI{33}{\percent} of all file accesses are writes & Caching pays off
+      for the majority of accesses, which are reads; but propagating every
+      write at once, as UNIX semantics requires, is too expensive. \\
+    \SI{75}{\percent} of files are open for less than \SI{0.5}{\second},
+      \SI{90}{\percent} for less than \SI{10}{\second} & Session semantics
+      still has too much overhead: with such short sessions, updates at
+      every open and close would reach the server very frequently. \\
+    \SIrange{20}{30}{\percent} of new data are deleted within
+      \SI{30}{\second}, \SI{50}{\percent} within \SI{5}{\minute} & Writing
+      data back at close is not necessary; much of the data are deleted
+      before any other client needs them. \\
+    Concurrent access to a file is rare & Concurrent access need not be
+      optimized, but it must be supported. \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+From these observations the design of Sprite follows:
+\begin{itemize}
+  \item Clients cache file blocks and write modified blocks back to the
+    server with a delay of 30 seconds, as described below.
+  \item When a client opens a file that another client has been writing,
+    the server first collects the dirty blocks from that client.
+  \item Every open goes to the server, and directories are not cached at
+    the clients.
+  \item When a file is written concurrently, caching of that file is
+    disabled and all its operations go to the server.
+\end{itemize}
+
+The first point defines the write policy.  Keeping modified blocks in the
+client cache and writing them back only after a delay, rather than on
+every write or close, is called \term{delayed write}[遅延書き込み] or
+delayed write-back.  In Sprite, every 30 seconds a client writes back the
+dirty blocks that have not been modified during the last 30 seconds.
+Blocks that are still being modified are therefore not transferred
+repeatedly, and data deleted within 30 seconds of being written are never
+transferred at all.  A block reaches the server between 30 and 60 seconds
+after its last modification.
+
+\begin{example}
+  A client writes back at $t = 0, 30, 60, 90, \ldots$~seconds.  Block
+  $b_1$ is modified at \SI{12}{\second}; at \SI{30}{\second} it has been
+  unmodified for only \SI{18}{\second}, so it is written back at
+  \SI{60}{\second}.  Block $b_2$ is modified at \SI{12}{\second} and again
+  at \SI{50}{\second}; at \SI{60}{\second} it has been unmodified for
+  \SI{10}{\second}, so it is written back at \SI{90}{\second}.  Block
+  $b_3$ belongs to a temporary file that is written at \SI{20}{\second}
+  and deleted at \SI{45}{\second}; it is never sent to the server.
+\end{example}
+
+The semantics Sprite provides depend on how a file is shared.
+
+\begin{definition}[Sequential and concurrent write sharing]
+  A file is subject to
+  \term{sequential write sharing}[逐次書き込み共有] when one client
+  modifies it and closes it and another client opens it later: the clients
+  use the file one after another.  It is subject to
+  \term{concurrent write sharing}[並行書き込み共有] when it is open on
+  several clients at the same time and at least one of them has it open for
+  writing.
+\end{definition}
+
+Under sequential write sharing Sprite caches the file, and every client
+that opens it sees the data written by the previous writer.  Under
+concurrent write sharing Sprite does not cache the file; the server
+executes all reads and writes in order, which yields UNIX semantics.
+
+\section{File access operations in Sprite}
+\label{sec:l14-sprite-ops}
+
+Consider a file that several clients read and one or more clients
+write.\source{P4L2, file access operations in Sprite; Nelson et al.\
+\cite{nelson1988}.}  All opens go through the server, all clients cache
+blocks while the file is cacheable, and a writer keeps a timestamp for
+every block it modifies, as delayed write requires.  Clients and server
+keep the following state for each file (\cref{fig:l14-sprite}):
+\begin{description}
+  \item[Client] whether caching is enabled for the file; the cached blocks;
+    the time of the last modification of each dirty block; and the version
+    number of the cached data.
+  \item[Server] the clients that have the file open for reading and for
+    writing; the client that wrote the file last; the current version
+    number; and whether the file is cacheable.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l14-sprite}
+  \caption{Per-file state in Sprite.  When $W_3$ opens the file that $W_2$
+    has open for writing (1), the server collects $W_2$'s dirty blocks (2)
+    and disables caching on both clients (3).}
+  \label{fig:l14-sprite}
+\end{figure}
+
+\paragraph{Sequential write sharing.}  Each time a client opens the file
+for writing, the server increments the version number.  A client that
+opens the file compares the version number returned by the server with
+that of its cached blocks, and discards the blocks if they are older.
+Because of delayed write, the client that wrote the file last may still
+hold dirty blocks of it even after closing it.  The server therefore asks
+that client to write them back before another client opens the file, so
+that the new client sees the latest data.  Caching remains enabled.
+
+\paragraph{Concurrent write sharing.}  When a client opens the file for
+writing while another client has it open, or for reading while another
+client has it open for writing, the server again collects the dirty blocks
+of the writer, marks the file as not cacheable, and notifies all clients
+that have it open.  From then on no client caches the file, and every read
+and write goes to the server.  The file becomes cacheable again once all
+clients have closed it.
+
+\begin{example}
+  \Cref{tab:l14-sprite-trace} traces the server state for file $F$,
+  initially at version~4, as clients $R_1$, $W_1$, $W_2$ and $W_3$ open and
+  close it.  In step~5 $W_1$ has closed $F$ but still holds dirty blocks,
+  which the server collects before $W_2$ proceeds; the sharing is
+  sequential, and $W_2$ may cache $F$.  In step~6 $W_3$ opens $F$ while
+  $W_2$ still has it open for writing (\cref{fig:l14-sprite}), and caching
+  is disabled.  In step~7 $R_1$ finds that its cached blocks of version~4
+  are outdated; it discards them and reads from the server.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Server state for file $F$ in Sprite.  Version and
+    cacheability are shown after each step.}
+  \label{tab:l14-sprite-trace}
+  \small
+  \begin{tabular}{@{}r>{\raggedright\arraybackslash}p{0.26\linewidth}>{\raggedright\arraybackslash}p{0.3\linewidth}llc@{}}
+    \toprule
+    & Event & Server action & Open by & Ver. & Cache \\
+    \midrule
+    1 & $R_1$ opens for reading & --- & $R_1$ & 4 & yes \\
+    2 & $R_1$ closes & --- & --- & 4 & yes \\
+    3 & $W_1$ opens for writing & increments version & $W_1$ & 5 & yes \\
+    4 & $W_1$ writes, closes & --- (dirty blocks stay at $W_1$) & --- & 5
+      & yes \\
+    5 & $W_2$ opens for writing & collects $W_1$'s dirty blocks; increments
+      version & $W_2$ & 6 & yes \\
+    6 & $W_3$ opens for writing & collects $W_2$'s dirty blocks; increments
+      version; disables caching & $W_2$, $W_3$ & 7 & no \\
+    7 & $R_1$ opens for reading & tells $R_1$ not to cache & $R_1$, $W_2$,
+      $W_3$ & 7 & no \\
+    8 & $W_2$, $W_3$, $R_1$ close & enables caching & --- & 7 & yes \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{keypoint}[Lesson summary]
+  A distributed file system serves files from networked machines through
+  the ordinary file system interface, with one server, replicated or
+  partitioned servers, or peers.  Practical designs lie between the
+  upload/download and remote access models: clients cache blocks and
+  interact frequently with a stateful server, which must keep the cached
+  copies coherent.  File sharing semantics---UNIX, session, periodic
+  updates with leases, immutable files, transactions---define what clients
+  observe, and may differ for files and directories.  Replication improves
+  availability and load balance at the cost of complex writes;
+  partitioning scales with the size of the file system.  NFS uses file
+  handles over RPC, stateless NFSv3 or stateful NFSv4, session-based
+  caching with periodic checks, and lease-based locking.  Sprite derived
+  its design from measured access patterns: delayed write with a
+  30-second delay, caching under sequential write sharing, and no caching
+  under concurrent write sharing.
+\end{keypoint}
+
+\end{document}

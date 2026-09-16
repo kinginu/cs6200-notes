@@ -1,0 +1,55 @@
+% File sharing semantics: client A writes y into F during a session, client
+% B reads F.  (a) Session semantics: write-back on close, fetch on open.
+% (b) Periodic updates: A writes back every 5 s, B revalidates at 3, 8, 13 s.
+% Usage: \input{figures/l14-semantics}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.3mm]},
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  lab/.style={font=\scriptsize\sffamily, inner sep=0.8pt},
+  val/.style={font=\scriptsize\ttfamily, inner sep=0.8pt},
+  sess/.style={draw, fill=ln-box},
+  ev/.style={circle, fill=black, inner sep=0pt, minimum size=1.3mm},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % time t (s) -> x = 20 + 5.6 t (mm)
+  % \lpanel{title}  rows: A at 14, server at 7, B at 0 (inside a scope)
+  \def\lpanel#1{%
+    \node[ttl] at (0,21) {#1};
+    \node[row] at (18,14) {\iflangja{クライアント A}{client A}};
+    \node[row] at (18,7) {\iflangja{サーバ}{server}};
+    \node[row] at (18,0) {\iflangja{クライアント B}{client B}};
+    \foreach \y in {0,7,14} { \draw[ln-rule] (20,\y) -- (116,\y); }
+    % sessions
+    \draw[sess] ({20+5.6*0},12.6) rectangle ({20+5.6*10},15.4);
+    \draw[sess] ({20+5.6*2},-1.4) rectangle ({20+5.6*14},1.4);
+    \draw[sess] ({20+5.6*15},-1.4) rectangle ({20+5.6*17},1.4);
+    % A writes y at 4 s
+    \node[ev] at ({20+5.6*4},14) {};
+    \node[lab, anchor=south] at ({20+5.6*4},15.6) {\iflangja{\texttt{y} を書く}{write \texttt{y}}};
+    % B reads at 6, 12, 16 s
+    \foreach \t in {6,12,16} { \node[ev] at ({20+5.6*\t},0) {}; }
+  }
+  % ---------------- (a) session semantics
+  \begin{scope}[shift={(0,33)}]
+    \lpanel{\iflangja{(a) セッションセマンティクス}{(a) session semantics}}
+    \draw[->, thick, ln-accent] ({20+5.6*10},12.6) -- node[lab, right, text=ln-accent] {\iflangja{close で書き戻し}{write back on close}} ({20+5.6*10},7.6);
+    \draw[->, thick, ln-accent] ({20+5.6*2},6.4) -- node[val, right] {x} ({20+5.6*2},1.6);
+    \draw[->, thick, ln-accent] ({20+5.6*15},6.4) -- node[val, left] {y} ({20+5.6*15},1.6);
+    \foreach \t/\v in {6/x,12/x,16/y} { \node[lab, anchor=north] at ({20+5.6*\t},-1.8) {\iflangja{読む：}{read }\texttt{\v}}; }
+  \end{scope}
+  % ---------------- (b) periodic updates
+  \begin{scope}[shift={(0,0)}]
+    \lpanel{\iflangja{(b) 周期的な更新（5 秒）}{(b) periodic updates (5 s)}}
+    \draw[->, thick, ln-accent] ({20+5.6*5},12.6) -- node[lab, right, text=ln-accent] {\iflangja{書き戻し}{write back}} ({20+5.6*5},7.6);
+    \foreach \t/\v in {3/x,8/y,13/y} {
+      \draw[->, densely dashed] ({20+5.6*\t},6.4) -- node[val, right] {\v} ({20+5.6*\t},1.6);
+    }
+    \foreach \t/\v in {6/x,12/y,16/y} { \node[lab, anchor=north] at ({20+5.6*\t},-1.8) {\iflangja{読む：}{read }\texttt{\v}}; }
+  \end{scope}
+  % time axis
+  \draw[->] (20,-9) -- (117,-9);
+  \foreach \t in {0,5,10,15} {
+    \draw ({20+5.6*\t},-8.2) -- ({20+5.6*\t},-9.8);
+    \node[lab, anchor=north] at ({20+5.6*\t},-10) {\t};
+  }
+  \node[lab, anchor=south east] at (117,-8.6) {\iflangja{時間（秒）}{time (s)}};
+\end{tikzpicture}
