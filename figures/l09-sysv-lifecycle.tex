@@ -1,0 +1,28 @@
+% Life cycle of a System V shared memory segment.
+% Usage: \input{figures/l09-sysv-lifecycle}   (width ~120 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  st/.style={draw, rounded corners=3pt, fill=ln-box, align=center,
+             minimum height=11mm, inner sep=2pt},
+  api/.style={font=\scriptsize\ttfamily, align=center, inner sep=1pt},
+  >={Stealth[length=1.8mm]}]
+  \node[st, text width=17mm] (none) at (0,0)
+    {\iflangja{セグメント\\なし}{no\\segment}};
+  \node[st, text width=24mm] (free) at (48,0)
+    {\iflangja{存在する\\（接続なし）}{exists,\\not attached}};
+  \node[st, text width=24mm] (att) at (96,0)
+    {\iflangja{$n\ge 1$ 個のプロセス\\が接続}{attached by\\$n\ge 1$ processes}};
+  \node[st, text width=24mm] (mark) at (96,-30)
+    {\iflangja{破棄予約済み}{marked for\\destruction}};
+  \draw[->] (none) -- node[api, above] {shmget()}
+                      node[api, below] {IPC\_CREAT} (free);
+  \draw[->] ([yshift=2.5mm]free.east) -- node[api, above] {shmat()}
+                                         ([yshift=2.5mm]att.west);
+  \draw[->] ([yshift=-2.5mm]att.west) -- node[api, below] {shmdt()\\(\iflangja{最後}{last})}
+                                         ([yshift=-2.5mm]free.east);
+  \draw[->] ([xshift=-4mm]att.north) .. controls +(-3,12) and +(3,12) ..
+    node[api, above] {shmat() / shmdt()} ([xshift=4mm]att.north);
+  \draw[->] (free.north) .. controls +(0,12) and +(0,12) ..
+    node[api, above] {shmctl(IPC\_RMID)} (none.north);
+  \draw[->] (att) -- node[api, left=1mm] {shmctl(IPC\_RMID)} (mark);
+  \draw[->] (mark.west) -| node[api, above, pos=0.3] {shmdt()\,(\iflangja{最後}{last})} (none.south);
+\end{tikzpicture}

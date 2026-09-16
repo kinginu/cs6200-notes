@@ -1,0 +1,630 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Inter-Process Communication}
+\lessoninfo{
+  video={P3L3},
+  textbook={OSTEP \cite{ostep} ch.~5; Silberschatz et al.\ \cite{silberschatz2018} ch.~3; Kerrisk \cite{kerrisk2010} ch.~43--54, 56},
+  keywords={inter-process communication, message passing, port, pipe, message queue, socket, shared memory, copy versus map, local procedure call, shared memory segment, System V IPC, POSIX shared memory, memory-mapped file, process-shared mutex},
+}
+
+Lesson~2 introduced inter-process communication (IPC) as the way in which
+processes, each isolated in its own address space, exchange data, and it
+distinguished message passing from shared memory.  This lesson examines the
+mechanisms that operating systems provide for both.  Shared memory builds on
+the address translation of Lesson~8, which lets the operating system map the
+same physical memory into several address spaces; it keeps the kernel out of
+every exchange, but it leaves the synchronization and the communication
+protocol, which the kernel handles for message passing, to the processes.
+
+\section{Inter-process communication}
+\label{sec:l09-ipc}
+
+IPC comprises the mechanisms that the operating system supports for the
+interaction of processes: \emph{communication}, the transfer of data from
+one address space to another, and \emph{coordination} of the processes'
+actions.\source{P3L3, inter-process communication; Silberschatz et al.\
+ch.~3.}\index{inter-process communication}  The mechanisms fall into four
+groups.
+\begin{description}
+  \item[Message passing] Processes exchange messages through a channel that
+    the kernel maintains, e.g.\ sockets, pipes and message queues.
+  \item[Memory-based IPC] The operating system makes memory accessible to
+    several processes, which communicate by reading and writing it, e.g.\
+    shared memory and memory-mapped files.
+  \item[Higher-level semantics] Mechanisms that give the data transfer more
+    structure: files that several processes read and write, and remote
+    procedure calls (Lesson~13).
+  \item[Synchronization primitives] Constructs such as mutexes and
+    semaphores with which processes coordinate (Lesson~10).
+\end{description}
+This lesson concentrates on message passing, on shared memory, and on the
+synchronization that shared memory requires.
+
+\section{Message-based IPC}
+\label{sec:l09-message}
+
+In message-based IPC\index{message passing} the processes create messages
+and send and receive them through a channel that the operating system
+creates and maintains, typically a buffer in kernel memory organized as a
+FIFO queue.\source{P3L3, message-based IPC; Silberschatz et al.\ ch.~3.}
+The processes never access this buffer directly.
+
+\begin{definition}[Port]
+  A \term{port}[ポート] is the interface through which a process uses a
+  message-passing channel: the process sends (writes) messages to a port and
+  receives (reads) messages from a port, and the kernel moves the messages
+  between the ports.
+\end{definition}
+
+The kernel is involved both in establishing the communication and in every
+single IPC operation.  A send is a system call that copies the message from
+the address space of the sender into the channel; a receive is a system call
+that copies it from the channel into the address space of the receiver.  A
+request-response exchange between a client and a server therefore costs
+four user/kernel crossings and four data copies (\cref{fig:l09-message-ipc}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l09-message-ipc}
+  \caption{A request-response exchange over message-based IPC.  Each
+    numbered crossing of the user/kernel boundary is one system call and one
+    copy between a process's address space and the kernel's channel.}
+  \label{fig:l09-message-ipc}
+\end{figure}
+
+The advantage of message passing is its simplicity: the kernel performs the
+channel management and the synchronization---a receive on an empty channel,
+for instance, blocks until a message arrives.  The disadvantage is overhead:
+the crossings and copies are paid for every message.
+
+\section{Forms of message passing}
+\label{sec:l09-forms}
+
+Unix-like systems provide three common forms of message
+passing,\source{P3L3, forms of message passing; OSTEP ch.~5; Kerrisk ch.~44, 46,
+56.}
+which differ in what they transfer and in how much processing the kernel
+performs.
+
+\begin{definition}[Pipe]
+  A \term{pipe}[パイプ] is a channel between two endpoints that carries a
+  byte stream: bytes written into one end are read from the other end in
+  the same order, without message boundaries.
+\end{definition}
+
+The POSIX call \texttt{pipe(fd)} creates a pipe and stores one file
+descriptor for each end in the two-element array \texttt{fd}.  A typical use connects the output of one process
+to the input of another, as the shell does for \texttt{ls | wc -l}.
+
+\begin{definition}[Message queue]
+  A \term{message queue}[メッセージキュー] is a channel that carries
+  discrete messages among processes: a sender submits a properly formatted
+  message, and a receiver obtains complete messages.
+\end{definition}
+
+Because the kernel knows where messages begin and end, it can manage them,
+for example deliver messages in the order of the priority that the sender
+attaches to them (POSIX) or let a receiver select messages by type
+(System~V).  Unix-like systems offer a System~V and a POSIX interface for
+message queues.
+
+\begin{definition}[Socket]
+  A \term{socket}[ソケット] is a communication endpoint created with the
+  \texttt{socket()} system call, which allocates a kernel-level socket
+  buffer and associates with it the kernel-level processing that the
+  communication needs, such as a TCP/IP protocol stack.
+\end{definition}
+
+The calls \texttt{send()} and \texttt{recv()} pass data from a user buffer
+into the socket buffer and out of it; a stream socket (TCP) delivers a byte
+stream, a datagram socket (UDP) discrete messages.  If the processes run on
+different machines, the channel connects the process, through the protocol
+stack, to a network device; if they run on the same machine, the kernel can
+bypass the full protocol stack.  \Cref{tab:l09-forms} compares the three forms.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The three forms of message passing.}
+  \label{tab:l09-forms}
+  \small
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    & Pipe & Message queue & Socket \\
+    \midrule
+    Unit of transfer & byte stream & message & byte stream or datagram \\
+    Kernel processing & buffering & boundaries, priorities & protocol stack \\
+    Machines & same & same & same or different \\
+    Interface & \texttt{pipe()} & System~V, POSIX & \texttt{socket()} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Shared-memory IPC}
+\label{sec:l09-shm}
+
+In shared-memory IPC the processes read and write a region of memory that
+all of them can access.\source{P3L3, shared memory IPC; Silberschatz et al.\
+ch.~3.}\index{shared memory}  The operating system establishes this channel
+by mapping the same physical pages into the virtual address spaces of the
+processes: page-table entries of every participating process point to the
+same page frames (\cref{fig:l09-shm-mapping}).  As with any paged mapping
+(Lesson~8), the virtual addresses at which the processes see the region
+need not be the same, and the physical frames need not be contiguous.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l09-shm-mapping}
+  \caption{Shared memory.  Two page frames are mapped into both address
+    spaces; P1 sees the region at virtual address $\mathit{VA}_1$, P2 at a
+    different address $\mathit{VA}_2$, and the frames are not adjacent in
+    physical memory.}
+  \label{fig:l09-shm-mapping}
+\end{figure}
+
+\caution{A pointer that one process stores in the region is not valid in
+the other, since $\mathit{VA}_1 \neq \mathit{VA}_2$.}
+
+Once the mapping exists, the operating system is out of the way: reads and
+writes are ordinary memory accesses, and system calls are needed only for
+the setup.  Data copies are potentially reduced, but not eliminated.  Data
+that a process creates in the shared region are immediately visible to the
+others, whereas data that already exist elsewhere in its address space must
+still be copied into the region.
+
+The price is that the operating system no longer performs the services it
+provides for message passing.  The processes must synchronize their
+concurrent accesses explicitly (\cref{sec:l09-sync}), and the communication
+protocol---the format of the data, how a receiver learns that data are
+available, how the space in the region is managed---is the programmer's
+responsibility (\cref{sec:l09-design}).  Unix and Linux support shared
+memory through System~V shared memory (\cref{sec:l09-sysv}), POSIX shared
+memory (\cref{sec:l09-posix}) and memory-mapped files; Android adds its own
+facility, ashmem.
+
+\section{Copy versus map}
+\label{sec:l09-copy-map}
+
+Message passing and shared memory pursue the same goal, transferring data
+from one address space into another, but spend CPU time on different
+operations.\source{P3L3, copy vs.\ map; Silberschatz et al.\ ch.~3.}
+\begin{description}
+  \item[Copy (message passing)] CPU time is spent on copying the data into
+    the port and out of it again, with a system call for every send and
+    receive---for every message.
+  \item[Map (shared memory)] CPU time is spent on mapping physical memory
+    into the address spaces---once, when the region is set up---and on
+    copying data into the region whenever they are not created there.
+\end{description}
+
+Mapping is relatively expensive.  Set up once and used for many transfers,
+it pays off, as the example in Lesson~2 showed.  For large data it can pay
+off even for a single transfer, because copying a large amount of data from
+one address space into another takes far longer than mapping it:
+$t_{\mathrm{copy}} \gg t_{\mathrm{map}}$.  A simple cost model makes both
+statements precise.  Let a system call cost $t_{\mathrm{sys}}$, copying cost
+$c$ per byte, and let $n$ transfers of $S$ bytes each go from one process to
+another.  Message passing needs two system calls and two copies per
+transfer.  Shared memory needs a one-time setup of cost
+$t_{\mathrm{setup}}$; per transfer, it needs one copy, into the region,
+from which the receiver reads the data in place, and the time
+$t_{\mathrm{sync}}$ that the processes spend synchronizing their accesses
+and notifying each other (\cref{sec:l09-sync}):
+\begin{equation}
+  T_{\mathrm{copy}}(n) = n\,(2\,t_{\mathrm{sys}} + 2cS) ,
+  \qquad
+  T_{\mathrm{map}}(n) = t_{\mathrm{setup}} + n\,(cS + t_{\mathrm{sync}}) .
+  \label{eq:l09-copy-map}
+\end{equation}
+If $t_{\mathrm{sync}} < 2\,t_{\mathrm{sys}} + cS$, shared memory is cheaper
+for $n > n^{*} = t_{\mathrm{setup}} / (2\,t_{\mathrm{sys}} + cS -
+t_{\mathrm{sync}})$; otherwise it never catches up.  The synchronization
+cost is close to zero when an uncontended process-shared mutex protects the
+region and the receiver does not block, but a process that blocks and is
+woken up adds system calls.  The setup cost consists of a fixed part and a
+part proportional to the number of pages mapped; as long as mapping a page
+costs less than copying its contents, $n^{*}$ falls as $S$ grows and drops
+below one for large data.
+
+\begin{example}
+  \label{ex:l09-copy-map}
+  Let $t_{\mathrm{sys}} = \SI{1}{\micro\second}$,
+  $c = \SI{0.1}{\micro\second}$ per kilobyte, and let the setup cost
+  \SI{50}{\micro\second} plus \SI{0.1}{\micro\second} per \SI{4}{\kilo\byte}
+  page.  A single transfer of $S = \SI{40}{\mega\byte}$ ($10^4$ pages)
+  costs $2 + 2 \times 4000 = \SI{8002}{\micro\second}$ by message passing,
+  but, with $t_{\mathrm{sync}} \approx 0$, $1050 + 4000 =
+  \SI{5050}{\micro\second}$ over shared memory, and only the
+  \SI{1050}{\micro\second} of setup if the sender creates the data directly
+  in the region; $n^{*} = 1050/4002 \approx 0.26$.  A blocking wait and a
+  wake-up, $t_{\mathrm{sync}} = \SI{2}{\micro\second}$, leave this
+  unchanged ($n^{*} = 1050/4000 \approx 0.26$), whereas for
+  $S = \SI{4}{\kilo\byte}$ they raise $n^{*}$ from $50.1/2.4 \approx 21$ to
+  $50.1/0.4 \approx 125$.
+\end{example}
+
+Windows exploits this trade-off in its facility for communication between
+processes on the same machine, the
+\term{local procedure call}[ローカル手続き呼び出し]
+(LPC).\index{LPC|see{local procedure call}}  Small messages are copied
+through a port; for larger data, a shared memory region is mapped into both
+processes, and the data are exchanged through it.
+
+\begin{keypoint}
+  Message passing is simple---the kernel manages the channel and
+  synchronizes the processes---but every message pays for system calls and
+  two copies.  Shared memory pays a one-time mapping cost and then bypasses
+  the kernel, at the price of explicit synchronization and a
+  programmer-defined protocol.  Copy small messages; map large data or
+  regions reused for many transfers.
+\end{keypoint}
+
+\section{System V shared memory}
+\label{sec:l09-sysv}
+
+The System~V interface,\source{P3L3, SysV shared memory, SysV shared
+memory API; Kerrisk ch.~45, 48.} one of the oldest Unix IPC interfaces,
+organizes shared memory in segments.
+
+\begin{definition}[Shared memory segment]
+  A \term{shared memory segment}[共有メモリセグメント] is a region of
+  physical memory, not necessarily made of contiguous pages, that the
+  operating system manages as a system-wide object and that any number of
+  processes can map into their address spaces.
+\end{definition}
+
+Because segments are system-wide, the operating system limits both their
+number and their total size.\margin{On Linux the limits are the kernel
+parameters \texttt{shmmni}, \texttt{shmmax} and \texttt{shmall}; by default
+at most 4096 segments may exist.}  A segment is identified by a
+\emph{key}: every process that uses the same key accesses the same segment.
+Its life cycle consists of four operations (\cref{fig:l09-sysv-lifecycle}).
+\begin{description}
+  \item[Create] The operating system allocates the memory of the segment and
+    associates it with the key.
+  \item[Attach] The operating system maps the segment into the address space
+    of the calling process, i.e., it establishes valid mappings from virtual
+    addresses of the process to the physical memory of the segment.  Several
+    processes may attach the same segment, each at its own virtual address.
+  \item[Detach] The operating system invalidates these mappings: the
+    page-table entries for the virtual address range of the segment are no
+    longer valid.  The segment itself remains.
+  \item[Destroy] Only an explicit request removes a segment.  Until then it
+    persists, even when no process has it attached, and it may be attached
+    and detached many times.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l09-sysv-lifecycle}
+  \caption{Life cycle of a System~V shared memory segment.  A segment
+    outlives the processes that use it and is removed only by
+    \texttt{IPC\_RMID}; a segment removed while still attached is destroyed
+    when the last process detaches.}
+  \label{fig:l09-sysv-lifecycle}
+\end{figure}
+
+A segment therefore behaves like a file rather than like the private memory
+of a process: a process that exits is detached from its segments, but the
+segments remain until they are destroyed or the system
+reboots.\caution{A segment that no process destroys occupies memory until
+reboot (\cref{sec:l09-tools}).}
+
+\subsection{The System V API}
+
+The interface consists of four calls and a helper for generating keys.
+\begin{description}
+  \item[\texttt{shmget(key, size, flags)}] opens the segment associated
+    with \texttt{key}; if none exists and \texttt{flags} contains
+    \texttt{IPC\_CREAT}, it creates one of the given size (with
+    \texttt{IPC\_CREAT | IPC\_EXCL} the call fails if the segment already
+    exists).  It returns the segment's identifier.
+  \item[\texttt{ftok(pathname, proj\_id)}] generates a key from the identity
+    (device and i-node number) of an existing file and the low 8 bits of a
+    nonzero integer.  As long as the file is not re-created, the same file
+    and number yield the same key, so unrelated processes can find a segment
+    by agreeing on a file name and a number.
+  \item[\texttt{shmat(id, addr, flags)}] attaches the segment and returns the
+    virtual address at which it is mapped; with \texttt{addr} set to
+    \texttt{NULL} the operating system chooses the address.  The returned
+    untyped pointer can be cast to any data structure placed in the segment.
+  \item[\texttt{shmdt(addr)}] detaches the segment mapped at \texttt{addr}.
+  \item[\texttt{shmctl(id, cmd, buf)}] passes a control command for the
+    segment to the operating system; \texttt{IPC\_RMID} destroys it.
+\end{description}
+
+\begin{example}
+  \label{ex:l09-sysv}
+  Process A creates a segment and writes a string into it; process B, which
+  runs later, finds the segment through the same key, prints the string and
+  destroys the segment (error checks omitted).
+  \begin{lstlisting}[language=C, numbers=none]
+/* process A */
+key_t key = ftok("/tmp/app", 'A');
+int id = shmget(key, 4096, IPC_CREAT | 0600);
+char *p = shmat(id, NULL, 0);
+strcpy(p, "hello");                /* visible to B  */
+shmdt(p);                          /* segment stays */
+
+/* process B */
+key_t key = ftok("/tmp/app", 'A'); /* same key      */
+int id = shmget(key, 4096, 0);     /* open          */
+char *q = shmat(id, NULL, 0);
+printf("%s\n", q);
+shmdt(q);
+shmctl(id, IPC_RMID, NULL);        /* destroy       */
+\end{lstlisting}
+  Between A's \texttt{shmdt} and B's \texttt{shmat} no process has the
+  segment attached, yet its contents are preserved.
+\end{example}
+
+\section{POSIX shared memory}
+\label{sec:l09-posix}
+
+POSIX standardizes a second shared memory interface, which is not as widely
+supported as System~V; Linux, for instance, has supported it since kernel
+2.4.\source{P3L3, POSIX shared memory API; Kerrisk ch.~49, 54.}  Instead
+of segments identified by keys it uses shared memory objects identified by a
+name and accessed like files; on Linux they are files in a memory-backed
+temporary file system (tmpfs).\margin{On Linux this tmpfs is mounted at
+\texttt{/dev/shm}.}  The processes access them through the general
+mechanism for mapping files into memory.
+
+\begin{definition}[Memory-mapped file]
+  A \term{memory-mapped file}[メモリマップドファイル] is a file whose
+  contents are mapped into the virtual address space of a process, so that
+  the process accesses the file by reading and writing memory.  Processes
+  that map the same file as shared map the same physical pages and see each
+  other's changes.
+\end{definition}
+
+A memory-mapped file on an ordinary file system is itself an IPC mechanism
+whose data also persist in the file; POSIX shared memory applies the same
+mechanism to an object that exists only in memory.  Its operations correspond
+to those of System~V (\cref{tab:l09-shm-api}).
+\texttt{shm\_open(name, flags, mode)} creates or opens the shared memory
+object and returns a file descriptor for it, and \texttt{ftruncate} sets
+its size.  \texttt{mmap} with the flag \texttt{MAP\_SHARED} attaches the
+object and returns its virtual address; \texttt{munmap} detaches it.
+\texttt{close} releases the file descriptor without affecting an
+established mapping, and \texttt{shm\_unlink(name)} removes the name; the
+object is destroyed once no process has it open or mapped.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Corresponding operations of the two shared memory interfaces.}
+  \label{tab:l09-shm-api}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Operation & System~V & POSIX \\
+    \midrule
+    Name the region & key from \texttt{ftok()} & object name (\texttt{/name}) \\
+    Create or open & \texttt{shmget()} & \texttt{shm\_open()}, \texttt{ftruncate()} \\
+    Attach & \texttt{shmat()} & \texttt{mmap()} \\
+    Detach & \texttt{shmdt()} & \texttt{munmap()} \\
+    Destroy & \texttt{shmctl(IPC\_RMID)} & \texttt{shm\_unlink()} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Shared memory and synchronization}
+\label{sec:l09-sync}
+
+Processes that access a shared region concurrently are in the situation of
+the threads of Lesson~3, which share state within one address space: without
+synchronization their accesses form race conditions.\source{P3L3, shared
+memory and sync, PThreads sync for IPC, sync for other IPC; Kerrisk
+ch.~45--47.}  Two kinds of mechanisms
+are available: those of a threading library, such as the Pthreads mutexes
+and condition variables, configured for use across processes; and
+synchronization based on IPC mechanisms that the operating system provides,
+such as message queues and semaphores.  With either kind the processes must
+coordinate two things: the number of concurrent accesses to the shared
+region, which mutual exclusion limits, and the moment at which data become
+available for consumption, which one process must be able to wait for and
+the other to announce, as with a condition variable.
+
+\subsection{Pthreads synchronization across processes}
+
+The Pthreads mutexes and condition variables of Lesson~4 can synchronize
+processes under two conditions.  First, the attribute objects with which they are initialized,
+\texttt{pthread\_mutexattr\_t} and \texttt{pthread\_condattr\_t}, must have
+the process-shared attribute set to \texttt{PTHREAD\_PROCESS\_SHARED}; by
+default only the threads of the creating process may use them.  Second, the
+mutex and the condition variable themselves must reside in the shared
+region, so that all processes operate on the same data structures.
+
+\needspace{9\baselineskip}
+\begin{example}
+  \label{ex:l09-pshared}
+  A process defines the layout of the region, which begins with the
+  synchronization constructs:
+  \begin{lstlisting}[language=C, numbers=none]
+typedef struct {
+  pthread_mutex_t mutex;
+  pthread_cond_t  cond;
+  char            data[1024];
+} shm_data_t;
+\end{lstlisting}
+  \needspace{6\baselineskip}
+  It creates and attaches the segment:
+  \begin{lstlisting}[language=C, numbers=none]
+key_t key = ftok("/tmp/app", 120);
+int id = shmget(key, sizeof(shm_data_t),
+                IPC_CREAT | IPC_EXCL | 0600);
+shm_data_t *shm = shmat(id, NULL, 0);
+\end{lstlisting}
+  \needspace{7\baselineskip}
+  and it initializes a process-shared mutex inside the region:
+  \begin{lstlisting}[language=C, numbers=none]
+pthread_mutexattr_t attr;
+pthread_mutexattr_init(&attr);
+pthread_mutexattr_setpshared(&attr,
+                             PTHREAD_PROCESS_SHARED);
+pthread_mutex_init(&shm->mutex, &attr);
+\end{lstlisting}
+  The condition variable is initialized likewise, with the
+  \texttt{pthread\_condattr} counterparts of these calls.  The flag
+  \texttt{IPC\_EXCL} makes \texttt{shmget} fail if the segment already
+  exists, so the synchronization constructs are initialized only once.
+  Every process that attaches the segment then locks \texttt{shm->mutex}
+  and waits on \texttt{shm->cond} exactly as threads would.
+\end{example}
+
+\subsection{Synchronization with other IPC mechanisms}
+
+Processes can also synchronize through the IPC facilities of the operating
+system.  A message queue can provide mutual exclusion through a protocol of
+sends and receives (\cref{fig:l09-mq-sync}).  P1 writes data into the shared region and then
+sends a \enquote{ready} message;\margin{As both directions use one queue,
+each process must receive only its peer's messages, e.g.\ by selecting them
+by message type (System~V).} P2, blocked in a receive on the queue,
+reads the data when that message arrives and replies with an \enquote{ok}
+message, which P1 awaits before it accesses the region again.  Because each
+process accesses the region only after receiving the other's message, the
+accesses never overlap.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l09-mq-sync}
+  \caption{A message queue coordinates access to shared memory: P2 reads
+    only after \enquote{ready}, and P1 continues only after \enquote{ok}.}
+  \label{fig:l09-mq-sync}
+\end{figure}
+
+A semaphore (Lesson~10) is a synchronization construct of the operating
+system that holds an integer value.  Used with the values 0 and~1 it acts
+like a mutex: a process that finds the value~0 blocks; a process that finds
+the value~1 decrements it to~0 and proceeds, and it increments the value
+again when it leaves the critical section.
+
+\begin{keypoint}
+  Shared memory needs the same synchronization as shared state in a
+  multithreaded process.  Pthreads mutexes and condition variables work
+  across processes when they are process-shared and reside in the shared
+  region; message queues and semaphores provide the same coordination
+  through the operating system.
+\end{keypoint}
+
+\section{IPC command-line tools}
+\label{sec:l09-tools}
+
+Because System~V IPC objects outlive the processes that created them,
+Unix-like systems provide commands to inspect and remove them.\source{P3L3,
+IPC command line tools; Kerrisk ch.~45.}  The command \texttt{ipcs} lists
+all IPC facilities in the system---message queues, shared memory segments
+and semaphore sets---with their keys, identifiers, owners and permissions;
+\texttt{ipcs -m} restricts the list to shared memory.  The command
+\texttt{ipcrm} removes a facility: \texttt{ipcrm -m} followed by a segment
+identifier destroys that segment, which is the usual way to reclaim a
+segment that a program failed to destroy.
+
+\section{Designing communication over shared memory}
+\label{sec:l09-design}
+
+The operating system provides shared memory and then stays out of the
+way.\source{P3L3, shared memory design considerations, how many segments,
+design considerations.}  The choice of synchronization mechanism, the format
+of the data and the protocol for passing them are left to the application.
+This flexibility makes the programmer responsible for two design decisions
+in particular.
+
+\subsection{How many segments?}
+
+Processes that communicate over shared memory can organize it in two ways
+(\cref{fig:l09-segments}).
+\begin{description}
+  \item[One large segment] All communication uses a single segment.  The
+    application then needs a memory manager that allocates portions of the
+    segment to individual exchanges and frees them afterwards.
+  \item[Many small segments] Each pair of communicating processes uses a
+    segment of its own.  Because creating segments is costly and their
+    number is limited, a pool of segments is created in advance, and the
+    identifiers of the free ones are kept in a queue.  A process takes a
+    segment from the pool and tells its peer the identifier through another
+    mechanism, such as a message queue; after the exchange the segment
+    returns to the pool.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l09-segments}
+  \caption{Organizing shared memory for several pairs of processes:
+    (a) one large segment whose portions an allocator hands out;
+    (b) a pool of small segments whose free identifiers are kept in a queue.}
+  \label{fig:l09-segments}
+\end{figure}
+
+\subsection{How large a segment?}
+
+The second decision is the size of a segment, and what to do with data that
+do not fit into one.
+\begin{description}
+  \item[Segment size equal to the data size] Every data item fits into one
+    segment.  This works well when the data sizes are known and fixed, but
+    it limits the size of the data to the maximum segment size.
+  \item[Segment smaller than the data] Larger data are transferred in
+    rounds, one portion at a time.  The processes then need a protocol that
+    tracks the progress of the transfer, typically a data structure at the
+    start of the segment that holds the synchronization constructs and
+    records how much data the segment contains and whether the transfer is
+    complete.
+\end{description}
+
+\begin{example}
+  \label{ex:l09-rounds}
+  A segment starts with the following header; the rest of the segment holds
+  \SI{2}{\mega\byte} of payload.
+  \begin{lstlisting}[language=C, numbers=none]
+typedef struct {
+  pthread_mutex_t mutex;  /* process-shared          */
+  pthread_cond_t  cond;   /* process-shared          */
+  size_t nbytes;          /* bytes in buf; 0 = empty */
+  int    done;            /* set with last portion   */
+  char   buf[];           /* payload                 */
+} xfer_t;
+\end{lstlisting}
+  Holding the mutex, the sender waits until \texttt{nbytes} is~0, copies
+  the next portion into \texttt{buf}, sets \texttt{nbytes} (and
+  \texttt{done} with the last portion), and signals.  The receiver waits
+  until \texttt{nbytes} is non-zero, copies the portion out, resets
+  \texttt{nbytes} to~0, and signals.  A transfer of \SI{5}{\mega\byte} takes
+  $\lceil 5/2 \rceil = 3$ rounds:
+  \begin{center}
+    \small
+    \begin{tabular}{@{}cllcc@{}}
+      \toprule
+      Step & Process & Action & \texttt{nbytes} (MB) & \texttt{done} \\
+      \midrule
+      1 & sender   & writes bytes 0--2\,MB & 2 & 0 \\
+      2 & receiver & reads them            & 0 & 0 \\
+      3 & sender   & writes bytes 2--4\,MB & 2 & 0 \\
+      4 & receiver & reads them            & 0 & 0 \\
+      5 & sender   & writes bytes 4--5\,MB & 1 & 1 \\
+      6 & receiver & reads them, sees \texttt{done} & 0 & 1 \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+\end{example}
+
+\begin{keypoint}[Lesson summary]
+  IPC mechanisms move data across address spaces.  Message passing---pipes,
+  message queues and sockets---sends every message through a kernel channel
+  via ports, at the cost of system calls and copies for every message.
+  Shared memory maps the same physical pages into several address spaces, so
+  that after a one-time setup the processes communicate without the kernel;
+  whether copying or mapping is cheaper depends on the data size and on how
+  often the mapping is reused (\cref{eq:l09-copy-map}), a trade-off that
+  Windows LPC exploits.  System~V segments (\texttt{shmget}, \texttt{shmat},
+  \texttt{shmdt}, \texttt{shmctl}) and POSIX shared memory
+  (\texttt{shm\_open}, \texttt{mmap}, \texttt{munmap}, \texttt{shm\_unlink})
+  persist until explicitly destroyed; \texttt{ipcs} and \texttt{ipcrm}
+  inspect and remove System~V objects.  Processes that share memory must
+  synchronize, with process-shared Pthreads mutexes and condition variables
+  placed in the region or with message queues and semaphores, and they must
+  decide how many segments to use and how to transfer data larger than a
+  segment.
+\end{keypoint}
+
+\end{document}
