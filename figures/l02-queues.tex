@@ -1,0 +1,37 @@
+% Queueing diagram: how processes move between the ready queue, the CPU
+% and I/O queues.
+% Usage: \input{figures/l02-queues}   (width ~108 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  res/.style={draw, circle, fill=ln-accent!22, minimum size=10mm, inner sep=0pt},
+  bx/.style={draw, rounded corners=2pt, fill=white, minimum height=6mm,
+             minimum width=22mm, inner sep=1pt, font=\scriptsize\sffamily},
+  lab/.style={font=\scriptsize\sffamily}]
+  % queue drawing: rectangle with slots, open at the left
+  \newcommand{\lnqueue}[3]{% x, y, label
+    \draw[fill=ln-box] (#1,#2-3) rectangle ++(28,6);
+    \foreach \i in {1,...,4} \draw (#1+28-4*\i,#2-3) -- ++(0,6);
+    \node[lab, anchor=south] at (#1+14,#2+3) {#3};}
+  \lnqueue{16}{40}{\iflangja{レディキュー}{ready queue}}
+  \node[res] (cpu) at (64,40) {CPU};
+  \draw[->] (44,40) -- (cpu.west);
+  % right-hand bus and left-hand return line
+  \draw (cpu.east) -- (102,40) -- (102,-8);
+  \draw[->] (2,-8) -- (2,40) -- (16,40);
+  % I/O
+  \draw[->] (102,26) -- node[lab, above] {\iflangja{I/O 要求}{I/O request}} (80,26);
+  \lnqueue{52}{26}{\iflangja{I/O キュー}{I/O queue}}
+  \node[res, minimum size=8mm] (io) at (36,26) {I/O};
+  \draw[->] (52,26) -- (io.east);
+  \draw (io.west) -- (2,26);
+  % timeslice expired
+  \draw (102,14) -- node[lab, above, pos=0.5] {\iflangja{タイムスライス満了}{timeslice expired}} (2,14);
+  % fork: the new child, not the caller, joins the ready queue
+  \node[bx] (ch) at (63,3) {\iflangja{新しい子プロセス}{new child process}};
+  \draw[->] (102,3) -- node[lab, above] {\iflangja{子を fork}{fork a child}} (ch.east);
+  \draw (ch.west) -- (2,3);
+  % interrupt
+  \draw[->] (102,-8) -- node[lab, above] {\iflangja{割り込みを待つ}{wait for an interrupt}} (74,-8);
+  \node[bx] (in) at (63,-8) {\iflangja{割り込みが発生}{interrupt occurs}};
+  \draw (in.west) -- (2,-8);
+\end{tikzpicture}

@@ -1,0 +1,35 @@
+% Process control blocks of two processes and the CPU registers whose
+% contents are saved into and restored from them.
+% Usage: \input{figures/l02-pcb}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.6mm]},
+  fld/.style={draw, minimum width=34mm, minimum height=4.5mm, inner sep=0pt, fill=white},
+  cpuf/.style={fld, fill=ln-accent!22},
+  reg/.style={draw, minimum width=24mm, minimum height=4.5mm, inner sep=0pt, fill=ln-accent!22},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=south}]
+  \foreach \x/\n in {17/1, 99/2} {
+    \node[ttl] at (\x,2.5) {\iflangja{P\n の PCB}{PCB of P\n}};
+    \node[fld]  at (\x,0)     {\iflangja{プロセス状態}{process state}};
+    \node[fld]  at (\x,-4.5)  {\iflangja{プロセス番号}{process number}};
+    \node[cpuf] at (\x,-9)    {\iflangja{プログラムカウンタ}{program counter}};
+    \node[cpuf] at (\x,-13.5) {\iflangja{レジスタ}{registers}};
+    \node[fld]  at (\x,-18)   {\iflangja{メモリの範囲・対応付け}{memory limits / mappings}};
+    \node[fld]  at (\x,-22.5) {\iflangja{オープンしたファイルの一覧}{list of open files}};
+    \node[fld]  at (\x,-27)   {\iflangja{優先度}{priority}};
+    \node[fld]  at (\x,-31.5) {\iflangja{シグナルマスク}{signal mask}};
+    \node[fld]  at (\x,-36)   {\iflangja{CPU スケジューリング情報}{CPU scheduling info}};
+    \node[fld]  at (\x,-40.5) {\ldots};
+  }
+  % CPU
+  \draw[rounded corners=2pt, fill=ln-box] (46,-19) rectangle (70,2.5);
+  \node[font=\footnotesize\sffamily\bfseries] at (58,-2) {CPU};
+  \node[reg] at (58,-9)    {PC};
+  \node[reg] at (58,-13.5) {\iflangja{レジスタ（SP を含む）}{registers (incl.\ SP)}};
+  % save P1, restore P2
+  \draw[->, thick] (46,-9) -- (34,-9);
+  \draw[->, thick] (46,-13.5) -- (34,-13.5);
+  \node[anchor=north, align=center] at (40,-15.5) {\iflangja{P1 の\\状態を\\退避}{save\\state\\of P1}};
+  \draw[->, thick] (82,-9) -- (70,-9);
+  \draw[->, thick] (82,-13.5) -- (70,-13.5);
+  \node[anchor=north, align=center] at (76,-15.5) {\iflangja{P2 の\\状態を\\復元}{restore\\state\\of P2}};
+\end{tikzpicture}

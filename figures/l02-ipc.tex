@@ -1,0 +1,35 @@
+% Message-passing IPC versus shared-memory IPC.
+% Usage: \input{figures/l02-ipc}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  pname/.style={font=\footnotesize\sffamily\bfseries, anchor=north},
+  ttl/.style={font=\footnotesize\sffamily\itshape}]
+  % ---- (a) message passing
+  \draw[rounded corners=2pt, fill=white] (0,23) rectangle (20,38);
+  \node[pname] at (10,38) {P1};
+  \draw[rounded corners=2pt, fill=white] (34,23) rectangle (54,38);
+  \node[pname] at (44,38) {P2};
+  \draw[fill=ln-box] (0,0) rectangle (54,13);
+  \node[lab, anchor=south west, text=ln-muted] at (0.5,0.3) {\iflangja{カーネル}{kernel}};
+  \draw[fill=ln-accent!22] (16,4) rectangle (38,10) node[midway, lab] {\iflangja{チャネル}{channel}};
+  \draw[->, thick] (14,23) -- (20,10);
+  \draw[->, thick] (34,10) -- (40,23);
+  \node[lab, anchor=east] at (13.5,17.5) {\texttt{send}\\\iflangja{（コピー）}{(copy)}};
+  \node[lab, anchor=west] at (40.5,17.5) {\texttt{recv}\\\iflangja{（コピー）}{(copy)}};
+  \node[ttl] at (27,-5) {\iflangja{(a) メッセージパッシング}{(a) message passing}};
+  % ---- (b) shared memory
+  \draw[rounded corners=2pt, fill=white] (62,23) rectangle (82,38);
+  \node[pname] at (72,38) {P1};
+  \draw[rounded corners=2pt, fill=white] (96,23) rectangle (116,38);
+  \node[pname] at (106,38) {P2};
+  \draw[fill=ln-accent!22] (66,25) rectangle (78,30);
+  \draw[fill=ln-accent!22] (100,28) rectangle (112,33);
+  \draw[fill=ln-box] (62,0) rectangle (116,13);
+  \node[lab, anchor=south west, text=ln-muted] at (62.5,0.3) {\iflangja{物理メモリ}{physical memory}};
+  \draw[fill=ln-accent!22] (80,4) rectangle (98,10) node[midway, lab] {\iflangja{共有領域}{shared}};
+  \draw[thick, densely dashed] (72,25) -- (85,10);
+  \draw[thick, densely dashed] (106,28) -- (93,10);
+  \node[lab, text=ln-muted] at (89,19) {\iflangja{対応付け}{mapped}};
+  \node[ttl] at (89,-5) {\iflangja{(b) 共有メモリ}{(b) shared memory}};
+\end{tikzpicture}
