@@ -62,7 +62,11 @@ database servers---implement individual tiers and the interaction between
 them, and they can be combined in different configurations.  When the tiers
 run as separate processes, the processes communicate through some form of
 IPC: message passing or shared memory on the same machine (Lesson~9), and
-RPC or RMI across machines (Lesson~13).
+RPC or RMI across machines (Lesson~13).\margin{A tier boundary is also a
+cost boundary: the same call costs nanoseconds within one process, a few
+microseconds through local IPC (Lesson~9), and about
+\SI{0.5}{\milli\second} by RPC to another machine in the
+datacenter---Dean's ``numbers everyone should know''.}
 
 \begin{figure}[htbp]
   \centering
@@ -133,7 +137,10 @@ or to the node with the least load.  Functional homogeneity does not require
 every node to store all data.  It requires only that every node can
 \emph{access} all data, for instance through a distributed file system or a
 shared database tier, which may itself be replicated or partitioned
-(Lesson~14).  To increase the capacity, nodes are simply added.
+(Lesson~14).\margin{Which node holds which data is usually decided by
+hashing a key---a user, a session, a file name.  Consistent hashing is the
+common choice: adding the $N$th node then moves only about $1/N$ of the
+keys.}  To increase the capacity, nodes are simply added.
 
 The price is that the service benefits little from caching.  The front end
 does not know which node has recently processed a similar request and holds
@@ -176,7 +183,10 @@ these types, which requires profiling the workload\index{workload}.  As the
 demand for the different request types changes over time, the mix of nodes
 must follow it.  Otherwise the nodes of a popular type become \emph{hot
 spots} with long queues of pending requests, while the nodes of other types
-are idle.  \Cref{tab:l16-arch} summarizes the comparison.
+are idle.\margin{The same imbalance arises inside one machine in Lesson~7,
+where load balancing migrates threads between per-CPU runqueues.
+Specialized nodes cannot take over each other's work, because they lack the
+data.}  \Cref{tab:l16-arch} summarizes the comparison.
 
 \begin{table}[htbp]
   \centering
@@ -208,7 +218,10 @@ are idle.  \Cref{tab:l16-arch} summarizes the comparison.
   homogeneous architecture, a search takes \SI{5}{\milli\second} of
   processing and a checkout \SI{20}{\milli\second}.  A load of 1200 searches
   and 200 checkouts per second requires $1200 \times 0.005 + 200 \times 0.020
-  = 6 + 4 = 10$ seconds of processing per second, the capacity of ten nodes.
+  = 6 + 4 = 10$ seconds of processing per second, the capacity of ten
+  nodes.\tip{This is Little's law of Lesson~6: the number of nodes busy at
+  once is the arrival rate times the service time, so the load in nodes is
+  $\sum_i \lambda_i t_i$ whatever the mix of requests.}
   When the mix changes to 600 searches and 350 checkouts per second, the
   requirement is $3 + 7 = 10$ again: the same ten nodes suffice, and nobody
   needs to notice the change.
@@ -243,11 +256,11 @@ hardware was idle.\source{P4L4, cloud computing poster child: Animoto, cloud
 computing requirements; Armbrust et al.\ \cite{armbrust2009}.}  Amazon
 opened access to it through web-based APIs, so that third parties could run
 their own workloads on Amazon's hardware for a fee.  The result was Amazon
-Web Services (AWS).  Its Elastic Compute Cloud (EC2), launched in 2006, rents
+Web Services (AWS).\caution{Amazon's own histories trace AWS not to idle
+holiday capacity but to the shared platform it had built for its own
+teams.}  Its Elastic Compute Cloud (EC2), launched in 2006, rents
 out \emph{compute instances}: virtual machines (Lesson~12) that customers
-start and stop through the API and pay for by the hour.\margin{EC2 opened as
-a limited public beta in August 2006 and became generally available in
-October 2008.}
+start and stop through the API and pay for by the hour.
 
 Animoto, a service that produces videos from users' photographs, rented its
 compute instances from EC2.  In April 2008 Animoto became available to the
@@ -255,7 +268,9 @@ users of Facebook, and its demand surged: within three days the number of
 servers it used grew from 50 to 3500, after which its traffic fell to well
 below the peak \cite{armbrust2009}.  Growth by almost two orders of magnitude
 within days is impossible when machines must be bought, installed and
-configured; with rented resources it required only calls to an API.
+configured; with rented resources it required only calls to an
+API.\margin{EC2 opened as a limited public beta in August 2006 and became
+generally available in October 2008.}
 
 \subsection{Provisioning for variable demand}
 
@@ -285,7 +300,11 @@ Ideally, the capacity of a service would instead follow its demand
 (\cref{fig:l16-capacity}b):
 \begin{itemize}
   \item capacity scales elastically with the demand, both up and down;
-  \item scaling is instantaneous;
+  \item scaling is instantaneous;\caution{``Instantaneous'' is the ideal,
+    not the mechanism: a virtual machine needs tens of seconds to boot and a
+    container about a second, and an autoscaler that watches one-minute
+    metrics waits for several of them, so capacity follows demand with a lag
+    of minutes.}
   \item the cost is proportional to the demand, and thus to the revenue
     opportunity;
   \item all of this happens automatically, without special expertise;
@@ -340,7 +359,10 @@ following.
     that vary with supply and demand, so that the provider in effect runs a
     marketplace.  Resources are offered in discrete sizes, such as small,
     medium and extra-large instances with different numbers of CPUs and
-    amounts of memory.
+    amounts of memory.\margin{Real prices, for scale: EC2's first instance
+    type, \texttt{m1.small}---one virtual core and \SI{1.7}{\giga\byte} of
+    memory---cost \$0.10 per hour on demand, and spot capacity is discounted
+    by up to \SI{90}{\percent}.}
   \item[Management by the provider] The provider operates the datacenters,
     the hardware, and the software that implements the services.
 \end{description}
@@ -388,7 +410,11 @@ demand, which is far smaller than the sum of the individual peaks.
 \begin{example}
   A provider serves 100 customers.  Each customer needs 10 servers most of
   the time and 100 servers during its peaks, which occupy \SI{10}{\percent}
-  of the time and occur independently of the peaks of other customers.
+  of the time and occur independently of the peaks of other
+  customers.\caution{Independence is the assumption that does the work.
+  Real demands share a daily cycle, holidays and live events, so peaks do
+  arrive together; that is what reserve capacity is for, and why spot
+  instances are reclaimed at two minutes' notice.}
   Provisioning for every customer's peak would take
   $100 \times 100 = \num{10000}$ servers.  The number $K$ of customers at
   their peak at a given moment, however, has mean $100 \times 0.1 = 10$ and
@@ -534,7 +560,13 @@ cloud, cloud failure probability; OSTEP ch.~48.}
   \item \textbf{Scale.}  Management and resource allocation must work for
     datacenters of many thousands of machines and for many customers.
   \item \textbf{Dealing with failures.}  At this scale failures are the
-    normal case, and the system must continue to operate despite them.
+    normal case, and the system must continue to operate despite
+    them.\sidenote{Google's study of more than \num{100000} of its own disks
+    measured an annualized failure rate of \SI{1.7}{\percent} for drives in
+    their first year and above \SI{8}{\percent} for three-year-old ones
+    \cite{pinheiro2007}.  At \SI{5}{\percent} a year, a fleet of
+    \num{100000} disks loses about 14 of them every day---before any
+    machine, switch or power supply is counted.}
   \item \textbf{Multi-tenancy.}  Tenants must be isolated from each other,
     and the performance of each of them must be guaranteed.
   \item \textbf{Security.}  The data and computations of every tenant must be
@@ -564,7 +596,10 @@ agreements\index{service level agreement} (Lesson~6) it has promised.
 
 \subsection{Failures at scale}
 
-Failures become frequent simply because of the number of components.  If
+Failures become frequent simply because of the number of
+components.\tip{For small $p$, $(1-p)^{N} \approx e^{-Np}$, so
+$P_{\mathrm{fail}} \approx 1 - e^{-Np}$: about $Np$ while $Np \ll 1$, and
+above \SI{95}{\percent} once $Np \ge 3$.}  If
 each of $N$ components fails independently with probability $p$ within a
 given period, the probability that at least one of them fails is
 \begin{equation}
@@ -646,8 +681,11 @@ reuse the same data.
 
 \paragraph{Storage.}  Clouds store data in distributed file systems
 (Lesson~14) designed for very large files that are mostly appended to rather
-than overwritten; in NoSQL databases, which scale out by giving up the
-relational data model and some of the consistency guarantees of traditional
+than overwritten;\margin{Such systems work in large pieces: GFS used chunks
+of \SI{64}{\mega\byte} and HDFS uses blocks of \SI{128}{\mega\byte}, each
+stored on three machines by default, so that a scan is sequential and one
+lost machine costs no data.} in NoSQL databases, which scale out by giving
+up the relational data model and some of the consistency guarantees of traditional
 databases; and in distributed in-memory stores and caches, which keep data
 in the memory of many machines.
 
@@ -702,7 +740,10 @@ engine} with the following layers (\cref{fig:l16-bigdata}).
   \item[Data processing] executes computations over the data in parallel on
     many machines.
   \item[Caching] keeps frequently used data in memory, avoiding the latency of
-    the storage layer.
+    the storage layer.\margin{The layers are orders of magnitude apart: a
+    memory reference costs about \SI{100}{\nano\second}, a random read from
+    flash about \SI{100}{\micro\second}, and a disk seek about
+    \SI{10}{\milli\second}.}
   \item[Language front-ends] let users query and analyze the data in
     high-level languages, for instance SQL-like query languages, instead of
     programming the processing layer directly.
