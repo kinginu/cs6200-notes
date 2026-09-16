@@ -33,7 +33,9 @@ lowers the latency of their accesses and lets a server support more
 clients, but the state itself belongs to the servers.
 
 In many distributed applications no such division exists.  In big data
-analytics, web search or content sharing, the state of the application is
+analytics, web search or content sharing,\margin{Lesson~16 examines such
+applications in the datacenter, where a framework sends each computation to
+the node that already holds its input.} the state of the application is
 distributed over all of its nodes: every node owns a portion of the state
 and provides service on that portion to the other nodes, while it also
 uses the state owned by others.  Every node is thus both a client and a
@@ -46,7 +48,9 @@ keeping track of which node holds which part of the state, to designated
 nodes.
 
 Managing state that is spread over peers raises three issues, which recur
-throughout this lesson:
+throughout this lesson:\margin{The first two arise inside one machine as
+well: NUMA-aware scheduling (Lesson~7) moves the computation to its memory
+instead.}
 \begin{description}
   \item[Placement] The node on which each part of the state resides.
     Access is fastest when the state resides on the node of the processes
@@ -93,7 +97,9 @@ Like every peer distributed application, each node of a DSM system
   \item takes part in consistency protocols with the other nodes, which
     ensure that accesses to the shared memory remain meaningful when
     several nodes access the same memory---for example, that a read returns
-    the value of the most recent write.
+    the value of the most recent write.\caution{This is not the shared
+    memory IPC of Lesson~9: there processes share the memory of one machine,
+    and the hardware keeps their views consistent.}
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -185,8 +191,10 @@ expensive.  The candidates are:
     variable occupies only a few bytes, so the messages needed to
     coordinate each access would cost far more than the data are worth.
   \item[Pages] A page, commonly \SI{4}{\kibi\byte}, is the unit that the
-    operating system already manages.  A page-based DSM is implemented by
-    the operating system in cooperation with the MMU
+    operating system already manages.\margin{A \SI{2}{\mebi\byte} large page
+    (Lesson~8) would cover 512 base pages at once: fewer and larger
+    transfers, and correspondingly more false sharing.}  A page-based DSM
+    is implemented by the operating system in cooperation with the MMU
     (\cref{sec:l15-implementing}); it is transparent to applications and
     independent of the language they are written in.
   \item[Objects] A language runtime knows the objects that a program
@@ -389,9 +397,11 @@ the processes that access it (\cref{fig:l15-migration}).
 Neither technique is best for every workload.  Migration is appropriate
 when a unit is used by one node at a time for long stretches.  Replication
 is necessary when several nodes access a unit concurrently, and it pays off
-when reads dominate.  When replicated units are written often, the
-consistency management that every write triggers can cost more than the
-locality of the replicas saves.
+when reads dominate.\margin{Replication with invalidation on write is the
+write-invalidate strategy of Lesson~10 in software: a page instead of a
+cache line, a message instead of a bus transaction.}  When replicated units
+are written often, the consistency management that every write triggers can
+cost more than the locality of the replicas saves.
 
 \begin{keypoint}
   DSM performance is governed by access latency, and low latency requires
@@ -497,8 +507,10 @@ For each page the DSM distinguishes the following roles.
   \item[Explicit replicas] Copies that the DSM creates deliberately, rather
     than as a side effect of access, for load balancing, for performance,
     or for reliability; in datacenters, for instance, data are commonly
-    kept in three copies.  The home node controls where these replicas are
-    placed and how they are managed.
+    kept in three copies.\margin{Three is the default replication factor of
+    HDFS, which places two replicas in one rack and the third in another
+    rack (Hadoop documentation).}  The home node controls where these
+    replicas are placed and how they are managed.
 \end{description}
 
 \subsection{Indexing distributed state}
@@ -606,7 +618,10 @@ bit\index{access bit} shows whether a local replica has been used recently,
 which helps to decide which replicas to evict when memory runs short, as
 in page replacement (Lesson~8).  An object-based DSM intercepts accesses in
 the language runtime instead, which mediates the program's operations on
-shared objects.
+shared objects.\sidenote{These MMU operations are not free.  On the systems
+of 1991 Appel and Li \cite{appel1991} measured some
+\SI{1200}{\micro\second} of fault and re-protection overhead on an average
+one, plus a TLB shootdown on the other CPUs that hold the mapping.}
 
 \begin{figure}[htbp]
   \centering
@@ -625,7 +640,10 @@ shared objects.
   step~1, node~1's mapping is downgraded to read-only, so that a later write
   by node~1 would fault and invalidate the replica.  Of the seven accesses,
   four fault; the reads in steps~2 and~3 and the write in step~5 complete
-  in hardware, because the mappings already permit them.
+  in hardware, because the mappings already permit them.\tip{Per node the
+  mapping of a page is a three-state machine---none, RO, RW---and only the
+  transitions fault: a read takes none to RO, a write RO to RW; another
+  node's access downgrades it to RO or to none.}
 \end{example}
 
 \begin{table}[htbp]
@@ -780,7 +798,10 @@ Strict, sequential and causal consistency form a hierarchy: every strictly
 consistent execution is sequentially consistent, and every sequentially
 consistent execution is causally consistent.  A weaker model admits more
 executions and therefore requires less coordination, but it gives the
-applications fewer guarantees.
+applications fewer guarantees.\caution{Real hardware is not sequentially
+consistent either: x86 lets a load pass an earlier store to another location
+(total store order), ARM and POWER reorder more, and fences take the part of
+synchronization points (Intel SDM vol.~3A, memory ordering).}
 
 \begin{figure}[htbp]
   \centering
@@ -804,7 +825,9 @@ applications fewer guarantees.
       written at $t_2$.  It is sequentially consistent, because the order
       $R_{m_a}(0)$ by P3, $R_{m_b}(0)$ by P4, $W_{m_a}(7)$, $W_{m_b}(9)$,
       $R_{m_b}(9)$ by P3, $R_{m_a}(7)$ by P4 explains every read and
-      preserves the order of each process's operations.
+      preserves the order of each process's operations.\tip{To test
+      sequential consistency, look for one merged list of the operations
+      that keeps each process's own order and explains every read.}
     \item Outcome (c) is not sequentially consistent: P3 observes
       $W_{m_a}(7)$ before $W_{m_b}(9)$, P4 observes them the other way
       round, and no single order explains both.  If the two writes are
