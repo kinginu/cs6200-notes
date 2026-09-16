@@ -47,7 +47,9 @@ management of an operating system follows three principles:
   learn what the device is doing.
 \end{definition}
 
-The registers form the interface of the device (\cref{fig:l11-device}).
+The registers form the interface of the device (\cref{fig:l11-device}).%
+\caution{A device register is not a CPU register: it belongs to the device
+and is named by an address, not by a register name in an instruction.}
 Behind it lie the device internals: a microcontroller, which is the device's
 own CPU, on-device memory, and other device-specific chips, such as the
 analog-to-digital converters of a microphone.  Only the interface is
@@ -77,7 +79,8 @@ platforms use PCI Express (PCIe), which remains compatible with the software
 interface of PCI but offers more bandwidth, faster and lower-latency access,
 and connections for more devices.\margin{Although commonly called a bus,
 PCIe connects each device through a point-to-point serial link and
-switches.}
+switches.  A PCIe~4.0 lane carries about \SI{2}{\giga\byte\per\second} each
+way, a $\times 16$ slot about \SI{32}{\giga\byte\per\second} (PCI-SIG).}
 
 Not every device is connected to PCIe directly (\cref{fig:l11-interconnect}).
 A SCSI controller attached to PCIe connects disks on its own SCSI bus, and
@@ -209,7 +212,9 @@ are two ways to address the registers.
   part of the physical address space is dedicated to device interactions,
   and the CPU accesses a register with an ordinary load or store instruction
   on its address, which the platform directs to the device instead of to
-  memory.
+  memory.\caution{A memory-mapped register is not ordinary memory: the
+  region is mapped uncached, and drivers use accessors such as
+  \texttt{readl} and \texttt{writel}, not plain pointer dereferences.}
 \end{definition}
 
 For a PCI device, the base address registers (BARs) in the device's
@@ -223,7 +228,9 @@ The second way uses dedicated CPU instructions, such as \texttt{in} and
 \texttt{out} on x86.  An \term{I/O port}[I/Oポート] is an address, separate
 from the memory addresses, that designates a device register; the
 instruction specifies the target port and the value to be written to the
-register, or receives the value read from it.
+register, or receives the value read from it.\margin{The x86 port space is
+only \SI{64}{\kibi\byte} wide---port numbers are 16 bits---which is one
+reason why memory-mapped I/O carries most of today's device traffic.}
 
 \subsection{Interrupts and polling}
 
@@ -247,7 +254,11 @@ for the operating system, but if it happens rarely, events wait until the
 next poll; if it happens often, most polls find nothing and waste CPU time.
 Which method is preferable depends on the type of device and on the
 objectives, such as how frequent the events are and how quickly they must be
-handled.
+handled.\sidenote{Linux network drivers switch between the two with NAPI: on
+the first packet the driver disables the interface's receive interrupts and
+the kernel polls the device until its backlog is drained, then re-enables
+them.  A lightly loaded interface is thus interrupt-driven and a busy one
+polled.}
 
 \begin{table}[htbp]
   \centering
@@ -345,7 +356,10 @@ transfers of a few bytes PIO is cheaper.}  A further requirement arises
 because the device accesses the buffer by its physical address: the buffer must remain in physical memory until
 the transfer completes.  Its pages are therefore pinned
 (Lesson~8)\index{pinned page}, that is, excluded from swapping; otherwise
-the device could read or overwrite whatever page had replaced the buffer.
+the device could read or overwrite whatever page had replaced the
+buffer.\margin{A raw physical address also gives the device the run of
+memory; platforms therefore interpose an IOMMU (Intel VT-d, AMD-Vi), and the
+driver maps the buffer for DMA instead of handing over the address.}
 
 \begin{keypoint}
   The CPU reaches device registers through memory-mapped I/O or I/O ports;
@@ -404,7 +418,12 @@ Going through the kernel is not strictly necessary.
 The code that would otherwise run in the kernel driver is then provided by a
 \emph{user-level driver}, a library linked into the application.  The
 operating system retains coarse-grained control: it can, for example,
-enable or disable the device, or grant additional processes access to it.
+enable or disable the device, or grant additional processes access to
+it.\sidenote{Kernel bypass is routine in high-performance networking:
+InfiniBand and RoCE adapters expose queue pairs to a process through the
+verbs API, and DPDK drives Ethernet adapters entirely from user space, the
+kernel only setting them up.  Lesson~15 uses such adapters for remote direct
+memory access.}
 Bypass relies on features of the device:
 \begin{itemize}
   \item The device must have sufficient registers, so that some of them can
@@ -414,15 +433,18 @@ Bypass relies on features of the device:
     \emph{demultiplex}, that is, determine to which process data belong.  In
     a typical device access the kernel does this: its network stack, for
     example, inspects the headers of an arriving packet to find the
-    receiving process.  With bypass the device itself must do so.
+    receiving process.  With bypass the device itself must do
+    so.\margin{PCIe devices do this with SR-IOV: one card presents many
+    virtual functions, each with its own registers and queues, mappable into
+    a different process or virtual machine (Lesson~12).}
 \end{itemize}
 
 \section{Synchronous and asynchronous access}
 \label{sec:l11-sync}
 
-While a device carries out a request, the thread that issued it can either
-wait or continue.\source{P3L5, sync vs.\ async access; Silberschatz et al.\
-ch.~12.}
+While a device carries out a request,\source{P3L5, sync vs.\ async access;
+Silberschatz et al.\ ch.~12.} the thread that issued it can either wait or
+continue.
 
 \begin{definition}[Synchronous I/O]
   With \term{synchronous I/O}[同期I/O] a thread that issues an I/O request
@@ -440,7 +462,9 @@ the operation has completed and that the results are available.  When the
 kernel does not support asynchronous access to a device, it can be emulated
 in user space with helper threads or processes that issue the blocking
 calls on behalf of the main thread, as the Flash web server of Lesson~6
-does.
+does.\margin{glibc implements POSIX \texttt{aio\_read} with exactly this
+helper-thread emulation; \texttt{io\_uring} (Lesson~6) is the kernel
+interface that makes it unnecessary.}
 
 \begin{figure}[htbp]
   \centering
@@ -584,7 +608,9 @@ descriptor (\cref{fig:l11-vfs-objects}).
   representation of an open file for a process: a small integer that the
   process obtains from \texttt{open} and passes to the operations on the
   file, such as \texttt{read}, \texttt{write}, \texttt{sendfile},
-  locking and \texttt{close}.
+  locking and \texttt{close}.\margin{Descriptors 0, 1 and 2 are the standard
+  input, output and error of a process; a process may hold \num{1024} open
+  files by default (\texttt{ulimit -n}).}
 \end{definition}
 
 The properties of the file itself, and the locations of its data blocks,
@@ -593,7 +619,10 @@ are recorded in its inode.
 \begin{definition}[Inode]
   An \term{inode}[iノード] is the persistent representation of a file: an
   index that lists all the data blocks of the file, together with metadata
-  such as the device, the permissions and the size of the file.
+  such as the device, the permissions and the size of the file.%
+  \caution{Several names can share one inode (a hard link); removing a name
+  only decrements the link count, and the file is freed when the count
+  reaches zero and no descriptor is open.}
 \end{definition}
 
 A directory is a file, too; its data consist of information about the files
@@ -674,8 +703,9 @@ whole; the copies in block group~0 are the ones normally used, and the
 copies in the other groups serve as backups.  Keeping the inodes and the
 data blocks of a file in the same group places related blocks close together
 on the disk and reduces the distance the disk head must travel between
-them.\margin{A group is not a region of the disk
-geometry: it holds as many blocks as one block of bitmap can track.}
+them.\margin{A group is not a region of the disk geometry: it holds as many
+blocks as one block of bitmap can track---with \SI{4}{\kibi\byte} blocks,
+$8 \times 4096 = \num{32768}$ blocks, that is \SI{128}{\mebi\byte}.}
 
 \begin{figure}[htbp]
   \centering
@@ -722,7 +752,9 @@ kinds (\cref{fig:l11-inode}).
 \end{description}
 A \emph{triple indirect pointer} adds a further level.  The inodes of ext2
 and of many UNIX file systems contain 12 direct pointers and one pointer of
-each indirect kind.
+each indirect kind.\margin{Real ext2 numbers: a \SI{128}{\byte} inode, one
+per \SI{16}{\kibi\byte} of partition, and 4-byte block numbers, so
+$P = 1024$ with \SI{4}{\kibi\byte} blocks (\texttt{mke2fs.conf(5)}).}
 
 \begin{figure}[htbp]
   \centering
@@ -757,7 +789,9 @@ files.  The cost is slower file access, because every level of indirection
 adds a disk access to reach a data block.  Reading a block through a direct
 pointer requires two disk accesses, one for the inode and one for the data
 block; reading a block through a double indirect pointer requires up to
-four.
+four.\tip{To see which pointer reaches block $i$ of a file, compare $i$ with
+the running sums $n_d$, $n_d + P$ and $n_d + P + P^2$: the first one it
+falls below names the pointer class.}
 
 \begin{example}
   With the parameters of the previous example, a process reads the byte at
@@ -783,7 +817,10 @@ Accessing a file costs disk accesses, and on a hard disk every access that
 is not sequential costs time to move the head.\source{P3L5, disk access
 optimizations; OSTEP ch.~37, 40, 42; Kerrisk ch.~13--14.}  File systems use
 four techniques to reduce the overhead of file access
-(\cref{tab:l11-optim}).
+(\cref{tab:l11-optim}).\margin{The gap these techniques attack: a
+\num{7200}~rpm disk reads over \SI{100}{\mega\byte\per\second} sequentially,
+but random \SI{4}{\kibi\byte} accesses, at roughly 100 per second, amount to
+a few hundred kilobytes per second.}
 
 \begin{table}[htbp]
   \centering
@@ -810,7 +847,9 @@ four techniques to reduce the overhead of file access
   A \term{buffer cache}[バッファキャッシュ] is a cache of file data in main
   memory.  Reads are served from the cache when possible and writes update
   the cache; modified data are written to disk periodically, or when a
-  process requests it with \texttt{fsync}.
+  process requests it with \texttt{fsync}.\margin{The cache has no fixed
+  size: on Linux it is the page cache, which keeps whatever memory the
+  replacement policy of Lesson~8 leaves to it.}
 \end{definition}
 
 A process that must make an update durable follows the write with
@@ -838,7 +877,10 @@ access.
   positions on the disk, serving the requests in arrival order moves the
   head across $80+78+79+78+37 = 352$ blocks.  Serving them in the order 12,
   13, 50, 90, 91 moves it across only $2+1+37+40+1 = 81$ blocks, and the
-  pairs 12, 13 and 90, 91 become sequential writes.
+  pairs 12, 13 and 90, 91 become sequential writes.\margin{Ordering by block
+  number is the elevator (SCAN) algorithm; Linux ships
+  \texttt{mq-deadline}, BFQ and Kyber, and usually runs NVMe with
+  \texttt{none}.}
 \end{example}
 
 \needspace{5\baselineskip}
@@ -851,7 +893,8 @@ is being read sequentially will soon need the following blocks---and
 increases the hit rate of the buffer cache.  If a process reads block 40 of
 a file and the file system also reads blocks 41--43 in the same disk
 operation, the next three reads are served from memory without further
-head movement.
+head movement.\margin{Linux reads \SI{128}{\kibi\byte} ahead by default; the
+window is per block device, in \texttt{/sys/block/*/queue/read\_ahead\_kb}.}
 
 \subsection{Journaling}
 
@@ -863,10 +906,12 @@ offset, with which value---in a log, the \emph{journal}, which it writes sequent
 dedicated area of the disk, and it periodically applies the logged updates
 to their proper disk locations (\cref{fig:l11-journal}).  Because the
 journal is on disk, an update recorded in it survives a crash and can be
-applied afterwards.  The ext3 and ext4 file systems add such a journal to
-the design of ext2; by default they log only metadata blocks and write file
-data directly to their final locations, and logging the data as well is an
-option.
+applied afterwards.\caution{Journaling saves no writes---every logged block
+is written twice---but replaces scattered writes with one sequential write
+plus a later, batched update.}  The ext3 and ext4 file systems add such a
+journal to the design of ext2; by default they log only metadata blocks and
+write file data directly to their final locations, and logging the data as
+well is an option.
 
 \begin{figure}[htbp]
   \centering
