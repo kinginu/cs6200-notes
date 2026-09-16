@@ -52,7 +52,9 @@ task:
     whose I/O operation has completed; the scheduler must determine whether
     the new task is more important than the running one and should interrupt
     it;
-  \item the timeslice of the running task expires.
+  \item the timeslice of the running task expires.\margin{A timer tick
+    notices the expiry: Linux kernels are built with \texttt{CONFIG\_HZ} of
+    100, 250 or 1000, a tick every 10, 4 or \SI{1}{\milli\second}.}
 \end{itemize}
 The scheduler then selects one of the ready tasks and dispatches it: it
 performs a context switch to the selected task, enters user mode, and sets
@@ -178,7 +180,10 @@ known as \emph{shortest remaining time first}; OSTEP calls it
 The execution time of a task is rarely known in advance.  The scheduler
 therefore estimates it from the history of the task, using heuristics such
 as the time the task ran the last time it was on the CPU, or a windowed
-average of the times it ran the last $n$ times.
+average of the times it ran the last $n$ times.\margin{Silberschatz et al.\
+use an exponential average, $\tau_{n+1} = \alpha t_n + (1-\alpha)\tau_n$:
+with $\alpha = 1/2$ only $\tau_n$ need be kept, and every older burst counts
+half as much as the one after it.}
 
 \subsection{Priority scheduling}
 
@@ -301,8 +306,14 @@ acquires the mutex and runs, and T1 completes at time 7, ahead of T2.
 \needspace{9\baselineskip}
 To boost the owner, the lock operation must know who the owner is; this is
 another reason for recording the owner in the mutex data structure
-(Lesson~5).  POSIX threads (Lesson~4) provide priority inheritance as a
-protocol attribute of a mutex:
+(Lesson~5).\sidenote{In July 1997 the Mars Pathfinder lander reset itself
+repeatedly: a low-priority meteorological task held the mutex of the shared
+information bus, the high-priority bus task blocked on it, and
+medium-priority communication ran instead until a watchdog timer reset the
+spacecraft.  JPL reproduced the inversion on the ground and uploaded a patch
+that enabled priority inheritance on that mutex.}  POSIX threads (Lesson~4)
+provide priority inheritance as a protocol attribute of a
+mutex:
 \begin{lstlisting}[language=C, numbers=none]
 pthread_mutexattr_t attr;
 pthread_mutex_t m;
@@ -316,7 +327,10 @@ pthread_mutex_init(&m, &attr);
   Preemption lets a scheduler serve short or important tasks first.
   Priorities bring the risks of starvation, avoided by aging, and of
   priority inversion, avoided by letting a lock owner inherit the priority
-  of the tasks blocked on its lock.
+  of the tasks blocked on its lock.\caution{POSIX also defines
+  \texttt{PTHREAD\_PRIO\_PROTECT}, the priority-ceiling protocol: the owner
+  runs at a ceiling priority declared for the mutex, whether or not anyone
+  is blocked.  The lecture treats only inheritance.}
 \end{keypoint}
 
 \needspace{7\baselineskip}
@@ -343,7 +357,10 @@ running one.  In its most common form, round robin interleaves the tasks
 even when they do not yield, by limiting how long each task may run.
 
 The timeslice of Lesson~2\index{timeslice} is the maximum amount of
-uninterrupted time given to a task; it is also called the time quantum.  A
+uninterrupted time given to a task; it is also called the time
+quantum.\margin{Linux still gives its real-time round-robin class a fixed
+quantum: \SI{100}{\milli\second} by default, set with the sysctl
+\texttt{sched\_rr\_timeslice\_ms}.}  A
 task may run for less than its timeslice.  It may block, waiting for I/O or
 on a synchronization construct, and be placed on the corresponding queue;
 or a task of higher priority may become ready and preempt it.  When the
@@ -416,7 +433,10 @@ A task that spends most of its time computing and rarely blocks is a
 \begin{example}
   \label{ex:l07-cpu-bound}
   Two CPU-bound tasks, T1 and T2, each need \SI{6}{\second} of CPU time and
-  arrive at time 0; a context switch takes \SI{0.2}{\second}.  With a
+  arrive at time 0; a context switch takes \SI{0.2}{\second}.\caution{The
+  \SI{0.2}{\second} is an illustration, not a measurement: Lesson~2 puts the
+  direct cost of a switch at a few microseconds, so a real system loses far
+  less per timeslice than this example suggests.}  With a
   timeslice of \SI{1}{\second} the tasks alternate twelve times, with eleven
   context switches between the timeslices.  T2 starts at \SI{1.2}{\second}.
   The last timeslice of T1 starts after ten timeslices and ten context
@@ -500,13 +520,20 @@ The two kinds of tasks prefer opposite timeslice lengths.
   \item[I/O-bound tasks prefer shorter timeslices.]  An I/O-bound task runs
     soon after its I/O completes and issues its next I/O operation earlier,
     which keeps the devices busy and gives better user-perceived
-    performance, since interactive tasks are typically I/O-bound.
+    performance, since interactive tasks are typically
+    I/O-bound.\margin{The \SI{10}{\milli\second} of the example is a disk
+    figure: a \num{7200}~rpm drive averages about \SI{4}{\milli\second} of
+    rotation and a seek of similar length, whereas an NVMe SSD answers a read
+    in tens of microseconds.}
 \end{description}
 
 \subsection{CPU utilization}
 
 The fraction of CPU time spent on useful work, \cref{eq:l02-useful},
-extends to a mix of tasks with different behaviour.  Choose a recurring
+extends to a mix of tasks with different behaviour.\tip{For one switch of
+cost $c$ per timeslice $q$ the fraction is $q/(q+c)$: to keep the loss below
+\SI{1}{\percent}, give a timeslice at least a hundred times the cost of a
+context switch.}  Choose a recurring
 interval of the schedule in which every task has had its opportunity to
 run.  Within that interval, let $t_{\mathrm{run}}$ be the total time the CPU
 spends running tasks and $t_{\mathrm{ctx}}$ the total time it spends on
@@ -529,7 +556,11 @@ context switches.  Then
   \SI{46}{\milli\second}$ of computation and five context switches; the
   utilization is $46/(46+2.5) \approx \SI{94.8}{\percent}$.  Both rounds,
   of 12.5 and \SI{48.5}{\milli\second}, are longer than an I/O operation,
-  so the I/O-bound tasks are always ready when their turn comes.
+  so the I/O-bound tasks are always ready when their turn
+  comes.\caution{\Cref{eq:l07-utilization} ignores idle time: a stretch in
+  which every task waits for I/O adds to neither $t_{\mathrm{run}}$ nor
+  $t_{\mathrm{ctx}}$, so the ratio can read \SI{100}{\percent} while the CPU
+  often has nothing to run.}
 \end{example}
 
 \begin{keypoint}
@@ -574,7 +605,10 @@ This design raises the question of how the scheduler knows whether a task
 is I/O-intensive or CPU-intensive.  Heuristics based on the history of a
 task do not help for a new task, nor for a task that changes its behaviour.
 The solution is to let the scheduler learn the type of a task from the way
-the task uses its timeslices:
+the task uses its timeslices:\caution{OSTEP's MLFQ differs in two details:
+every level runs its tasks round robin, the lowest one included, and after a
+period $S$ all tasks are moved back to the top level, so that none of them
+starves (OSTEP ch.~8).}
 \begin{enumerate}
   \item a new task enters the topmost queue;
   \item if the task yields the CPU before its timeslice expires, the choice
@@ -647,7 +681,11 @@ the time it spends waiting or idling:
   process with nice value 0, \SI{100}{\milli\second}; a process with nice
   value $-10$, $30 \times 20 = \SI{600}{\milli\second}$.  If the process with
   nice value 5 is interactive, the feedback lets it run at a priority as high
-  as 120; if it computes without sleeping, at a priority as low as 130.
+  as 120; if it computes without sleeping, at a priority as low as
+  130.\caution{The two numberings run in opposite directions: a larger
+  priority number, and hence a larger nice value, means a lower priority,
+  while a larger \texttt{sched\_priority} (1--99), the value used for
+  \texttt{SCHED\_FIFO} and \texttt{SCHED\_RR}, means a higher one.}
 \end{example}
 
 \begin{figure}[htbp]
@@ -753,7 +791,10 @@ $N$ tasks.
 \begin{example}
   CFS derives the rate from a weight for each nice value: nice value 0 has
   weight 1024, and each step of the nice value changes the weight by a
-  factor of about 1.25; nice value 5 has weight 335.  A task of weight $w$
+  factor of about 1.25; nice value 5 has weight 335.\tip{The factor is
+  chosen so that one nice level is worth about \SI{10}{\percent} of the CPU:
+  one level apart gives $1.25/2.25 \approx 55:45$, five levels apart the
+  75:25 here.}  A task of weight $w$
   that runs for a time $\Delta t$ advances its virtual runtime by
   $\Delta t \cdot 1024/w$.  If task A (nice 0) and task B (nice 5) each run
   for \SI{6}{\milli\second}, the virtual runtime of A grows by
@@ -825,7 +866,9 @@ The performance of a task depends on the state of the caches.  While a task
 runs on a CPU, the CPU's caches fill with the task's data.  If the task
 runs on the same CPU the next time, it finds a hot cache (Lesson~2); if it
 runs on a different CPU, it starts with a cold cache and runs more slowly
-until that cache has been filled.
+until that cache has been filled.\margin{A task that ran within the last
+\texttt{sched\_migration\_cost\_ns}, \SI{500}{\micro\second} by default,
+counts as cache-hot, and the load balancer leaves it where it is.}
 
 \begin{definition}[Cache affinity]
   The benefit that a task gains from running on the CPU whose caches hold
@@ -912,7 +955,10 @@ name used by Intel, or chip multithreading.  More precisely,
 several cores with several hardware threads per core, the platforms studied
 by Fedorova et al.; in practice the names are often used interchangeably.  Processors
 with up to eight hardware threads per core have been built, but two is the
-most common configuration, and SMT can be enabled or disabled at boot time.
+most common configuration, and SMT can be enabled or disabled at boot
+time.\margin{Intel's first implementation cost less than \SI{5}{\percent} of
+the die area for about \SI{25}{\percent} more throughput (Marr et al.,
+\emph{Intel Technology Journal}, 2002).}
 
 Designs differ in how closely the contexts share the pipeline.  The simplest
 interleave them, giving the pipeline to another context as often as every
