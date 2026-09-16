@@ -36,9 +36,11 @@ needs \SI{125}{\milli\second} of processing:
 With boss-workers the requests complete in groups of $w$, so request $i$
 completes at time $\lceil i/w \rceil\, t$; in the pipeline request $i$
 completes at $(k + i - 1)\, s$.  Two metrics can be derived from these
-completion times.  The time to complete the whole batch is the completion
-time of the last request.  The \emph{average completion time} of a request
-is
+completion times.\caution{The $n$ requests are all present at time~0 and
+completion is counted from there; with arrivals spread over time the
+relevant metric is response time (\cref{sec:l06-metrics}).}  The time to
+complete the whole batch is the completion time of the last request.  The
+\emph{average completion time} of a request is
 \begin{equation}
   \overline{T}_{\mathrm{bw}}(n) = \frac{t}{n} \sum_{i=1}^{n}
     \Bigl\lceil \frac{i}{w} \Bigr\rceil ,
@@ -335,8 +337,11 @@ Pai et al.\ call a server built in this way an instance of the
 
 An \term{event handler}[イベントハンドラ] is the code executed in response
 to one event; invoking it is simply a call to that code.  A handler runs to
-completion.  If it would have to block, it does not wait: it initiates the
-blocking operation, records how far the request has progressed, and returns
+completion.\caution{Running to completion admits no blocking call at all,
+not even one hidden in a library function such as the name lookup
+\texttt{getaddrinfo}: it stops every connection, not one.}  If it would have
+to block, it does not wait: it initiates the blocking operation, records how
+far the request has progressed, and returns
 control to the dispatcher, and the completion of the operation later
 arrives as another event.  Dispatcher and handlers together form a state
 machine.  The information that a thread would keep implicitly, in its
@@ -387,9 +392,12 @@ Lesson~3 showed that on a single CPU, switching to another thread while a
 thread waits for I/O pays off when the idle time exceeds the cost of the two
 context switches, $t_{\mathrm{idle}} > 2\, t_{\mathrm{ctx}}$.  When there is
 no idle time, context switches are pure overhead: they consume CPU cycles
-that could have processed requests.  The event-driven model obtains the
-benefit without the cost.  It processes a request until the request has to
-wait, then processes another request, and no context switch is involved.
+that could have processed requests.\margin{Lesson~2 gives the price: about
+\SI{3.8}{\micro\second} of direct work per switch, and more than
+\SI{1000}{\micro\second} once the caches have to be refilled \cite{li2007}.}
+The event-driven model obtains the benefit without the cost.  It processes a
+request until the request has to wait, then processes another request, and
+no context switch is involved.
 On a machine with several CPUs, the model is applied once per CPU: several
 event-driven processes, each with its own dispatcher, share the incoming
 connections.
@@ -406,9 +414,17 @@ the dispatcher uses one of three system calls.
 \texttt{select} and \texttt{poll} receive the whole set of descriptors of
 interest on every call; the kernel checks all of them, and the application
 scans the result, although typically only a few are ready.  Their cost
-therefore grows with the number of open connections.  \texttt{epoll},
+therefore grows with the number of open connections.\caution{\texttt{select}
+is capped as well: an \texttt{fd\_set} holds \texttt{FD\_SETSIZE} = \num{1024}
+descriptors on Linux.  \texttt{poll} and \texttt{epoll} have no such limit.}
+\texttt{epoll},
 available on Linux, eliminates most of this overhead: descriptors are
-registered once, and each call returns only those that are ready.
+registered once, and each call returns only those that are
+ready.\sidenote{Serving ten thousand connections from one machine was known
+as the \emph{C10K problem}, after Kegel's 1999 survey of the techniques
+available for it.  The scalable interfaces answered it: \texttt{kqueue} in
+FreeBSD~4.1 (2000) and \texttt{epoll} in Linux~2.5.44 (2002), generally
+available with Linux~2.6.}
 
 \begin{example}
   The skeleton of a dispatcher built on \texttt{epoll}, with the state of
@@ -434,7 +450,9 @@ for (;;) {                                /* dispatcher */
   The handler of the listening socket accepts a connection, allocates a
   \texttt{struct conn} whose handler reads the request, and registers the
   new descriptor.  Every handler performs one step and sets
-  \texttt{handler} to the step that follows.
+  \texttt{handler} to the step that follows.\margin{With \texttt{EPOLLET}
+  \texttt{epoll} reports a descriptor once per state change; a handler must
+  then read or write until it sees \texttt{EAGAIN}.}
 \end{example}
 
 The benefits of the model follow from its single address space and single
@@ -477,7 +495,9 @@ device, for example a device that transfers the data by direct memory access
 (DMA, Lesson~11) and signals completion with an interrupt.  It fits the
 event-driven model well: the completion of an asynchronous operation is one
 more event for the dispatcher.\margin{POSIX defines \texttt{aio\_read} and
-\texttt{aio\_write}; glibc implements them with threads.}
+\texttt{aio\_write}; glibc implements them with threads.  On Linux
+\texttt{io\_uring} (2019) is the interface that also covers buffered file
+I/O.}
 
 Asynchronous calls are not always available, however, and where they exist
 they may not be supported for every kind of device.  An event-driven server
@@ -519,8 +539,10 @@ the corresponding request.
   A server has 2\,000 open connections, of which at most 25 wait for the
   disk at any time.  In the multithreaded model each connection needs a
   thread; with \SI{64}{\kilo\byte} per thread for its stack and data
-  structures, the threads use \SI{128}{\mega\byte}.  An AMPED server keeps a
-  state record of, say, \SI{2}{\kilo\byte} per connection
+  structures, the threads use \SI{128}{\mega\byte}.\margin{That is the
+  resident cost: a Pthreads stack reserves \SI{8}{\mebi\byte} of address
+  space but uses pages only as it touches them (Lesson~4).}  An AMPED server
+  keeps a state record of, say, \SI{2}{\kilo\byte} per connection
   (\SI{4}{\mega\byte}) and 25 helper processes, each of which costs, say,
   \SI{1}{\mega\byte} for its private pages, page tables and kernel
   structures (\SI{25}{\mega\byte}), about \SI{29}{\mega\byte} in total.  The
@@ -567,11 +589,13 @@ accessed.
 
 Before a handler sends file data, the dispatcher uses the system call
 \texttt{mincore} to test whether the pages of the data are in memory
-(\cref{fig:l06-flash}).  If they are, a handler sends the data at once, and
-this cannot block.  If they are not, the dispatcher passes the request to a
-helper through a pipe.  The helper accesses the pages, which brings them
-into memory and may block, and then reports completion to the dispatcher
-through a pipe.
+(\cref{fig:l06-flash}).\tip{\texttt{mincore} answers with one byte per page:
+with the \SI{4}{\kibi\byte} pages of x86-64, a \SI{4}{\mebi\byte} mapping
+needs a vector of \num{1024} bytes.}  If they are, a handler sends the data
+at once, and this cannot block.  If they are not, the dispatcher passes the
+request to a helper through a pipe.  The helper accesses the pages, which
+brings them into memory and may block, and then reports completion to the
+dispatcher through a pipe.
 The dispatcher receives the report as an event and invokes the handler,
 which now finds the data in memory.  Most requests to a web server are for
 popular files whose data are already in memory; for these requests Flash
@@ -629,7 +653,9 @@ request.
     single vector I/O operation, \texttt{writev}, which passes several
     memory regions at once and so saves a system call; a network interface
     with scatter-gather DMA can transfer non-contiguous buffers without
-    first assembling them in one.
+    first assembling them in one.\margin{Linux goes one step further:
+    \texttt{sendfile} (2.2, 1999) copies file data into the socket inside
+    the kernel, without a trip through user space.}
   \item[Alignment] The kernel copies the regions given to \texttt{writev}
     into a contiguous buffer of its own, and the copy is slower when the
     regions are not aligned to the machine word.  Flash therefore pads every
@@ -768,7 +794,10 @@ that handles one connection at a time achieves
   B(S) = S \cdot R(S) = \frac{S}{c + b\,S} \;<\; \frac{1}{b} ,
   \label{eq:l06-amortize}
 \end{equation}
-where $R$ is the connection rate and $B$ the bandwidth.
+where $R$ is the connection rate and $B$ the bandwidth.\tip{Little's law
+relates the two views: a rate $R$ with mean response time $T$ keeps $R\,T$
+connections open at once---\num{1000} per second at \SI{100}{\milli\second}
+is \num{100} at a time.}
 
 \begin{example}
   With $c = \SI{1}{\milli\second}$ and $b = \SI{0.02}{\milli\second}$ per
@@ -815,7 +844,10 @@ performance results; Pai et al.}
   \item[Single file (best case)] With the synthetic workload every request
     is for the same file, which is always cached.  The bandwidth, $n$
     requests times the file size divided by the time, was measured for file
-    sizes up to \SI{200}{\kilo\byte}.  All servers show a similar trend.
+    sizes up to \SI{200}{\kilo\byte}.\margin{The server machine was a
+    \SI{333}{\mega\hertz} Pentium~II with \SI{128}{\mega\byte} of memory and
+    several \SI[per-mode=symbol]{100}{\mega\bit\per\second} interfaces,
+    running Solaris~2.6 and FreeBSD~2.2.6 \cite{pai1999}.}  All servers show a similar trend.
     SPED performs best.  Flash comes close, but it pays for the
     \texttt{mincore} test on every request, which here is never needed.
     Zeus shows an anomaly at some file sizes, which Pai et al.\ attribute to
@@ -834,7 +866,9 @@ performance results; Pai et al.}
     processes need.  Flash performs best: its small footprint leaves more
     memory for caching, so fewer requests need blocking I/O, and it needs no
     synchronization.  Apache is again the slowest of all the servers
-    measured.
+    measured.\margin{Over the workloads measured, Flash \enquote{matches or
+    exceeds the performance of existing Web servers by up to 50\,\%}
+    \cite{pai1999}.}
   \item[Optimizations] Measurements of Flash with various combinations of
     the caches of path names, response headers and mapped files show that
     each optimization contributes substantially.  Apache would have
@@ -862,10 +896,15 @@ experiments.}
 
 Relevance depends on the stakeholders.  For a web server, clients care about
 response time, while the operator of the server cares about throughput and
-costs.  A new design that improves both response time and throughput is
-clearly valuable; one that improves one metric without degrading the other
-is still an improvement; one that improves one metric at the expense of the
-other may be useful to some stakeholders, provided the degraded metric
+costs.\sidenote{Clients are quoted percentiles rather than averages because
+the slowest reply decides: if a user request waits for \num{100} servers and
+one call in \num{100} takes longer than a second, the request is slow with
+probability $1 - 0.99^{100} \approx 63\,\%$.  Dean and Barroso call this the
+tail at scale \cite{dean2013}.}  A new design that improves both response
+time and throughput is clearly valuable; one that improves one metric
+without degrading the other is still an improvement; one that improves one
+metric at the expense of the other may be useful to some stakeholders,
+provided the degraded metric
 remains acceptable.  Another possible goal is to keep the response time
 unchanged as the request rate grows.  The goals thus determine which metrics
 to measure and how to configure the experiments.
@@ -904,7 +943,10 @@ may come from the workload, from the resources or from the servers.
 Second, compare against a \term{baseline}[ベースライン]: a reference system
 whose performance is understood, such as the state of the art, the most
 common practice, or an ideal best-case or worst-case scenario.  A claim
-that a design is better is a claim that it is better than a baseline.
+that a design is better is a claim that it is better than a
+baseline.\caution{The baseline must be tuned as carefully as the new design;
+measuring against a default configuration is the commonest way to overstate
+an improvement.}
 
 \subsection{Running experiments}
 
