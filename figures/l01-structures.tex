@@ -18,7 +18,7 @@
   >={Stealth[length=1.4mm]}]
   % ================= monolithic
   \node[ttl] at (18,52) {\iflangja{モノリシック}{monolithic}};
-  \foreach \x in {6,18,30} \node[app] at (\x,45) {app};
+  \foreach \x in {6,18,30} \node[app] at (\x,45) {\iflangja{アプリ}{app}};
   \draw[bnd] (0,39.5) -- (36,39.5);
   \draw[kern] (0,7) rectangle (36,38);
   \foreach \y/\t in {35.25/{\iflangja{プロセス・スレッド}{processes, threads}},
@@ -33,7 +33,7 @@
   % ================= modular
   \begin{scope}[xshift=40mm]
   \node[ttl] at (18,52) {\iflangja{モジュール型}{modular}};
-  \foreach \x in {6,18,30} \node[app] at (\x,45) {app};
+  \foreach \x in {6,18,30} \node[app] at (\x,45) {\iflangja{アプリ}{app}};
   \draw[bnd] (0,39.5) -- (36,39.5);
   \draw[kern] (0,7) rectangle (36,38);
   \node[row, minimum height=9mm, align=center] at (18,31.5)
@@ -52,7 +52,7 @@
   % ================= microkernel
   \begin{scope}[xshift=80mm]
   \node[ttl] at (18,52) {\iflangja{マイクロカーネル}{microkernel}};
-  \foreach \x in {6,18,30} \node[app] at (\x,45) {app};
+  \foreach \x in {6,18,30} \node[app] at (\x,45) {\iflangja{アプリ}{app}};
   \node[srv] (fs) at (6,33)  {\iflangja{ファイル\\システム}{file\\system}};
   \node[srv] (dd) at (18,33) {\iflangja{デバイス\\ドライバ}{device\\driver}};
   \node[srv] (db) at (30,33) {\iflangja{データ\\ベース}{database}};

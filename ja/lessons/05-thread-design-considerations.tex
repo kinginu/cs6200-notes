@@ -654,7 +654,7 @@ ch.~20--22．}このことは，ハンドラが共有状態にアクセスする
 \begin{lstlisting}[language=C, numbers=none]
 clear_field_in_mask(mask);  // 無効化
 lock(mutex) {
-  ...                       // ここではハンドラは実行されない
+  ...                       // ここではハンドラは動かない
 } // unlock
 reset_field_in_mask(mask);  // 有効化
 \end{lstlisting}

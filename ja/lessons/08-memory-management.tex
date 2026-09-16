@@ -209,7 +209,7 @@ $2^{d}$ バイトのページでは，仮想アドレスは2つの部分に分�
 size_t n = 256UL << 20;          /* 256 MiB */
 char *buf = malloc(n);           /* まだフレームなし */
 for (size_t i = 0; i < n; i += 4096)
-    buf[i] = 1;                  /* 初回アクセスでフォールト */
+    buf[i] = 1;                  /* 初回参照でフォールト */
 \end{lstlisting}
 \end{example}
 
