@@ -1,0 +1,54 @@
+% Consistency management: node A writes page p at 0.5 s, node B holds a
+% replica and reads p at 1 s and 3 s.  (a) Push: A invalidates B's replica
+% at once.  (b) Pull: B polls A every 2 s, and its replica is stale in
+% between.
+% Usage: \input{figures/l15-push-pull}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.3mm]},
+  row/.style={font=\scriptsize\sffamily, anchor=east},
+  lab/.style={font=\scriptsize\sffamily, inner sep=0.8pt},
+  ev/.style={circle, fill=black, inner sep=0pt, minimum size=1.3mm},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % time t (s) -> x = 22 + 23 t (mm); rows: A at 9, B at 0 (inside a scope)
+  \def\lnrows{%
+    \node[row] at (20,9) {\iflangja{A（書き手）}{A (writer)}};
+    \node[row] at (20,0) {\iflangja{B（複製）}{B (replica)}};
+    \foreach \y in {0,9} { \draw[ln-rule] (22,\y) -- (116,\y); }
+    \node[ev] at ({22+23*0.5},9) {};
+    \node[lab, anchor=south] at ({22+23*0.5},10) {\iflangja{書く}{write}};
+    \foreach \t in {1,3} { \node[ev] at ({22+23*\t},0) {}; }
+  }
+  % ---------------- (a) push
+  \begin{scope}[shift={(0,27)}]
+    \node[ttl] at (0,16) {\iflangja{(a) プッシュ}{(a) push}};
+    \lnrows
+    \draw[->, thick, ln-caution] ({22+23*0.5},8) -- ({22+23*0.5},1);
+    \node[lab, anchor=east, text=ln-caution] at ({21.4+23*0.5},4.5) {\iflangja{無効化}{invalidate}};
+    \draw[->, densely dashed] ({22+23*1},8) -- ({22+23*1},1);
+    \node[lab, anchor=west] at ({22.6+23*1},4.5) {\iflangja{取得}{fetch}};
+    \node[lab, anchor=north] at ({22+23*1},-1) {\iflangja{読む：新}{read: new}};
+    \node[lab, anchor=north] at ({22+23*3},-1) {\iflangja{読む：新}{read: new}};
+  \end{scope}
+  % ---------------- (b) pull
+  \begin{scope}[shift={(0,0)}]
+    \node[ttl] at (0,16) {\iflangja{(b) プル（2 秒ごと）}{(b) pull (every 2 s)}};
+    \lnrows
+    \fill[ln-caution!22] ({22+23*0.5},-1) rectangle ({22+23*2},1);
+    \draw[ln-rule] ({22+23*0.5},0) -- ({22+23*2},0);
+    \foreach \t in {1,3} { \node[ev] at ({22+23*\t},0) {}; }
+    \node[lab, anchor=south, text=ln-caution] at ({22+23*1.5},1.2) {\iflangja{古い}{stale}};
+    \foreach \t in {0,2,4} {
+      \draw[<->, densely dashed] ({22+23*\t},1) -- ({22+23*\t},8);
+    }
+    \node[lab, anchor=west] at ({22.6+23*2},4.5) {\iflangja{ポーリング}{poll}};
+    \node[lab, anchor=north] at ({22+23*1},-1) {\iflangja{読む：古}{read: stale}};
+    \node[lab, anchor=north] at ({22+23*3},-1) {\iflangja{読む：新}{read: new}};
+  \end{scope}
+  % time axis
+  \draw[->] (22,-8) -- (117,-8);
+  \foreach \t in {0,1,2,3,4} {
+    \draw ({22+23*\t},-7.2) -- ({22+23*\t},-8.8);
+    \node[lab, anchor=north] at ({22+23*\t},-9) {\t};
+  }
+  \node[lab, anchor=north east] at (20,-8.6) {\iflangja{時間（秒）}{time (s)}};
+\end{tikzpicture}

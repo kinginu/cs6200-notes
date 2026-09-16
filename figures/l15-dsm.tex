@@ -1,0 +1,43 @@
+% Distributed shared memory: processes on three nodes read and write one
+% shared address space; every page of it resides in the memory that one of
+% the nodes contributes, and remote accesses cross the network.
+% Usage: \input{figures/l15-dsm}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.3mm]},
+  mach/.style={draw, rounded corners=0.8mm, fill=white},
+  proc/.style={draw, circle, fill=white, inner sep=0pt, minimum size=4.8mm},
+  dsm/.style={draw, fill=ln-box, minimum width=30mm, minimum height=4.4mm, inner sep=0pt},
+  frm/.style={draw, minimum width=8.4mm, minimum height=4.6mm, inner sep=0pt},
+  cell/.style={draw, minimum width=13mm, minimum height=5mm, inner sep=0pt},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, inner sep=0.8pt},
+  who/.style={font=\scriptsize\sffamily\bfseries, anchor=north west, inner sep=1pt}]
+  \colorlet{lnNodeA}{ln-accent!22}
+  \colorlet{lnNodeB}{ln-tip!22}
+  \colorlet{lnNodeC}{ln-caution!16}
+  % shared address space
+  \node[lab, anchor=south west] at (1,40.8)
+    {\iflangja{共有アドレス空間（すべてのプロセスから見える）}{shared address space (seen by every process)}};
+  \foreach \ci/\cc in {0/lnNodeA,1/lnNodeB,2/lnNodeC,3/lnNodeA,4/lnNodeB,5/lnNodeC,6/lnNodeA,7/lnNodeB,8/lnNodeC} {
+    \node[cell, fill=\cc] at ({7.5+13*\ci},38) {$p_{\ci}$};
+  }
+  % nodes
+  \foreach \nk/\nx/\ncol/\npa/\npb/\fa/\fb/\fc in
+      {1/0/lnNodeA/1/2/0/3/6, 2/41/lnNodeB/3/4/1/4/7, 3/82/lnNodeC/5/6/2/5/8} {
+    \draw[mach] (\nx,0) rectangle ++(36,26);
+    \node[who] at (\nx+0.5,25.5) {\iflangja{ノード}{node} \nk};
+    \node[proc] at (\nx+15,19.5) {P\npa};
+    \node[proc] at (\nx+27,19.5) {P\npb};
+    \draw[<->] (\nx+15,21.9) -- (\nx+15,35.4);
+    \draw[<->] (\nx+27,21.9) -- (\nx+27,35.4);
+    \node[dsm] at (\nx+18,12) {DSM};
+    \foreach \fj/\fp in {0/\fa,1/\fb,2/\fc} {
+      \node[frm, fill=\ncol] at (\nx+8.5+9.5*\fj,4.6) {$p_{\fp}$};
+    }
+    \draw[thick, ln-muted] (\nx+18,0) -- (\nx+18,-5);
+  }
+  \node[lab, anchor=west] at (27.6,30.5) {\iflangja{読み書き}{read / write}};
+  % network
+  \draw[line width=1.2pt, ln-muted] (0,-5) -- (118,-5);
+  \node[lab, anchor=north] at (59,-5.8)
+    {\iflangja{ネットワーク（RDMA 対応のインターコネクトなど）}{network (e.g.\ an interconnect with RDMA)}};
+\end{tikzpicture}

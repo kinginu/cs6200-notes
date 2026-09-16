@@ -1,0 +1,29 @@
+% Implementing a page-based DSM with the MMU: accesses permitted by the
+% current mapping complete in hardware; the others fault, and the DSM fetches
+% the page, performs consistency operations, or both, before the access is
+% repeated.
+% Usage: \input{figures/l15-mmu}   (width ~112 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  box/.style={draw, fill=white, align=center, inner sep=1.2pt, minimum height=8mm, text width=30mm},
+  dec/.style={draw, diamond, aspect=2.2, fill=ln-box, align=center, inner sep=0pt},
+  lab/.style={font=\scriptsize\sffamily, inner sep=0.8pt}]
+  \node[box] (acc) at (17,50) {\iflangja{プロセスが共有アドレス\\にアクセス}{process accesses a\\shared address}};
+  \node[dec] (mmu) at (17,33) {\iflangja{MMU：アクセス\\は許可？}{MMU: access\\permitted?}};
+  \node[box, fill=ln-tip!12] (ok) at (17,14) {\iflangja{ハードウェアで完了\\（トラップなし）}{access completes in\\hardware (no trap)}};
+  \node[box, fill=ln-source!12, text width=34mm] (trap) at (66,33) {\iflangja{ページフォールト：OS へトラップ，\\OS は DSM に渡す}{page fault: trap to the OS,\\which hands it to the DSM}};
+  \node[box] (fetch) at (50,10) {\iflangja{所有者にページを要求：\\読みなら読み出し専用\\でマップ}{request the page from its\\owner; map it read-only\\for a read}};
+  \node[box, text width=32mm] (coord) at (93,10) {\iflangja{一貫性操作：他の複製を\\無効化，読み書き可でマップ}{consistency operations:\\invalidate other replicas;\\map it read-write}};
+  \draw[->] (acc) -- (mmu);
+  \draw[->] (mmu) -- node[lab, right] {\iflangja{はい}{yes}} (ok);
+  \draw[->] (mmu) -- node[lab, above] {\iflangja{いいえ}{no}} (trap);
+  \draw[->] (trap.south) -- ++(0,-5) -| (fetch.north);
+  \draw[->] (trap.south) -- ++(0,-5) -| (coord.north);
+  \node[lab, anchor=east, text=ln-muted, align=right] at (49.2,20) {\iflangja{ローカルに\\ない}{no local\\copy}};
+  \draw[->] (fetch.east) -- node[lab, above, inner sep=0.6pt] {\iflangja{書き}{write}} (coord.west);
+  \node[lab, anchor=west, text=ln-muted] at (50.6,4.2) {\iflangja{読み}{read}};
+  \node[lab, anchor=west, text=ln-muted, align=left] at (93.8,20) {\iflangja{読み出し専用\\への書き込み}{write to a\\read-only copy}};
+  \draw[->] (fetch.south) -- ++(0,-5) -| (ok.south);
+  \draw (coord.south) |- ++(-40,-5);
+  \node[lab, anchor=north, text=ln-muted] at (73,-0.4) {\iflangja{プロセスを再開：アクセスを再実行}{resume the process: the access is repeated}};
+\end{tikzpicture}

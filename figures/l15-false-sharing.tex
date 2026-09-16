@@ -1,0 +1,45 @@
+% False sharing: (a) x and y on the same page p, written by processes on
+% different nodes, make p move on every write; (b) on separate pages p and
+% q, nothing is transferred.
+% Usage: \input{figures/l15-false-sharing}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.4mm]},
+  mach/.style={draw, rounded corners=0.8mm, fill=white},
+  half/.style={draw, fill=ln-accent!20, minimum width=6mm, minimum height=5mm, inner sep=0pt, font=\scriptsize\ttfamily},
+  empty/.style={draw, fill=white, minimum width=6mm, minimum height=5mm, inner sep=0pt},
+  gone/.style={draw, densely dashed, ln-muted, minimum width=12mm, minimum height=5mm, inner sep=0pt},
+  lab/.style={font=\scriptsize\sffamily, inner sep=0.8pt},
+  who/.style={font=\scriptsize\sffamily\bfseries, anchor=north west, inner sep=1pt},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % ---------------- (a) same page
+  \node[ttl] at (0,23) {\iflangja{(a) \texttt{x} と \texttt{y} が同じページ}{(a) \texttt{x} and \texttt{y} on one page}};
+  \draw[mach] (0,0) rectangle (21,17);
+  \node[who] at (0.5,16.5) {\iflangja{ノード 1}{node 1}};
+  \node[lab] at (10.5,11) {\iflangja{\texttt{x} に書く}{writes \texttt{x}}};
+  \node[half] at (7.5,4.5) {x};
+  \node[half] at (13.5,4.5) {y};
+  \node[lab, anchor=west] at (16.8,4.5) {$p$};
+  \draw[mach] (35,0) rectangle (56,17);
+  \node[who] at (35.5,16.5) {\iflangja{ノード 2}{node 2}};
+  \node[lab] at (45.5,11) {\iflangja{\texttt{y} に書く}{writes \texttt{y}}};
+  \node[gone] at (45.5,4.5) {};
+  \draw[->, thick, ln-caution] (21,13) to[bend left=35] node[lab, above, text=ln-caution] {$p$} (35,13);
+  \draw[->, thick, ln-caution] (35,5) to[bend left=35] node[lab, below, text=ln-caution] {$p$} (21,5);
+  % ---------------- (b) separate pages
+  \begin{scope}[shift={(62,0)}]
+    \node[ttl] at (0,23) {\iflangja{(b) 別々のページ}{(b) separate pages}};
+    \draw[mach] (0,0) rectangle (21,17);
+    \node[who] at (0.5,16.5) {\iflangja{ノード 1}{node 1}};
+    \node[lab] at (10.5,11) {\iflangja{\texttt{x} に書く}{writes \texttt{x}}};
+    \node[half] at (7.5,4.5) {x};
+    \node[empty] at (13.5,4.5) {};
+    \node[lab, anchor=west] at (16.8,4.5) {$p$};
+    \draw[mach] (35,0) rectangle (56,17);
+    \node[who] at (35.5,16.5) {\iflangja{ノード 2}{node 2}};
+    \node[lab] at (45.5,11) {\iflangja{\texttt{y} に書く}{writes \texttt{y}}};
+    \node[half] at (42.5,4.5) {y};
+    \node[empty] at (48.5,4.5) {};
+    \node[lab, anchor=west] at (51.8,4.5) {$q$};
+    \node[lab, text=ln-muted, align=center] at (28,9) {\iflangja{転送\\なし}{no\\transfers}};
+  \end{scope}
+\end{tikzpicture}

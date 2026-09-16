@@ -1,0 +1,45 @@
+% Indexing distributed state: the node-ID field of a page ID indexes the
+% global mapping table, replicated on every node, which names the manager;
+% the manager keeps the metadata of its pages.
+% Usage: \input{figures/l15-indexing}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.4mm]},
+  fld/.style={draw, minimum height=6mm, inner sep=0pt, font=\scriptsize\ttfamily},
+  cellc/.style={draw, minimum height=5mm, inner sep=0pt},
+  mach/.style={draw, rounded corners=0.8mm, fill=white},
+  lab/.style={font=\scriptsize\sffamily, inner sep=0.8pt},
+  hd/.style={font=\scriptsize\sffamily\bfseries, inner sep=0.8pt}]
+  % page ID
+  \node[hd, anchor=south west] at (0,37) {\iflangja{ページ ID}{page ID}};
+  \node[fld, fill=ln-accent!20, minimum width=12mm] (nid) at (6,33) {05};
+  \node[fld, fill=white, minimum width=22mm] at (23,33) {0012A3};
+  \node[lab, anchor=north, text=ln-muted] at (6,29.6) {\iflangja{ノード ID}{node ID}};
+  \node[lab, anchor=north, text=ln-muted] at (23,29.6) {PFN};
+  % global mapping table
+  \node[hd, anchor=south] at (58,37) {\iflangja{グローバルマッピングテーブル}{global mapping table}};
+  \node[lab, anchor=south, text=ln-muted] at (58,34) {\iflangja{（全ノードに複製）}{(replicated on every node)}};
+  \node[lab, text=ln-muted] at (51,30.5) {\iflangja{索引}{index}};
+  \node[lab, text=ln-muted] at (63,30.5) {\iflangja{管理ノード}{manager}};
+  \foreach \ry/\ri/\rm in {26/04/4, 21/05/9, 16/06/6} {
+    \node[cellc, minimum width=10mm, fill=white] at (51,\ry) {\ttfamily\ri};
+    \node[cellc, minimum width=14mm, fill=white] at (63,\ry) {\rm};
+  }
+  \node[cellc, minimum width=14mm, fill=ln-accent!20] at (63,21) {9};
+  \node[lab, text=ln-muted] at (51,11) {$\vdots$};
+  \node[lab, text=ln-muted] at (63,11) {$\vdots$};
+  \draw[->] (nid.south) ++(0,-3.6) -- (6,21) -- (46,21);
+  % manager node
+  \draw[mach] (78,4) rectangle (118,37);
+  \node[hd, anchor=north west] at (78.5,36.5) {\iflangja{ノード 9（管理ノード）}{node 9 (manager)}};
+  \node[lab, anchor=north west, text=ln-muted] at (78.5,32) {\iflangja{管理するページのメタデータ}{metadata of its pages}};
+  \foreach \cx/\cw/\ct in {86.5/13/{\iflangja{ページ}{page}}, 99/12/{\iflangja{所有者}{owner}}, 110.5/11/{\iflangja{複製}{replicas}}} {
+    \node[cellc, minimum width=\cw mm, fill=ln-box] at (\cx,24) {\ct};
+  }
+  \foreach \ry/\pa/\pb/\pc in {19/\ttfamily 050012A3/2/{4, 7}, 14/\ttfamily 050012A4/9/---} {
+    \node[cellc, minimum width=13mm, fill=white] at (86.5,\ry) {\pa};
+    \node[cellc, minimum width=12mm, fill=white] at (99,\ry) {\pb};
+    \node[cellc, minimum width=11mm, fill=white] at (110.5,\ry) {\pc};
+  }
+  \node[lab, text=ln-muted] at (98,8.5) {$\vdots$};
+  \draw[->] (70,21) -- (78,21);
+\end{tikzpicture}
