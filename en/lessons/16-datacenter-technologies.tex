@@ -1,0 +1,777 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Datacenter Technologies}
+\lessoninfo{
+  video={P4L4},
+  textbook={Silberschatz et al.\ \cite{silberschatz2018} ch.~1; OSTEP \cite{ostep} ch.~48; Armbrust et al.\ \cite{armbrust2009}; Mell and Grance \cite{mell2011}},
+  keywords={Internet service, multi-tier architecture, scale-out, load balancer, homogeneous architecture, heterogeneous architecture, cloud computing, elasticity, law of large numbers, utility computing, IaaS, PaaS, SaaS, multi-tenancy},
+}
+
+The preceding lessons presented mechanisms with which processes on
+different machines cooperate: remote procedure calls, distributed file
+systems and, in Lesson~15, distributed shared memory.  Together with the
+threads, servers, scheduling and virtualization of the earlier lessons,
+these mechanisms are deployed on the largest scale in datacenters, which run
+the services that are used over the Internet.  This final lesson gives a
+brief, high-level overview of datacenter technologies: how Internet services
+are structured and scaled out over many machines, what cloud computing is,
+why it works and which models it offers, what it requires of the underlying
+systems, and which technologies make it possible.
+
+\section{Internet services}
+\label{sec:l16-services}
+
+Many applications in everyday use do not run on the machines of their
+users.\source{P4L4, lesson preview, Internet services.}  They run on
+machines in a \term{datacenter}[データセンタ], a facility that houses a
+large number of networked computers together with their storage, power
+supply and cooling, and operates them to provide computing services.  The
+users reach these applications over the Internet.
+
+\begin{definition}[Internet service]
+  An \term{Internet service}[インターネットサービス] is any service that is
+  provided to its users over the Internet through a web interface.
+\end{definition}
+
+Web mail, online shops, search engines and social networks are Internet
+services.  Most Internet services consist of three components
+(\cref{fig:l16-tiers}):
+\begin{description}
+  \item[Presentation] interacts with the users.  It receives their requests,
+    returns web pages, and provides the \emph{static content}, such as page
+    layouts and images, which is the same for every request.
+  \item[Business logic] implements the functionality of the service.  It
+    processes each request and generates the \emph{dynamic content}, such as
+    the results of a search or the contents of a shopping cart.
+  \item[Database] stores the data of the service, such as its users,
+    products and orders, and retrieves them for the business logic.
+\end{description}
+
+\begin{definition}[Multi-tier architecture]
+  A service that is structured as a sequence of components, each of which
+  uses the services of the next, has a
+  \term{multi-tier architecture}[多層アーキテクチャ].  Each component is a
+  \emph{tier}; the three components above form a three-tier architecture.
+\end{definition}
+
+The tiers are logical components.  They need not be separate processes, and
+separate processes need not run on separate machines.  Many open-source and
+proprietary middleware products---web servers, application servers,
+database servers---implement individual tiers and the interaction between
+them, and they can be combined in different configurations.  When the tiers
+run as separate processes, the processes communicate through some form of
+IPC: message passing or shared memory on the same machine (Lesson~9), and
+RPC or RMI across machines (Lesson~13).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l16-tiers}
+  \caption{A three-tier Internet service.  (a) All tiers run on one machine,
+    in one process or in several processes.  (b) Every tier runs on its own
+    machine, and the tiers communicate by RPC or RMI.}
+  \label{fig:l16-tiers}
+\end{figure}
+
+\section{Scale-out architectures}
+\label{sec:l16-scaleout}
+
+A single machine serves only a limited number of requests per second,
+however efficiently its server software is designed (Lesson~6).\source{P4L4,
+Internet service architectures, homogeneous architectures, heterogeneous
+architectures.}  A service that must handle more requests therefore runs as
+many processes on many machines, the \emph{nodes} of the service.
+
+\begin{definition}[Scale-out]
+  An architecture that increases the capacity of a service by adding nodes,
+  rather than by replacing a node with a more powerful machine
+  (\emph{scale-up}), is a \term{scale-out}[スケールアウト] architecture.
+\end{definition}
+
+Scale-out architectures commonly apply the boss-workers
+pattern\index{boss-workers pattern} of Lesson~3 to machines instead of
+threads: a front-end node receives all requests and passes each of them to
+one of the nodes that process requests.
+
+\begin{definition}[Load balancer]
+  A \term{load balancer}[ロードバランサ] is a front end that distributes the
+  incoming requests of a service among the nodes that process them.
+\end{definition}
+
+Just as the workers of the boss-workers pattern are either all equal or
+specialized, the nodes of a scale-out architecture can be organized in two
+ways (\cref{fig:l16-scaleout}):
+\begin{description}
+  \item[All equal] Every node can execute every step of the processing of
+    every request.  The nodes are functionally homogeneous.
+  \item[Specialized] Each node executes only some steps of the processing,
+    or only requests of some types.  The nodes are functionally
+    heterogeneous.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l16-scaleout}
+  \caption{Scale-out architectures.  (a) Every node processes requests of
+    every type, and every node can access all data.  (b) Nodes are
+    specialized for request types, and the front end must inspect each
+    request to choose a node.}
+  \label{fig:l16-scaleout}
+\end{figure}
+
+\subsection{Homogeneous architectures}
+
+\begin{definition}[Homogeneous architecture]
+  In a \term{homogeneous architecture}[ホモジニアス構成] all nodes are
+  functionally identical: each of them can perform every processing step
+  for every request.
+\end{definition}
+
+The front end of a homogeneous architecture is simple.  It need not examine
+the requests; it can assign them to the nodes in turn, in round-robin order,
+or to the node with the least load.  Functional homogeneity does not require
+every node to store all data.  It requires only that every node can
+\emph{access} all data, for instance through a distributed file system or a
+shared database tier, which may itself be replicated or partitioned
+(Lesson~14).  To increase the capacity, nodes are simply added.
+
+The price is that the service benefits little from caching.  The front end
+does not know which node has recently processed a similar request and holds
+the data it needs in a hot cache\index{hot cache}.  A request that one node
+could serve from its cache is therefore likely to be sent to a node that must
+first fetch the data---the lack of locality that Lesson~3 noted for equal
+workers.
+
+\subsection{Heterogeneous architectures}
+
+\begin{definition}[Heterogeneous architecture]
+  In a \term{heterogeneous architecture}[ヘテロジニアス構成] the nodes are
+  functionally specialized: different nodes perform different processing
+  steps or serve different types of requests.
+\end{definition}
+
+Data then need not be uniformly accessible from all nodes; each node needs
+only the data of its own processing steps or request types.  The advantage
+is locality.  All requests of a given type reach the same few nodes, which
+keep the code and data these requests need in hot caches, as the specialized
+threads of Lesson~3\index{specialization} do.  The front end, however,
+becomes more complex: it must inspect every request, for example parse its
+URL, to determine which nodes can process it.\margin{A front end that only
+forwards connections needs to look no further than the transport headers; one
+that chooses a node by URL or cookie must terminate the connection and parse
+the request itself.}  The management of the service becomes more complex as
+well.
+
+\subsection{Scaling and management}
+
+The two architectures differ most when the load grows.\margin{Scale-out and
+scale-up are also called horizontal and vertical scaling.  Either raises the
+throughput of the service; neither shortens the processing of a single
+request.}  To scale a homogeneous architecture, it suffices to add nodes,
+together with the processes, machines and access to storage that they need.
+Every new node takes its share of every type of request, and no knowledge of which requests
+cause the load is required.  To scale a heterogeneous architecture, the
+operator must know which types of requests are in demand and add nodes of
+these types, which requires profiling the workload\index{workload}.  As the
+demand for the different request types changes over time, the mix of nodes
+must follow it.  Otherwise the nodes of a popular type become \emph{hot
+spots} with long queues of pending requests, while the nodes of other types
+are idle.  \Cref{tab:l16-arch} summarizes the comparison.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Homogeneous and heterogeneous scale-out architectures.}
+  \label{tab:l16-arch}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.2\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}@{}}
+    \toprule
+    & Homogeneous & Heterogeneous \\
+    \midrule
+    Nodes & functionally identical & specialized by processing step or
+      request type \\
+    Front end & simple; need not inspect requests & must inspect every
+      request \\
+    Data & accessible from every node & needed only on some nodes \\
+    Caching and locality & little benefit & requests of a type reach the
+      same nodes \\
+    Scaling & add nodes & profile the demand; add nodes of the types
+      needed \\
+    Change in request mix & absorbed without intervention & hot spots
+      unless nodes are reassigned \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{example}
+  \label{ex:l16-scaling}
+  An online shop receives two types of requests.  On a node of a
+  homogeneous architecture, a search takes \SI{5}{\milli\second} of
+  processing and a checkout \SI{20}{\milli\second}.  A load of 1200 searches
+  and 200 checkouts per second requires $1200 \times 0.005 + 200 \times 0.020
+  = 6 + 4 = 10$ seconds of processing per second, the capacity of ten nodes.
+  When the mix changes to 600 searches and 350 checkouts per second, the
+  requirement is $3 + 7 = 10$ again: the same ten nodes suffice, and nobody
+  needs to notice the change.
+
+  In a heterogeneous architecture, suppose that hot caches let the
+  specialized nodes process requests in \SI{20}{\percent} less time,
+  \SI{4}{\milli\second} per search and \SI{16}{\milli\second} per checkout.
+  The original load needs $\lceil 1200 \times 0.004 \rceil = 5$ search nodes
+  and $\lceil 200 \times 0.016 \rceil = 4$ checkout nodes, nine in total.
+  After the change, $\lceil 2.4 \rceil = 3$ search nodes and
+  $\lceil 5.6 \rceil = 6$ checkout nodes are needed---still nine, but in a
+  different mix.  Until the operator moves two nodes from search to
+  checkout, the four checkout nodes complete only $4/0.016 = 250$ checkouts
+  per second, the queue of pending checkouts grows by 100 requests every
+  second, and two of the five search nodes are idle.
+\end{example}
+
+\begin{keypoint}
+  An Internet service is organized in tiers and scaled out over many nodes
+  behind a load balancer.  Homogeneous nodes keep the front end and scaling
+  simple but gain little from caching; heterogeneous nodes gain locality at
+  the cost of a front end that inspects requests and of management that must
+  follow the mix of requests.
+\end{keypoint}
+
+\section{The motivation for cloud computing}
+\label{sec:l16-motivation}
+
+Amazon, the online retailer, had provisioned its hardware for the peak load
+of the holiday shopping season, and for the rest of the year much of this
+hardware was idle.\source{P4L4, cloud computing poster child: Animoto, cloud
+computing requirements; Armbrust et al.\ \cite{armbrust2009}.}  Amazon
+opened access to it through web-based APIs, so that third parties could run
+their own workloads on Amazon's hardware for a fee.  The result was Amazon
+Web Services (AWS).  Its Elastic Compute Cloud (EC2), launched in 2006, rents
+out \emph{compute instances}: virtual machines (Lesson~12) that customers
+start and stop through the API and pay for by the hour.\margin{EC2 opened as
+a limited public beta in August 2006 and became generally available in
+October 2008.}
+
+Animoto, a service that produces videos from users' photographs, rented its
+compute instances from EC2.  In April 2008 Animoto became available to the
+users of Facebook, and its demand surged: within three days the number of
+servers it used grew from 50 to 3500, after which its traffic fell to well
+below the peak \cite{armbrust2009}.  Growth by almost two orders of magnitude
+within days is impossible when machines must be bought, installed and
+configured; with rented resources it required only calls to an API.
+
+\subsection{Provisioning for variable demand}
+
+Traditionally, a service buys and configures its own resources.  Their
+capacity is determined in advance from the expected demand, usually from its
+expected peak, and it can later be increased only in large steps, each
+delayed by a purchase.  Since demand varies over time, a fixed capacity is
+wrong most of the time (\cref{fig:l16-capacity}a):
+\begin{itemize}
+  \item while the demand is below the capacity, the idle resources are
+    wasted: they have been paid for but are not used;
+  \item when the demand exceeds the capacity, requests are dropped, and the
+    opportunity to serve these users, and the revenue they would have
+    brought, is lost.
+\end{itemize}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l16-capacity}
+  \caption{Capacity and demand over time.  (a) A fixed capacity wastes
+    resources while demand is low and loses requests during a surge.  (b) An
+    elastic capacity follows the demand.}
+  \label{fig:l16-capacity}
+\end{figure}
+
+Ideally, the capacity of a service would instead follow its demand
+(\cref{fig:l16-capacity}b):
+\begin{itemize}
+  \item capacity scales elastically with the demand, both up and down;
+  \item scaling is instantaneous;
+  \item the cost is proportional to the demand, and thus to the revenue
+    opportunity;
+  \item all of this happens automatically, without special expertise;
+  \item the resources can be accessed at any time, from anywhere.
+\end{itemize}
+
+\begin{definition}[Elasticity]
+  The ability of a system to acquire and release resources quickly and
+  automatically as its demand rises and falls, so that its capacity follows
+  the demand, is called \term{elasticity}[伸縮性].
+\end{definition}
+
+The price of this ideal is that a service no longer owns the resources on
+which it runs, and its data reside on machines that others operate.\caution{%
+Renting capacity does not remove the provisioning decision; it only shortens
+its horizon.  How many instances to run must still be decided, now every few
+minutes rather than every few years.}
+
+\begin{example}
+  The demand of a service is 20 servers during 16 hours of every day and 100
+  servers during the remaining 8 hours, $20 \times 16 + 100 \times 8 = 1120$
+  server-hours per day.  An owned server costs $c$ per hour, whether it is
+  used or not.  Provisioned for the peak, the service pays for
+  $100 \times 24 = 2400$ server-hours, $2400c$ per day, and
+  $1 - 1120/2400 \approx \SI{53}{\percent}$ of them are wasted.  Provisioned
+  for the average demand of $1120/24 \approx 47$ servers, it still wastes
+  $27 \times 16 = 432$ server-hours while the demand is low, and during the
+  peak it drops $53/100 = \SI{53}{\percent}$ of the requests.  With elastic
+  capacity rented at a \SI{50}{\percent} higher price, $1.5c$ per
+  server-hour, the service pays $1120 \times 1.5c = 1680c$ per day,
+  \SI{30}{\percent} less than with peak provisioning, and drops no requests.
+\end{example}
+
+\section{Cloud computing}
+\label{sec:l16-cloud}
+
+Cloud computing approximates the ideal described above.\source{P4L4, cloud
+computing overview, why cloud computing works, cloud computing vision, cloud
+computing definitions; Armbrust et al.\ \cite{armbrust2009}; Mell and Grance
+\cite{mell2011}; Silberschatz et al.\ ch.~1.}  Its essential elements are the
+following.
+\begin{description}
+  \item[Shared resources] A provider offers infrastructure---compute, storage
+    and network---as well as software and services, and shares them among
+    many customers.
+  \item[APIs for access and configuration] Customers request, configure and
+    release resources through web-based APIs, through libraries for
+    programming languages, or with command-line tools.
+  \item[Billing and accounting] Usage is metered and billed.  Many pricing
+    models coexist, for example on-demand prices, lower prices for capacity
+    reserved for a longer period, and \emph{spot} prices for spare capacity
+    that vary with supply and demand, so that the provider in effect runs a
+    marketplace.  Resources are offered in discrete sizes, such as small,
+    medium and extra-large instances with different numbers of CPUs and
+    amounts of memory.
+  \item[Management by the provider] The provider operates the datacenters,
+    the hardware, and the software that implements the services.
+\end{description}
+
+\begin{definition}[Cloud computing]
+  The provision of computing resources as services over a network, from
+  resources that are shared among many customers, acquired and released on
+  demand through APIs, billed according to use and managed by the provider,
+  is called \term{cloud computing}[クラウドコンピューティング].
+\end{definition}
+
+\begin{note}
+  Published definitions agree with these elements.  The NIST definition
+  \cite{mell2011} names five essential characteristics: on-demand
+  self-service, broad network access, resource pooling, rapid elasticity and
+  measured service.  Armbrust et al.\ \cite{armbrust2009} use the term for
+  both the applications delivered as services over the Internet and the
+  hardware and systems software in the datacenters that provide these
+  services; the latter they call a \emph{cloud}.
+\end{note}
+
+\subsection{Why cloud computing works}
+
+A provider must own enough resources for the demand of all its customers,
+and still charge them less than they would spend on resources of their own.
+Two principles make this possible.
+
+\begin{definition}[Law of large numbers]
+  By the \term{law of large numbers}[大数の法則], the average of $N$
+  independent random quantities with the same distribution approaches their
+  expected value as $N$ grows.
+\end{definition}
+
+The resource needs of a single customer vary widely over time, but different
+customers reach their peaks at different times, and the demand averaged over
+many customers is roughly constant.  If the demands of $N$ customers are
+independent, each with mean $\mu$ and standard deviation $\sigma$, their sum
+has mean $N\mu$ and standard deviation $\sigma\sqrt{N}$, so that its
+variation relative to its mean, $\sigma/(\mu\sqrt{N})$, shrinks as $N$
+grows.\tip{The relative variation falls only as $1/\sqrt{N}$: ten times as
+many independent customers reduce it by a factor of about~3, a hundred times
+by a factor of~10.}  A provider can therefore provision for the aggregate
+demand, which is far smaller than the sum of the individual peaks.
+
+\begin{example}
+  A provider serves 100 customers.  Each customer needs 10 servers most of
+  the time and 100 servers during its peaks, which occupy \SI{10}{\percent}
+  of the time and occur independently of the peaks of other customers.
+  Provisioning for every customer's peak would take
+  $100 \times 100 = \num{10000}$ servers.  The number $K$ of customers at
+  their peak at a given moment, however, has mean $100 \times 0.1 = 10$ and
+  standard deviation $\sqrt{100 \times 0.1 \times 0.9} = 3$, and the total
+  demand, $1000 + 90K$ servers, averages 1900.  With \num{2710} servers,
+  enough for $K \le 19$, three standard deviations above the mean, the
+  demand exceeds the capacity with a probability of only about
+  \SI{0.2}{\percent}.  The provider needs fewer than \SI{30}{\percent} of the
+  servers that its customers would need to own.
+\end{example}
+
+The second principle is that of \term{economies of scale}[規模の経済]: the
+unit cost of providing a resource falls as the quantity provided grows.  A
+provider buys hardware, power and network capacity in bulk, spreads the
+fixed costs of a datacenter over many machines, and lets each administrator
+manage many machines.
+
+\subsection{Computing as a utility}
+
+The vision of cloud computing is older than its technology.  In 1961, John
+McCarthy suggested that computing might one day be organized as a public
+utility, as the telephone system is, and that such a computer utility could
+become the basis of an important new industry.
+
+\begin{definition}[Utility computing]
+  In \term{utility computing}[ユーティリティコンピューティング], computing
+  resources are provided in the way electricity or telephone service is: as
+  a metered, fungible commodity---any unit is as good as any other---that
+  customers consume on demand and pay for according to use.
+\end{definition}
+
+In the terminology of Armbrust et al.\ \cite{armbrust2009}, utility
+computing is what a cloud sells when it is made available to the general
+public on a pay-as-you-go basis.  Current clouds realize the vision only in
+part, because computing has not become a fully fungible utility.  The
+limitations are these:
+\begin{description}
+  \item[API lock-in] Every provider has its own APIs, and an application
+    written for one provider cannot move to another without changes.
+  \item[Hardware dependence] Applications may depend on particular hardware,
+    such as specific processors or accelerators, which not every provider or
+    instance type offers.
+  \item[Latency] The resources reside in a remote datacenter, and every
+    interaction with them incurs network latency.
+  \item[Privacy and security] Data and computations reside on machines that
+    the customer neither owns nor controls and that are shared with other
+    customers.
+\end{description}
+
+\begin{keypoint}
+  Cloud computing offers shared, provider-managed resources through APIs,
+  elastically and billed by use.  It works because the aggregate demand of
+  many customers varies far less than the demand of each of them (law of
+  large numbers) and because unit costs fall with scale (economies of
+  scale).  It realizes the vision of computing as a utility only in part.
+\end{keypoint}
+
+\section{Deployment and service models}
+\label{sec:l16-models}
+
+Clouds differ in who may use them and in what they provide.\source{P4L4,
+cloud deployment models, cloud service models; Mell and Grance
+\cite{mell2011}; Silberschatz et al.\ ch.~1.}  The \emph{deployment models}
+describe who uses a cloud.
+\begin{description}
+  \item[Public cloud] A \term{public cloud}[パブリッククラウド] is operated by
+    a provider for third-party customers, its \emph{tenants}, who share its
+    resources.
+  \item[Private cloud] In a \term{private cloud}[プライベートクラウド] an
+    organization applies cloud technology, such as virtualization, APIs and
+    automated provisioning, to its own infrastructure, for its own
+    applications.
+  \item[Hybrid cloud] A \term{hybrid cloud}[ハイブリッドクラウド] combines a
+    private cloud with a public one.  An organization runs its applications
+    in its private cloud and uses the public cloud for failover, to absorb
+    spikes in demand that exceed its own capacity, or for testing.
+  \item[Community cloud] A \term{community cloud}[コミュニティクラウド] is a
+    public cloud whose use is restricted to a certain type of users, such as
+    government agencies or research institutions.
+\end{description}
+
+The \emph{service models} describe how much of the stack of hardware and
+software the provider manages (\cref{fig:l16-service-models}).  In an
+on-premises installation the organization manages the entire stack itself,
+from the network, storage and servers through virtualization, the operating
+system, middleware and runtime to its data and applications.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l16-service-models}
+  \caption{Cloud service models, with an example of each.  The shaded layers
+    are managed by the provider, the others by the customer.}
+  \label{fig:l16-service-models}
+\end{figure}
+
+With
+\term{infrastructure as a service}[IaaS]\index{IaaS|see{infrastructure as a service}}
+(IaaS) the provider manages the physical infrastructure, that is, the
+network, storage and servers, and its virtualization.  Customers rent virtual machines and
+install and manage the operating system and everything above it.  Amazon
+EC2 is an example.
+
+With
+\term{platform as a service}[PaaS]\index{PaaS|see{platform as a service}}
+(PaaS) the provider also manages the operating system, the middleware and
+the runtime environment.  Customers supply only their applications, written
+against the interfaces of the platform, and their data, and the platform
+deploys and runs the applications.  Google App Engine is an example.
+
+With
+\term{software as a service}[SaaS]\index{SaaS|see{software as a service}}
+(SaaS) the provider manages the entire stack, the application included, and
+customers merely use the application, as the users of Gmail do.
+
+\begin{example}
+  The operator of the three-tier online shop of \cref{sec:l16-services} can
+  run it on IaaS by renting virtual machines, installing an operating
+  system, a web server, an application server and a database server on them,
+  and managing all this software, its updates and its scaling.  On PaaS the
+  operator uploads only the code of the business logic and the static
+  content; the platform runs them, provides a managed database, and adds
+  instances as the load grows.  The employees of the shop may at the same
+  time read their e-mail through a SaaS offering, for which they manage
+  nothing but their accounts and messages.
+\end{example}
+
+\section{Requirements for the cloud}
+\label{sec:l16-requirements}
+
+From the provider's point of view, cloud computing places a number of
+requirements on the underlying technology.\source{P4L4, requirements for the
+cloud, cloud failure probability; OSTEP ch.~48.}
+\begin{enumerate}
+  \item \textbf{Fungible resources.}  Resources must be interchangeable and
+    easy to repurpose for customers with different requirements, such as
+    different operating systems and software stacks.  Without fungibility
+    every customer would need dedicated resources, and the economic
+    opportunity of the cloud, which rests on sharing
+    (\cref{sec:l16-cloud}), would not exist.
+  \item \textbf{Elastic, dynamic resource allocation.}  Mechanisms and
+    policies must allocate resources on demand and reclaim them when they
+    are released.
+  \item \textbf{Scale.}  Management and resource allocation must work for
+    datacenters of many thousands of machines and for many customers.
+  \item \textbf{Dealing with failures.}  At this scale failures are the
+    normal case, and the system must continue to operate despite them.
+  \item \textbf{Multi-tenancy.}  Tenants must be isolated from each other,
+    and the performance of each of them must be guaranteed.
+  \item \textbf{Security.}  The data and computations of every tenant must be
+    protected from other tenants and from attackers outside the cloud.
+\end{enumerate}
+
+\begin{definition}[Multi-tenancy]
+  The sharing of the same physical resources by several customers, each of
+  which uses its own, isolated set of resources, is called
+  \term{multi-tenancy}[マルチテナンシ].
+\end{definition}
+
+Multi-tenancy requires isolation\index{isolation} of the tenants' state, as
+a VMM provides it for its VMs (Lesson~12), but also isolation of their
+performance.
+
+\begin{definition}[Performance isolation]
+  A system provides \term{performance isolation}[性能隔離] when the
+  performance that a tenant obtains does not depend on the workloads of the
+  other tenants that share its resources.
+\end{definition}
+
+Without performance isolation, a tenant whose VM shares a machine with a VM
+that saturates the disk or the memory observes unpredictable response times,
+and the provider cannot keep the service level
+agreements\index{service level agreement} (Lesson~6) it has promised.
+
+\subsection{Failures at scale}
+
+Failures become frequent simply because of the number of components.  If
+each of $N$ components fails independently with probability $p$ within a
+given period, the probability that at least one of them fails is
+\begin{equation}
+  P_{\mathrm{fail}} \;=\; 1 - (1-p)^{N} ,
+  \label{eq:l16-failure}
+\end{equation}
+which approaches 1 as $N$ grows, while the expected number of failed
+components, $Np$, grows linearly with~$N$.\caution{\Cref{eq:l16-failure}
+assumes that the components fail independently.  Correlated failures---a loss
+of power or cooling, a network partition, a faulty software update---take down
+many machines at once and are the ones that cause outages.}  A component that
+rarely fails on its own therefore fails somewhere in a datacenter all the
+time.  Systems
+in the cloud must detect failures, for instance with timeouts, and continue
+despite them, with the mechanisms of the preceding lessons: replicas that
+take over for failed ones (Lesson~14), checkpoints from which computations
+resume (Lesson~8)\index{checkpointing}, and migration of VMs away from
+failing machines (Lesson~12).
+
+\begin{example}
+  A machine fails on a given day with probability $p = 0.001$, independently
+  of the other machines; on its own, it fails on average once in about three
+  years.  By \cref{eq:l16-failure}, the probability that at least one
+  machine fails on a given day is \SI{1.0}{\percent} for 10 machines,
+  \SI{9.5}{\percent} for 100 machines and \SI{63}{\percent} for \num{1000}
+  machines.  For \num{10000} machines it is practically \SI{100}{\percent},
+  and on average 10 machines fail every day.
+\end{example}
+
+\begin{keypoint}
+  A cloud requires fungible resources, elastic allocation, management at
+  scale, tolerance of failures, and isolation of the state and the
+  performance of its tenants.  With many components, some component is
+  almost always failing (\cref{eq:l16-failure}).
+\end{keypoint}
+
+\section{Cloud enabling technologies}
+\label{sec:l16-technologies}
+
+Several technologies together make cloud computing possible.\source{P4L4,
+cloud enabling technologies; Hindman et al.\ \cite{hindman2011}; Dean and
+Ghemawat \cite{dean2004}; Zaharia et al.\ \cite{zaharia2012}; McKeown et
+al.\ \cite{mckeown2008}.}
+
+\paragraph{Virtualization.}  Virtualization (Lesson~12) makes resources
+fungible.  A physical machine can host the VMs of any tenants, with any
+operating systems and software stacks, and the VMs isolate the tenants from
+each other.  VMs can be created, destroyed and migrated as the demand
+changes.
+
+\paragraph{Resource provisioning.}  Resource managers for clusters, such as
+Mesos \cite{hindman2011} and Hadoop YARN, schedule the resources of many
+machines among the applications and frameworks that run on them, deciding
+which CPUs and how much memory on which machines each of them receives.%
+\margin{Hadoop is the open-source counterpart of the stack Google described:
+HDFS corresponds to the Google File System, Hadoop MapReduce to MapReduce,
+HBase to Bigtable.}
+
+\paragraph{Big data processing.}  Frameworks such as Hadoop MapReduce and
+Spark process large data sets in parallel on many machines.
+
+\begin{definition}[MapReduce]
+  \term{MapReduce}[MapReduce] \cite{dean2004} is a programming model, and a
+  runtime system that implements it, for processing large data sets on a
+  cluster.  The programmer writes a \emph{map} function, which transforms
+  each input record into intermediate key/value pairs, and a \emph{reduce}
+  function, which combines all intermediate values with the same key.  The
+  runtime splits the input, runs map and reduce tasks in parallel on many
+  machines, groups the intermediate pairs by key, and re-executes the tasks
+  of machines that fail.
+\end{definition}
+
+To count how often every word occurs in a collection of documents, for
+instance, the map function emits the pair $(w, 1)$ for every occurrence of a
+word~$w$, and the reduce function sums the values for each word.  MapReduce
+stores intermediate results on disk; Spark \cite{zaharia2012} keeps them in
+memory, which speeds up iterative algorithms and interactive queries that
+reuse the same data.
+
+\paragraph{Storage.}  Clouds store data in distributed file systems
+(Lesson~14) designed for very large files that are mostly appended to rather
+than overwritten; in NoSQL databases, which scale out by giving up the
+relational data model and some of the consistency guarantees of traditional
+databases; and in distributed in-memory stores and caches, which keep data
+in the memory of many machines.
+
+\paragraph{Software-defined networking, storage and datacenters.}
+Networks, storage and eventually entire datacenters are configured by
+software through APIs rather than by hand.
+
+\begin{definition}[Software-defined networking]
+  In
+  \term{software-defined networking}[SDN]\index{SDN|see{software-defined networking}}
+  (SDN), the \emph{control plane} of a network, which decides how traffic is
+  forwarded, is separated from the \emph{data plane} of the switches, which
+  forwards the packets.  A logically centralized controller, implemented in
+  software, programs the forwarding tables of the switches through an open
+  interface such as OpenFlow \cite{mckeown2008}.
+\end{definition}
+
+With SDN a cloud can reconfigure its network by software, for example to
+give every tenant a virtual network of its own that is isolated from those
+of other tenants.\margin{OpenFlow, specified in 2008 and the first widely
+implemented such interface, lets the controller install match-and-act rules
+in the forwarding tables of a switch.}  Software-defined storage and
+software-defined datacenters apply the same principle to storage and to all
+resources of a datacenter.
+
+\paragraph{Monitoring.}  Thousands of machines and the services running on
+them continuously produce logs and measurements.  Real-time log processing
+systems, such as Flume, CloudWatch or Log Insight, collect and analyze them
+as they are produced, in order to detect failures, anomalies and overloads,
+and to trigger elastic scaling.
+
+\section{The cloud as a big data engine}
+\label{sec:l16-bigdata}
+
+Many applications analyze data sets that no single machine can hold, such as
+the logs of user activity of a large Internet service, web pages to be
+indexed, or scientific measurements.\source{P4L4, the cloud as a big data
+engine, example big data stacks.}
+
+\begin{definition}[Big data]
+  Data sets whose size exceeds what a single machine can store and process,
+  so that they must be stored and analyzed on many machines, are called
+  \term{big data}[ビッグデータ].
+\end{definition}
+
+The cloud provides both the storage for such data and the many machines that
+process them in parallel.  The software that does so forms a \emph{big data
+engine} with the following layers (\cref{fig:l16-bigdata}).
+\begin{description}
+  \item[Data storage] stores the data, distributed and replicated over many
+    machines.
+  \item[Data processing] executes computations over the data in parallel on
+    many machines.
+  \item[Caching] keeps frequently used data in memory, avoiding the latency of
+    the storage layer.
+  \item[Language front-ends] let users query and analyze the data in
+    high-level languages, for instance SQL-like query languages, instead of
+    programming the processing layer directly.
+  \item[Analytics libraries] provide algorithms built on the processing
+    layer, for instance for machine learning, graph analysis or statistics.
+  \item[Streaming data] such as logs, clicks or sensor readings, enter the
+    engine continuously and must be processed as they arrive, not only after
+    they have been stored.
+\end{description}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l16-bigdata}
+  \caption{The layers of a big data engine.  Streaming data enter the
+    engine continuously; they are processed as they arrive and stored.}
+  \label{fig:l16-bigdata}
+\end{figure}
+
+Two widely used open-source stacks implement these layers
+(\cref{tab:l16-stacks}).  The \emph{Hadoop} stack is built around the
+Hadoop Distributed File System (HDFS) and MapReduce.  The \emph{Berkeley
+Data Analytics Stack} (BDAS), developed at the University of California,
+Berkeley, is built around Spark and the cluster resource manager Mesos, and
+it can use HDFS and other storage systems below it.\margin{Some components
+have since been renamed or replaced: Tachyon became Alluxio in 2016, and
+Shark was superseded by Spark SQL.  \Cref{tab:l16-stacks} keeps the original
+names.}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Components of two big data stacks, by layer.}
+  \label{tab:l16-stacks}
+  \small
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.2\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}>{\raggedright\arraybackslash}p{0.36\linewidth}@{}}
+    \toprule
+    Layer & Hadoop & BDAS \\
+    \midrule
+    Data storage & HDFS (file system); HBase (column-oriented store) & HDFS,
+      Amazon S3 and other storage systems \\
+    Caching & --- & Tachyon (in-memory storage) \\
+    Resource management & YARN & Mesos, YARN \\
+    Data processing & MapReduce & Spark \\
+    Streaming data & Flume (log collection) & Spark Streaming \\
+    Language front-ends & Hive (SQL), Pig (data flow) & Shark (SQL), BlinkDB
+      (approximate queries) \\
+    Analytics libraries & Mahout (machine learning), R connectors
+      (statistics) & MLlib, MLbase (machine learning), GraphX (graphs) \\
+    Coordination & ZooKeeper (coordination), Oozie (workflows), Sqoop (data
+      exchange with relational databases) & --- \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\needspace{8\baselineskip}
+\begin{keypoint}[Lesson summary]
+  Internet services consist of presentation, business logic and database
+  tiers, and scale out over many nodes behind a load balancer; homogeneous
+  nodes are simple to manage, while heterogeneous nodes exploit locality but
+  need request-aware front ends and demand-driven management.  Cloud
+  computing provides shared resources elastically through APIs, billed by
+  use and managed by the provider.  It works because of the law of large
+  numbers and economies of scale, and it approaches the vision of utility
+  computing.  Clouds are public, private, hybrid or community clouds, and
+  offer infrastructure, platforms or software as a service.  They require
+  fungible resources, elastic allocation at scale, tolerance of frequent
+  failures and isolation of their tenants, which virtualization, cluster
+  resource management, big data frameworks such as MapReduce, distributed
+  storage, software-defined networking and monitoring provide.  On these
+  technologies the cloud serves as a big data engine.
+\end{keypoint}
+
+\end{document}

@@ -1,0 +1,45 @@
+% Cloud service models: which layers of the software and hardware stack the
+% customer manages and which the provider manages, for an on-premises
+% installation, IaaS, PaaS and SaaS.
+% Usage: \input{figures/l16-service-models}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  own/.style={draw, fill=white, minimum width=26mm, minimum height=4.6mm, inner sep=0.5pt},
+  prov/.style={draw, fill=ln-accent!25, minimum width=26mm, minimum height=4.6mm, inner sep=0.5pt},
+  hd/.style={font=\footnotesize\sffamily\bfseries, anchor=base},
+  ex/.style={font=\scriptsize\sffamily, text=ln-muted, anchor=south},
+  lab/.style={font=\scriptsize\sffamily, anchor=west}]
+  % layers from top (1) to bottom (9)
+  \def\layername#1{%
+    \ifcase#1\or \iflangja{アプリケーション}{applications}%
+    \or \iflangja{データ}{data}%
+    \or \iflangja{ランタイム}{runtime}%
+    \or \iflangja{ミドルウェア}{middleware}%
+    \or OS%
+    \or \iflangja{仮想化}{virtualization}%
+    \or \iflangja{サーバ}{servers}%
+    \or \iflangja{ストレージ}{storage}%
+    \or \iflangja{ネットワーク}{networking}\fi}
+  % column / header / example / first layer managed by the provider (10 = none)
+  \foreach \c/\h/\e/\p in {%
+      0/{\iflangja{オンプレミス}{on premises}}/{}/10,
+      1/IaaS/{Amazon EC2}/6,
+      2/PaaS/{Google App Engine}/3,
+      3/SaaS/{Gmail}/1} {
+    \pgfmathsetmacro{\cx}{14 + 30*\c}
+    \node[hd] at (\cx,52.3) {\h};
+    \node[ex] at (\cx,46.8) {\strut\e};
+    \foreach \l in {1,...,9} {
+      \pgfmathsetmacro{\ly}{46 - 4.6*\l + 2.3}
+      \ifnum\l<\p
+        \node[own] at (\cx,\ly) {\layername{\l}};
+      \else
+        \node[prov] at (\cx,\ly) {\layername{\l}};
+      \fi
+    }
+  }
+  % legend
+  \node[own, minimum width=5mm, minimum height=3.5mm] at (27,-3.5) {};
+  \node[lab] at (30,-3.5) {\iflangja{顧客が管理}{managed by the customer}};
+  \node[prov, minimum width=5mm, minimum height=3.5mm] at (70,-3.5) {};
+  \node[lab] at (73,-3.5) {\iflangja{プロバイダが管理}{managed by the provider}};
+\end{tikzpicture}

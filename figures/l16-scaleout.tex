@@ -1,0 +1,39 @@
+% Scale-out architectures with a front-end load balancer: (a) functionally
+% homogeneous nodes, (b) functionally heterogeneous (specialized) nodes.
+% Usage: \input{figures/l16-scaleout}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  fe/.style={draw, fill=ln-accent!18, minimum width=30mm, minimum height=8mm, inner sep=1pt, align=center},
+  nd/.style={draw, fill=ln-box, minimum width=12mm, minimum height=9mm, inner sep=0.5pt, align=center},
+  data/.style={draw, fill=ln-accent!35, minimum height=6mm, inner sep=1pt, align=center},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % ---------------- (a) homogeneous
+  \begin{scope}[shift={(0,0)}]
+    \node[ttl] at (0,56) {\iflangja{(a) ホモジニアス構成}{(a) homogeneous}};
+    \draw[->, thick] (28.5,51) -- node[lab, right] {\iflangja{要求}{requests}} (28.5,44.5);
+    \node[fe] (f) at (28.5,40) {\iflangja{フロントエンド}{front end}\\\textcolor{ln-muted}{\iflangja{要求を順に割り当てる}{assigns in turn}}};
+    \foreach \i/\x in {1/7.5,2/21.5,3/35.5,4/49.5} {
+      \node[nd] (n\i) at (\x,22) {\iflangja{ノード}{node}\\\textcolor{ln-muted}{A, B, C}};
+      \draw[->] (f.south) -- (n\i.north);
+      \draw (n\i.south) -- (\x,10);
+    }
+    \node[data, minimum width=54mm] at (28.5,7) {\iflangja{データ（全ノードからアクセス可能）}{data (accessible from every node)}};
+  \end{scope}
+  % ---------------- (b) heterogeneous
+  \begin{scope}[shift={(61,0)}]
+    \node[ttl] at (0,56) {\iflangja{(b) ヘテロジニアス構成}{(b) heterogeneous}};
+    \draw[->, thick] (28.5,51) -- node[lab, right] {\iflangja{要求}{requests}} (28.5,44.5);
+    \node[fe] (f) at (28.5,40) {\iflangja{フロントエンド}{front end}\\\textcolor{ln-muted}{\iflangja{要求の種類を調べる}{inspects each request}}};
+    \foreach \i/\x/\t in {1/7.5/A,2/21.5/A,3/35.5/B,4/49.5/C} {
+      \node[nd] (n\i) at (\x,22) {\iflangja{ノード}{node}\\\textcolor{ln-muted}{\t}};
+      \draw[->] (f.south) -- (n\i.north);
+      \draw (n\i.south) -- (\x,10);
+    }
+    \node[data, minimum width=26mm] at (14.5,7) {\iflangja{データ}{data} A};
+    \node[data, minimum width=12mm] at (35.5,7) {B};
+    \node[data, minimum width=12mm] at (49.5,7) {C};
+  \end{scope}
+  \node[lab, anchor=north] at (59,1.5)
+    {\iflangja{A，B，C：要求の種類}{A, B, C: request types}};
+\end{tikzpicture}

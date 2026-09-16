@@ -1,0 +1,42 @@
+% Three-tier Internet service: (a) all tiers on one machine, (b) each tier
+% on its own machine, the tiers communicating by RPC/RMI.
+% Usage: \input{figures/l16-tiers}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  tier/.style={draw, fill=ln-box, minimum width=22mm, minimum height=10mm, inner sep=1pt, align=center},
+  cl/.style={draw, fill=white, minimum width=14mm, minimum height=10mm, inner sep=1pt, align=center},
+  machine/.style={draw, rounded corners=0.8mm},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center},
+  who/.style={font=\scriptsize\sffamily, text=ln-muted, anchor=north west, inner sep=0.8pt},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % ---------------- (a) one machine
+  \node[ttl] at (0,57) {\iflangja{(a) すべての層が1台のマシン上にある}{(a) all tiers on one machine}};
+  \node[cl] (c1) at (7,40) {\iflangja{クライアント}{clients}};
+  \draw[machine] (20,30) rectangle (118,53);
+  \node[who] at (20.5,52.5) {\iflangja{マシン}{machine}};
+  \node[tier] (p1) at (33,42) {\iflangja{プレゼンテーション}{presentation}\\[0.3mm]\textcolor{ln-muted}{\iflangja{静的コンテンツ}{static content}}};
+  \node[tier] (b1) at (69,42) {\iflangja{ビジネスロジック}{business logic}\\[0.3mm]\textcolor{ln-muted}{\iflangja{動的コンテンツ}{dynamic content}}};
+  \node[tier] (d1) at (105,42) {\iflangja{データベース}{database}\\[0.3mm]\textcolor{ln-muted}{\iflangja{データストア}{data store}}};
+  \draw[<->, thick] (c1.east |- p1) -- (p1.west);
+  \draw[<->, thick] (p1) -- (b1);
+  \draw[<->, thick] (b1) -- (d1);
+  \node[lab] at (69,33.2)
+    {\iflangja{1つのプロセス，または IPC・共有メモリで通信する複数のプロセス}{one process, or several processes communicating by IPC or shared memory}};
+  % ---------------- (b) separate machines
+  \node[ttl] at (0,24) {\iflangja{(b) 各層が別のマシン上にある}{(b) each tier on its own machine}};
+  \node[cl] (c2) at (7,9) {\iflangja{クライアント}{clients}};
+  \foreach \x/\n in {33/{\iflangja{Web サーバ}{web server}}, 69/{\iflangja{アプリケーションサーバ}{application server}}, 105/{\iflangja{データベースサーバ}{database server}}} {
+    \draw[machine] (\x-13,0) rectangle (\x+13,20);
+    \node[who] at (\x-12.5,19.5) {\n};
+  }
+  \node[tier] (p2) at (33,8) {\iflangja{プレゼンテーション}{presentation}};
+  \node[tier] (b2) at (69,8) {\iflangja{ビジネスロジック}{business logic}};
+  \node[tier] (d2) at (105,8) {\iflangja{データベース}{database}};
+  \draw[<->, thick] (c2.east |- p2) -- (p2.west);
+  \draw[<->, thick] (p2) -- (b2);
+  \draw[<->, thick] (b2) -- (d2);
+  \node[lab, anchor=south] at (51,8.6) {RPC};
+  \node[lab, anchor=north] at (51,7.4) {RMI};
+  \node[lab, anchor=south] at (87,8.6) {RPC};
+  \node[lab, anchor=north] at (87,7.4) {RMI};
+\end{tikzpicture}

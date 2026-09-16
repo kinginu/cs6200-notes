@@ -1,0 +1,52 @@
+% Capacity versus demand over time: (a) fixed capacity provisioned for the
+% expected peak wastes resources and loses requests during an unexpected
+% surge; (b) elastic capacity follows the demand.
+% Usage: \input{figures/l16-capacity}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  ax/.style={->, thin},
+  dem/.style={thick, ln-accent},
+  capa/.style={thick, ln-caution},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  ttl/.style={font=\footnotesize\sffamily\bfseries, anchor=west}]
+  % ---------------- (a) fixed capacity
+  \begin{scope}[shift={(3,0)}]
+    \node[ttl] at (-4,43) {\iflangja{(a) 固定された容量}{(a) fixed capacity}};
+    \begin{scope}
+      \clip (0,0) rectangle (50,22);
+      \fill[ln-rule!45] (0,34) -- plot[smooth, tension=0.6] coordinates
+        {(0,6) (5,8) (10,12) (15,10) (20,14) (25,17) (30,15) (35,19) (38,29) (41,28) (44,18) (50,16)}
+        -- (50,34) -- cycle;
+    \end{scope}
+    \begin{scope}
+      \clip (0,22) rectangle (50,34);
+      \fill[ln-caution!30] (0,0) -- plot[smooth, tension=0.6] coordinates
+        {(0,6) (5,8) (10,12) (15,10) (20,14) (25,17) (30,15) (35,19) (38,29) (41,28) (44,18) (50,16)}
+        -- (50,0) -- cycle;
+    \end{scope}
+    \draw[dem] plot[smooth, tension=0.6] coordinates
+      {(0,6) (5,8) (10,12) (15,10) (20,14) (25,17) (30,15) (35,19) (38,29) (41,28) (44,18) (50,16)};
+    \draw[capa] (0,22) -- (50,22);
+    \draw[ax] (0,0) -- (53,0) node[below left, lab] {\iflangja{時間}{time}};
+    \draw[ax] (0,0) -- (0,35) node[above right, lab, anchor=south west] {\iflangja{資源}{resources}};
+    \node[lab, fill=white, inner sep=0.6pt] at (14,18.5) {\iflangja{無駄な資源}{wasted resources}};
+    \draw[->, ln-caution] (30,30) -- (37,25.5);
+    \node[lab, anchor=east, text=ln-caution] at (30.5,30.5) {\iflangja{逸失した機会}{lost opportunity}};
+  \end{scope}
+  % ---------------- (b) elastic capacity
+  \begin{scope}[shift={(63,0)}]
+    \node[ttl] at (-4,43) {\iflangja{(b) 伸縮する容量}{(b) elastic capacity}};
+    \draw[dem] plot[smooth, tension=0.6] coordinates
+      {(0,6) (5,8) (10,12) (15,10) (20,14) (25,17) (30,15) (35,19) (38,29) (41,28) (44,18) (50,16)};
+    \draw[capa] (0,9) -- (5,9) -- (5,13.5) -- (10,13.5) -- (10,14) -- (15,14)
+      -- (15,15.5) -- (20,15.5) -- (20,19) -- (30,19) -- (30,21) -- (35,21)
+      -- (35,31) -- (43,31) -- (43,21) -- (46,21) -- (46,18.5) -- (50,18.5);
+    \draw[ax] (0,0) -- (53,0) node[below left, lab] {\iflangja{時間}{time}};
+    \draw[ax] (0,0) -- (0,35) node[above right, lab, anchor=south west] {\iflangja{資源}{resources}};
+  \end{scope}
+  % ---------------- legend
+  \draw[dem] (36,-7) -- (44,-7);
+  \node[lab, anchor=west] at (45,-7) {\iflangja{需要}{demand}};
+  \draw[capa] (62,-7) -- (70,-7);
+  \node[lab, anchor=west] at (71,-7) {\iflangja{容量}{capacity}};
+\end{tikzpicture}
