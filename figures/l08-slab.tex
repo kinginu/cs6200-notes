@@ -1,0 +1,43 @@
+% Slab allocator: one cache per object type; each cache consists of slabs
+% (contiguous page frames) divided into slots of exactly the object size.
+% Usage: \input{figures/l08-slab}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  usedslot/.style={draw, fill=ln-accent!25},
+  freeslot/.style={draw, fill=white},
+  cachebox/.style={draw, fill=ln-source!14, align=center, minimum width=24mm,
+                   minimum height=10mm, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted},
+  >={Stealth[length=1.4mm]}]
+  % cache 1: small objects, 8 slots per slab
+  \node[cachebox] (c1) at (12,27) {\iflangja{キャッシュ 1\\（小さなオブジェクト）}{cache 1\\(small objects)}};
+  \foreach \k/\s in {0/usedslot,1/usedslot,2/freeslot,3/usedslot,4/usedslot,5/usedslot,6/freeslot,7/usedslot} {
+    \draw[\s] (32+5*\k,24) rectangle ++(5,6);
+  }
+  \foreach \k/\s in {0/usedslot,1/freeslot,2/freeslot,3/freeslot,4/freeslot,5/freeslot,6/freeslot,7/freeslot} {
+    \draw[\s] (78+5*\k,24) rectangle ++(5,6);
+  }
+  \draw[thick] (32,24) rectangle (72,30);
+  \draw[thick] (78,24) rectangle (118,30);
+  \draw[->] (c1.east) -- (32,27);
+  \draw[->] (72,27) -- (78,27);
+  % cache 2: larger objects, 3 slots per slab
+  \node[cachebox] (c2) at (12,9) {\iflangja{キャッシュ 2\\（大きなオブジェクト）}{cache 2\\(large objects)}};
+  \foreach \k/\s in {0/usedslot,1/usedslot,2/usedslot} {
+    \draw[\s] (32+13.33*\k,6) rectangle ++(13.33,6);
+  }
+  \foreach \k/\s in {0/freeslot,1/usedslot,2/freeslot} {
+    \draw[\s] (78+13.33*\k,6) rectangle ++(13.33,6);
+  }
+  \draw[thick] (32,6) rectangle (72,12);
+  \draw[thick] (78,6) rectangle (118,12);
+  \draw[->] (c2.east) -- (32,9);
+  \draw[->] (72,9) -- (78,9);
+  % labels
+  \node[lab, anchor=south] at (52,30.5) {\iflangja{スラブ（連続したページフレーム）}{slab (contiguous page frames)}};
+  \node[lab, anchor=south] at (98,30.5) {\iflangja{スラブ}{slab}};
+  \node[lab, anchor=north] at (52,5.3) {\iflangja{スロット＝オブジェクトの大きさ}{slot size = object size}};
+  \draw[usedslot] (76,-0.5) rectangle ++(3,3);
+  \node[lab, anchor=west] at (79.5,1) {\iflangja{使用中}{allocated}};
+  \draw[freeslot] (100,-0.5) rectangle ++(3,3);
+  \node[lab, anchor=west] at (103.5,1) {\iflangja{空き}{free}};
+\end{tikzpicture}

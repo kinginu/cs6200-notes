@@ -1,0 +1,36 @@
+% Hardware support for memory management: the MMU in the CPU package with
+% its TLB and page table base register translates virtual addresses,
+% walks the page tables in memory, and raises faults to the OS.
+% Usage: \input{figures/l08-mmu}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  box/.style={draw, fill=white, align=center, inner sep=1pt},
+  hw/.style={draw, fill=ln-accent!14, align=center, inner sep=1pt},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  ttl/.style={font=\scriptsize\sffamily\bfseries, anchor=north west}]
+  % CPU package
+  \draw[ln-rule, dashed, rounded corners=3pt] (0,0) rectangle (64,36);
+  \node[ttl, text=ln-muted] at (1,35.5) {\iflangja{CPU パッケージ}{CPU package}};
+  \node[box, minimum width=14mm, minimum height=12mm] (cpu) at (10,17) {CPU};
+  \draw[fill=ln-box] (30,3) rectangle (61,31);
+  \node[ttl] at (30.5,30.5) {MMU};
+  \node[hw, minimum width=27mm, minimum height=7mm] (tlb) at (45.5,19)
+    {\iflangja{TLB（変換のキャッシュ）}{TLB (translation cache)}};
+  \node[hw, minimum width=27mm, minimum height=7mm] (reg) at (45.5,9)
+    {\iflangja{ページテーブル\\ベースレジスタ}{page table base\\register}};
+  \draw[->] (cpu.east) -- (30,17) node[pos=0.5, above, lab] {\iflangja{仮想\\アドレス}{virtual\\address}};
+  % physical memory
+  \draw[fill=ln-box] (86,0) rectangle (116,36);
+  \node[ttl] at (86.5,35.5) {\iflangja{物理メモリ}{physical memory}};
+  \node[hw, minimum width=24mm, minimum height=7mm] (pt) at (101,24)
+    {\iflangja{ページテーブル}{page tables}};
+  \node[box, minimum width=24mm, minimum height=11mm] (pages) at (101,8)
+    {\iflangja{プロセスの\\ページ}{pages of\\processes}};
+  \draw[->] (61,8) -- (pages.west) node[pos=0.5, above, lab] {\iflangja{物理アドレス}{physical address}};
+  \draw[<->, densely dashed] (61,24) -- (pt.west) node[pos=0.5, above, lab] {\iflangja{ページテーブル参照}{page table walk}};
+  % faults
+  \node[box, minimum width=31mm, minimum height=7mm, fill=ln-caution!8] (os) at (45.5,-12)
+    {\iflangja{OS のフォールトハンドラ}{OS fault handler}};
+  \draw[->, ln-caution] (45.5,3) -- (os.north) node[pos=0.45, right, lab, text=ln-caution]
+    {\iflangja{フォールト}{fault}};
+\end{tikzpicture}

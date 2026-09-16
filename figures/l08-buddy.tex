@@ -1,0 +1,45 @@
+% Buddy allocator over 16 page frames after A(3 -> 4), B(2) and C(7 -> 8)
+% have been allocated.  Split blocks are dashed; the unused page of a
+% rounded-up allocation is lightly shaded.
+% Usage: \input{figures/l08-buddy}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  split/.style={draw, densely dashed, fill=white},
+  used/.style={draw, fill=ln-accent!25},
+  waste/.style={draw, fill=ln-accent!8},
+  freeb/.style={draw, fill=white},
+  lab/.style={font=\scriptsize\sffamily, anchor=east, text=ln-muted},
+  edge/.style={ln-rule}]
+  % frame f starts at x = 22 + 6 f; levels at y = 33 (16), 22 (8), 11 (4), 0 (2)
+  \node[lab] at (20,36) {\iflangja{16 フレーム}{16 frames}};
+  \node[lab] at (20,25) {\iflangja{8 フレーム}{8 frames}};
+  \node[lab] at (20,14) {\iflangja{4 フレーム}{4 frames}};
+  \node[lab] at (20,3)  {\iflangja{2 フレーム}{2 frames}};
+  % level 16
+  \draw[split] (22,33) rectangle (118,39) node[midway] {0--15 \iflangja{（分割）}{(split)}};
+  % level 8
+  \draw[split] (22,22) rectangle (70,28) node[midway] {0--7 \iflangja{（分割）}{(split)}};
+  \draw[used] (70,22) rectangle (112,28) node[midway] {C (7)};
+  \draw[waste] (112,22) rectangle (118,28);
+  % level 4
+  \draw[used] (22,11) rectangle (40,17) node[midway] {A (3)};
+  \draw[waste] (40,11) rectangle (46,17);
+  \draw[split] (46,11) rectangle (70,17) node[midway] {4--7 \iflangja{（分割）}{(split)}};
+  % level 2
+  \draw[used] (46,0) rectangle (58,6) node[midway] {B};
+  \draw[freeb] (58,0) rectangle (70,6) node[midway] {\iflangja{空き}{free}};
+  % tree edges
+  \draw[edge] (46,33) -- (46,28);
+  \draw[edge] (94,33) -- (94,28);
+  \draw[edge] (34,22) -- (34,17);
+  \draw[edge] (58,22) -- (58,17);
+  \draw[edge] (52,11) -- (52,6);
+  \draw[edge] (64,11) -- (64,6);
+  % frame axis
+  \draw[ln-muted] (22,-3) -- (118,-3);
+  \foreach \f in {0,4,8,12,16} {
+    \draw[ln-muted] (22+6*\f,-3) -- ++(0,-1);
+    \node[font=\scriptsize\sffamily, text=ln-muted, anchor=north] at (22+6*\f,-4) {\f};
+  }
+  \node[font=\scriptsize\sffamily, text=ln-muted, anchor=north west] at (22,-8)
+    {\iflangja{フレーム番号}{frame number}};
+\end{tikzpicture}

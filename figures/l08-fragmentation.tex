@@ -1,0 +1,39 @@
+% External fragmentation: 12 page frames, requests A(3) B(2) C(3) D(2),
+% then A and C are freed and E(4) needs 4 contiguous frames.
+% (a) A and C placed apart: E fails.  (b) A and C placed together: E fits.
+% Usage: \input{figures/l08-fragmentation}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  lab/.style={font=\scriptsize\sffamily, anchor=east},
+  capt/.style={font=\footnotesize\sffamily, anchor=west},
+  idx/.style={font=\scriptsize\sffamily, text=ln-muted}]
+  % \frow{y}{list of 12 owners}: draw a row of 12 frames of 7.5 mm
+  \def\frow#1#2{%
+    \foreach \own [count=\c from 0] in {#2} {
+      \if\own F\def\col{white}\def\txt{}\fi
+      \if\own A\def\col{ln-accent!25}\def\txt{A}\fi
+      \if\own B\def\col{ln-source!20}\def\txt{B}\fi
+      \if\own C\def\col{ln-tip!22}\def\txt{C}\fi
+      \if\own D\def\col{ln-caution!15}\def\txt{D}\fi
+      \if\own E\def\col{ln-accent!55}\def\txt{E}\fi
+      \draw[fill=\col] (28+7.5*\c,#1) rectangle ++(7.5,5)
+        node[midway] {\txt};
+    }}
+  \foreach \c in {0,...,11} { \node[idx] at (31.75+7.5*\c,53) {\c}; }
+  % ---------- (a)
+  \node[capt] at (0,56) {\iflangja{(a) A と C を離して配置}{(a) A and C placed apart}};
+  \node[lab] at (27,47.5) {\iflangja{A--D を割り当て後}{after A--D}};
+  \frow{45}{A,A,A,B,B,C,C,C,D,D,F,F}
+  \node[lab] at (27,40.5) {\iflangja{A，C を解放後}{after freeing A, C}};
+  \frow{38}{F,F,F,B,B,F,F,F,D,D,F,F}
+  \node[lab] at (27,33.5) {\iflangja{E（4 フレーム）}{request E (4)}};
+  \node[font=\scriptsize\sffamily, text=ln-caution, anchor=west] at (28,33.5)
+    {\iflangja{失敗：空き 8 フレームだが連続 4 フレームがない}{fails: 8 frames free, but no 4 contiguous}};
+  % ---------- (b)
+  \node[capt] at (0,24) {\iflangja{(b) A と C を隣接して配置}{(b) A and C placed together}};
+  \node[lab] at (27,15.5) {\iflangja{A--D を割り当て後}{after A--D}};
+  \frow{13}{A,A,A,C,C,C,B,B,D,D,F,F}
+  \node[lab] at (27,8.5) {\iflangja{A，C を解放後}{after freeing A, C}};
+  \frow{6}{F,F,F,F,F,F,B,B,D,D,F,F}
+  \node[lab] at (27,1.5) {\iflangja{E（4 フレーム）}{request E (4)}};
+  \frow{-1}{E,E,E,E,F,F,B,B,D,D,F,F}
+\end{tikzpicture}

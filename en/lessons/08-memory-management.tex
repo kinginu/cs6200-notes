@@ -1,0 +1,1080 @@
+\documentclass[../main.tex]{subfiles}
+\begin{document}
+
+\chapter{Memory Management}
+\lessoninfo{
+  video={P3L2},
+  textbook={OSTEP \cite{ostep} ch.~13, 15--23; Silberschatz et al.\ \cite{silberschatz2018} ch.~9--10; Bovet and Cesati \cite{bovet2005} ch.~2, 8, 17},
+  keywords={virtual memory, paging, segmentation, page table entry, page fault, multi-level page table, TLB, large page, buddy allocator, slab allocator, demand paging, page replacement, copy-on-write, checkpointing},
+}
+
+Lesson~7 described how the operating system shares the CPU among processes.
+This lesson turns to the second resource that every process needs, physical
+memory.  The operating system gives every process its own virtual address
+space (Lesson~2), keeps in physical memory only the parts that are in use,
+and brings other parts in from secondary storage when they are needed.  We
+examine the two ways of organizing this mapping, pages and segments; the
+hardware and the data structures that make address translation fast and
+compact; the allocators that manage physical memory; the policies that
+decide which pages leave memory; and two services, copy-on-write and
+checkpointing, that the memory management hardware makes possible.
+
+\section{Goals of memory management}
+\label{sec:l08-goals}
+
+The operating system manages the physical memory (DRAM) of the machine on
+behalf of the processes that run on it.\source{P3L2, lesson preview,
+memory management: goals; OSTEP \cite{ostep} ch.~13, 15; Silberschatz et
+al.\ \cite{silberschatz2018} ch.~9.}  Processes do not use physical
+addresses: each has a virtual address space whose range can be far larger
+than physical memory.  With 32-bit virtual addresses every process can
+address \SI{4}{\gibi\byte}, and the address spaces of all processes
+together easily exceed the memory that is installed.
+
+\begin{definition}[Virtual memory]
+  The abstraction with which the operating system decouples the virtual
+  address spaces of processes from physical memory is called
+  \term{virtual memory}[仮想メモリ].  The operating system maps the parts
+  of every address space that are in use onto physical memory, keeps other
+  parts on secondary storage, and translates and validates every address
+  that a process uses.
+\end{definition}
+
+A process does not need all of its state at once; at any time it uses only
+part of its address space.  The operating system can therefore keep only
+that part in physical memory, as long as the state that the process needs
+next can be made available quickly.  Two tasks follow.
+\begin{description}
+  \item[Allocation] The operating system decides which portions of which
+    address spaces reside in physical memory and where, and it establishes
+    the mapping from virtual to physical addresses.  Since physical memory
+    may be smaller than the memory the processes use, some state must be
+    moved to disk and brought back when it is needed; allocation therefore
+    includes \emph{replacement}, the choice of the state that leaves
+    memory to make room.
+  \item[Arbitration] Every memory access must be translated from a virtual
+    into a physical address, and validated: the address must belong to an
+    allocated region of the address space, and the access must be
+    permitted.  The conversion of a virtual address into the physical
+    address to which it maps is called
+    \term{address translation}[アドレス変換].  It happens on every memory
+    access and must therefore be fast.
+\end{description}
+
+The operating system can divide the address space into units in two ways
+(\cref{fig:l08-goals}).
+\begin{description}
+  \item[Page-based memory management] With \term{paging}[ページング] the
+    virtual address space is divided into fixed-size blocks, each called a
+    \term{page}[ページ], and physical memory into blocks of the same size,
+    each called a \term{page frame}[ページフレーム].  Allocation maps pages
+    to page frames; arbitration uses page tables.
+  \item[Segment-based memory management] With
+    \term{segmentation}[セグメンテーション] the address space is divided
+    into blocks of flexible size, each called a
+    \term{segment}[セグメント], which correspond to logical components of
+    the process, such as its code, heap or stack.  Allocation maps segments
+    to regions of physical memory of the same size; arbitration uses
+    segment registers.
+\end{description}
+Paging is the dominant approach in current operating systems.  Segmentation
+is supported on some architectures, notably x86, where it is combined with
+paging (\cref{sec:l08-segmentation}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-goals}
+  \caption{(a) Paging maps fixed-size pages to page frames; page~2 is on
+    disk, and the unused page has no mapping.  (b) Segmentation maps
+    segments of different sizes to regions of physical memory of the same
+    sizes.}
+  \label{fig:l08-goals}
+\end{figure}
+
+\section{Hardware support}
+\label{sec:l08-hardware}
+
+Translating and validating every memory access in software would be far
+too slow.\source{P3L2, memory management: hardware support; OSTEP ch.~15,
+18--19.}  Memory management therefore relies on hardware in the CPU
+package, which handles every access, while the operating system sets up the
+data structures and handles the exceptions (\cref{fig:l08-mmu}).
+
+\begin{definition}[Memory management unit]
+  The \term{memory management unit}[MMU]\index{MMU|see{memory management unit}}
+  (MMU) is the hardware component of the CPU package that translates the
+  virtual addresses issued by the CPU into physical addresses and that
+  raises a fault when a translation is not possible.
+\end{definition}
+
+The MMU reports a fault to the operating system in three situations: an
+access to a virtual address that has not been allocated (an illegal
+access); an access that violates the permissions, such as a write to
+read-only memory; and an access to a page that is not present in physical
+memory and must first be brought in from disk.  The MMU uses registers that
+point to the page table of the running process, or, with segmentation,
+that hold the base address, the limit and further information of the
+segments.  Because walking a page table in memory is slow, the MMU also
+contains a cache of valid translations, the TLB (\cref{sec:l08-tlb}).
+
+The translation itself is performed entirely in hardware.  The operating
+system creates and maintains the data structures that the hardware uses,
+such as the page tables, but the hardware dictates their format and
+therefore which memory management mechanisms are possible: for example,
+the page sizes and the layout of a page table entry.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-mmu}
+  \caption{Hardware support for memory management.  The MMU translates
+    virtual addresses with the help of its TLB, walks the page tables in
+    physical memory when a translation is not cached, and raises a fault to
+    the operating system when an access is not possible.}
+  \label{fig:l08-mmu}
+\end{figure}
+
+\section{Page tables}
+\label{sec:l08-page-tables}
+
+A page table (Lesson~2) maps every page of a virtual address space to the
+page frame that holds it.\source{P3L2, page tables; OSTEP ch.~18;
+Silberschatz et al.\ ch.~9.}\index{page table}  Because pages and page
+frames have the same size, the page table need not map every address
+individually: the position of an address within its page is the same in
+virtual and in physical memory, so only the page must be translated.
+
+For pages of $2^{d}$ bytes, a virtual address is split into two parts.
+\begin{description}
+  \item[Virtual page number] The high-order bits form the
+    \term{virtual page number}[仮想ページ番号]\index{VPN|see{virtual page number}}
+    (VPN), which indexes the page table.
+  \item[Offset] The $d$ low-order bits form the \term{offset}[オフセット],
+    the position of the address within its page, which is not translated.
+\end{description}
+Each entry of the page table is a
+\term{page table entry}[ページテーブルエントリ]\index{PTE|see{page table entry}}
+(PTE).  Among other information (\cref{sec:l08-pte}), it holds the
+\term{physical frame number}[物理フレーム番号]\index{PFN|see{physical frame number}}
+(PFN) of the frame that contains the page.  The physical address combines
+the PFN with the unchanged offset (\cref{fig:l08-translation}):
+\begin{equation}
+  \text{VPN} = \left\lfloor \frac{\mathit{VA}}{2^{d}} \right\rfloor ,
+  \qquad
+  \text{offset} = \mathit{VA} \bmod 2^{d} ,
+  \qquad
+  \mathit{PA} = \text{PFN} \cdot 2^{d} + \text{offset} .
+  \label{eq:l08-translation}
+\end{equation}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-translation}
+  \caption{Address translation with a page table.  The VPN selects the
+    entry of the page table of the running process; its PFN, combined with
+    the unchanged offset, forms the physical address.}
+  \label{fig:l08-translation}
+\end{figure}
+
+\begin{example}
+  With 32-bit virtual addresses and \SI{4}{\kibi\byte} pages ($d = 12$), a
+  VPN has 20 bits and an offset 12 bits, i.e., three hexadecimal digits.
+  The virtual address \texttt{0x00035A7C} has the VPN \texttt{0x00035} and
+  the offset \texttt{0xA7C}.  If entry \texttt{0x35} of the page table holds
+  the PFN \texttt{0x001C2}, the physical address is \texttt{0x001C2A7C}.
+  Every address from \texttt{0x00035000} to \texttt{0x00035FFF} is
+  translated with the same entry.
+\end{example}
+
+\subsection{Allocation on first touch and reclaiming}
+
+Physical memory is not allocated when a process reserves a range of virtual
+addresses, for example for a large array, but only when the process
+accesses the memory.  This policy is called
+\term{allocation on first touch}[初回アクセス時の割り当て]: the first
+access to a page faults, and the operating system then allocates a page
+frame for the page and establishes the mapping in the page table.
+
+\needspace{8\baselineskip}
+\begin{example}
+  The following code reserves \SI{256}{\mebi\byte} but receives page frames
+  only as the loop touches the $2^{28}/2^{12} = 65\,536$ pages one after
+  another:
+  \begin{lstlisting}[language=C, numbers=none]
+size_t n = 256UL << 20;          /* 256 MiB            */
+char *buf = malloc(n);           /* no page frames yet */
+for (size_t i = 0; i < n; i += 4096)
+    buf[i] = 1;                  /* first touch faults */
+\end{lstlisting}
+\end{example}
+
+Conversely, when a page has not been used for a long time, the operating
+system may reclaim its frame: it moves the contents of the page to disk and
+marks the mapping as invalid (\cref{sec:l08-pte}).  If the process accesses
+the page again, the MMU raises a fault and traps into the operating system.
+The operating system verifies that the access is allowed, brings the
+contents back into memory, possibly into a different page frame, and
+re-establishes the mapping; the process then continues without noticing
+anything but the delay.
+
+The operating system maintains one page table for every process.  The MMU
+finds the page table of the running process through the
+\term{page table base register}[ページテーブルベースレジスタ], a CPU
+register that holds the address of that page table; on x86 it is the
+register CR3.  On a context switch, the operating system loads the address
+of the page table of the next process into this register.
+
+\section{Page table entries}
+\label{sec:l08-pte}
+
+Besides the PFN,\source{P3L2, page table entry; OSTEP ch.~18, 21;
+Silberschatz et al.\ ch.~9.} every PTE contains flags, which the MMU checks
+on every access and which the operating system uses to manage memory.  The
+most important flags are the following.
+\begin{description}
+  \item[Valid bit] The \term{valid bit}[有効ビット], also called the
+    \emph{present bit}, indicates whether the mapping is valid, i.e.,
+    whether the page is present in physical memory in the frame that the
+    entry names.
+  \item[Dirty bit] The hardware sets the \term{dirty bit}[ダーティビット]
+    whenever the page is written.  Pages that cache the contents of a file,
+    for example, need to be written back to the file only if their dirty
+    bit is set.
+  \item[Access bit] The hardware sets the \term{access bit}[アクセスビット]
+    (referenced bit) whenever the page is accessed, for reading or for
+    writing.
+  \item[Protection bits] The \term{protection bits}[保護ビット] specify
+    which operations are permitted on the page: read, write, execute.
+\end{description}
+The operating system reads the dirty and access bits and clears them when
+it has acted on them.
+
+On 32-bit x86 processors a PTE has 32 bits (\cref{fig:l08-pte}).  The upper
+20 bits hold the PFN; among the lower bits are the present bit P, the dirty
+bit D and the accessed bit A.  R/W is a protection bit: with 0 the page is
+read-only, with 1 it may also be written.  U/S restricts the privilege
+level: with 0 the page is accessible only in supervisor (kernel) mode, with
+1 also in user mode.  PWT and PCD carry caching-related information
+(write-through, cache disabled), and bits 9--11 are unused by the hardware
+and available to the operating system.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-pte}
+  \caption{A 32-bit x86 page table entry.  The global bit G and the page
+    attribute bit PAT are not discussed here.}
+  \label{fig:l08-pte}
+\end{figure}
+
+\subsection{Page faults}
+\label{sec:l08-page-fault}
+
+The MMU uses a PTE both to translate an address and to check the
+access.
+
+\begin{definition}[Page fault]
+  A \term{page fault}[ページフォールト] is the exception that the MMU
+  raises when an access cannot be performed with the current page table
+  entry: the entry is not valid, or the access violates its protection
+  bits.
+\end{definition}
+
+On a page fault the CPU places an error code on the kernel stack and traps
+into the kernel, which runs its page fault handler.  On x86 the error code
+tells whether the page was not present or the access violated the
+protection bits, whether the access was a read or a write, and whether it
+came from user or kernel mode; the faulting virtual address is saved in
+the register CR2.  From this information and from its own records of the
+address space, the handler determines the action (\cref{tab:l08-faults}).
+
+\begin{table}[htbp]
+  \centering
+  \caption{How the operating system handles an access, depending on the
+    page table entry and on its own records.}
+  \label{tab:l08-faults}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Page table entry & Situation & Action \\
+    \midrule
+    valid          & access permitted              & none: the MMU translates \\
+    not valid      & allocated, never accessed     & allocate a frame (first touch) \\
+    not valid      & page is on disk               & bring it in (\cref{sec:l08-demand}) \\
+    not valid      & address not allocated         & illegal access: \texttt{SIGSEGV} \\
+    valid          & access violates protection    & \texttt{SIGSEGV}, or copy (\cref{sec:l08-cow}) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+A process that makes an illegal access receives the signal
+\texttt{SIGSEGV} (Lesson~5), whose default action terminates it.  All other
+faults are resolved by the operating system, after which the faulting
+instruction is executed again.
+
+\section{Page table size}
+\label{sec:l08-pt-size}
+
+A flat page table has one entry for every virtual page number, whether the
+page is used or not.\source{P3L2, page table size; OSTEP ch.~20.}  For
+$n$-bit virtual addresses, pages of $2^{d}$ bytes and page table entries of
+$e$ bytes, the number of entries and the size of the table are
+\begin{equation}
+  N_{\mathrm{PTE}} = \frac{2^{n}}{2^{d}} = 2^{\,n-d} ,
+  \qquad
+  S_{\mathrm{PT}} = 2^{\,n-d} \cdot e .
+  \label{eq:l08-pt-size}
+\end{equation}
+On a 32-bit architecture with \SI{4}{\kibi\byte} pages and 4-byte entries a
+page table has $2^{20}$ entries and occupies \SI{4}{\mebi\byte}.  With
+64-bit addresses and 8-byte entries it would have $2^{52}$ entries and
+occupy $2^{55}$ bytes, \SI{32}{\pebi\byte}, for a single process.  Since
+every process has its own page table, the cost is multiplied by the number
+of processes.  Yet a process uses only a small part of its address space,
+so almost all of these entries would describe pages that are never
+used.\tip{Larger pages mean fewer entries: doubling the page size halves
+$N_{\mathrm{PTE}}$ (\cref{sec:l08-page-size}).}
+
+\begin{example}
+  The x86-64 architecture uses 48-bit virtual addresses.  With
+  \SI{4}{\kibi\byte} pages and 8-byte entries, a flat page table would need
+  $2^{36}$ entries and $2^{39}$ bytes, \SI{512}{\gibi\byte}, per process.
+\end{example}
+
+\section{Multi-level page tables}
+\label{sec:l08-multilevel}
+
+Flat page tables are therefore impractical for large address
+spaces.\source{P3L2, multi-level page tables; OSTEP ch.~20; Silberschatz et
+al.\ ch.~9.}  Since most of an address space is unused, page tables are
+instead organized hierarchically, so that no page table entries are needed
+for the pages of large unused regions.
+
+\begin{definition}[Multi-level page table]
+  A \term{multi-level page table}[多段ページテーブル] is a tree of tables.
+  The outer table, the \term{page directory}[ページディレクトリ], holds
+  pointers to inner page tables, and the inner page tables hold the PFNs.
+  An inner page table is allocated only for a region of the address space
+  that contains valid pages.
+\end{definition}
+
+In a two-level table the virtual address is split into three parts
+(\cref{fig:l08-multilevel}): $p_1$ indexes the page directory, $p_2$ the
+inner page table that the directory entry points to, and the offset $d$
+selects the address within the frame.  If $p_2$ has $k$ bits, one inner
+page table covers $2^{k+d}$ bytes of the virtual address space.  A gap in
+the address space of this size needs no inner page table at all; its
+directory entry is simply marked invalid.  If the process later allocates
+memory in that region, the operating system allocates an inner page table
+for it and fills in the directory entry.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-multilevel}
+  \caption{A two-level page table.  White directory entries have no inner
+    page table; the translation takes one access to the page directory and
+    one to the inner page table.}
+  \label{fig:l08-multilevel}
+\end{figure}
+
+\begin{example}
+  \label{ex:l08-multilevel}
+  Consider 20-bit virtual addresses and \SI{1}{\kibi\byte} pages ($d =
+  10$).  A flat page table has $2^{10} = 1024$ entries.  A two-level table
+  with $p_1$ of 4 bits and $p_2$ of 6 bits has a page directory of 16
+  entries, and each inner table of 64 entries covers \SI{64}{\kibi\byte}.  A
+  process uses the lowest \SI{100}{\kibi\byte} (text, data and heap, pages
+  0--99) and the highest \SI{20}{\kibi\byte} (stack, pages 1004--1023).  It
+  needs inner tables for pages 0--63, 64--127 and 960--1023, in total $16 +
+  3 \cdot 64 = 208$ entries, about a fifth of the flat table.
+\end{example}
+
+The hierarchy can be extended with further levels.  A third level adds a
+table of pointers to page directories, and a fourth level a table of
+pointers to those.\margin{x86-64 uses four levels of 9 bits each above a
+12-bit offset: $4\cdot 9 + 12 = 48$ address bits.}  Additional levels matter
+most on 64-bit architectures, whose address spaces are both larger and
+sparser: the larger the region covered by a single entry high in the tree,
+the larger the gaps that need no tables below it.
+
+The price is translation latency.  Every level adds one memory access to
+the translation of an address, since the entries of all levels are read
+from memory in turn.  More levels save more memory for the page tables but
+make each translation slower.
+
+\section{Speeding up translation: the TLB}
+\label{sec:l08-tlb}
+
+With a single-level page table every memory reference requires two memory
+accesses, one to the page table entry and one to the data; with four levels
+it requires five.\source{P3L2, speed of translation: TLB; OSTEP ch.~19;
+Silberschatz et al.\ ch.~9.}  The MMU avoids most of these accesses with a
+cache.
+
+\begin{definition}[Translation lookaside buffer]
+  A
+  \term{translation lookaside buffer}[TLB]\index{TLB|see{translation lookaside buffer}}
+  (TLB) is a cache of recently used address translations integrated into
+  the MMU.  On a TLB hit the address is translated without accessing the
+  page table; on a TLB miss the page table is walked, and the translation
+  is then stored in the TLB.
+\end{definition}
+
+A TLB entry also holds the protection and validity bits of the translation,
+so that the access can be checked without the page table.  A small number
+of entries suffices for a high hit rate because memory accesses exhibit
+\emph{locality}: a page that has just been accessed is likely to be accessed
+again soon (temporal locality), and addresses close to it, which usually lie
+in the same page, are likely to be accessed next (spatial locality).  An
+Intel Core i7 processor of the Sandy Bridge generation, for example, has per
+core a data TLB of 64 entries, an instruction TLB of 128 entries, and a
+second-level TLB of 512 entries shared by both kinds of translations (all
+for \SI{4}{\kibi\byte} pages).\margin{A context switch makes TLB entries stale; they are flushed
+unless tagged with their address space (Lesson~12).}
+
+With TLB lookup time $t_{\mathrm{TLB}}$, memory access time $t_{\mathrm{mem}}$,
+hit rate $h$ and an $L$-level page table, the effective time of a memory
+access is
+\begin{equation}
+  t_{\mathrm{eff}} = h\,(t_{\mathrm{TLB}} + t_{\mathrm{mem}})
+    + (1-h)\,\bigl(t_{\mathrm{TLB}} + (L+1)\,t_{\mathrm{mem}}\bigr) .
+  \label{eq:l08-eat}
+\end{equation}
+
+\begin{example}
+  Let $t_{\mathrm{mem}} = \SI{80}{\nano\second}$,
+  $t_{\mathrm{TLB}} = \SI{1}{\nano\second}$ and $L = 4$.  Without a TLB,
+  every access costs $5 \cdot 80 = \SI{400}{\nano\second}$.  With a hit rate
+  of \SI{99}{\percent}, \cref{eq:l08-eat} gives $0.99 \cdot 81 + 0.01 \cdot
+  401 \approx \SI{84.2}{\nano\second}$, only \SI{5}{\percent} more than an
+  untranslated access.  With a hit rate of \SI{90}{\percent} it gives $0.9
+  \cdot 81 + 0.1 \cdot 401 = \SI{113}{\nano\second}$.
+\end{example}
+
+\begin{keypoint}
+  Flat page tables are proportional to the virtual address space and far
+  too large.  Multi-level page tables allocate tables only for the regions
+  in use, at the price of one memory access per level; the TLB, which
+  exploits locality, avoids those accesses for almost every translation.
+\end{keypoint}
+
+\section{Inverted page tables}
+\label{sec:l08-inverted}
+
+A different way to keep page tables small is to organize them by physical
+rather than by virtual memory.\source{P3L2, inverted page tables; OSTEP
+ch.~20; Silberschatz et al.\ ch.~9.}  Physical memory is much smaller than
+the virtual address spaces of all processes together, and every page frame
+holds at most one page at a time.
+
+\begin{definition}[Inverted page table]
+  An \term{inverted page table}[逆ページテーブル] has one entry for every
+  page frame of physical memory.  The entry of frame $i$ records the
+  process identifier and the virtual page number of the page that frame
+  $i$ holds.
+\end{definition}
+
+The system needs a single inverted page table, whose size is proportional
+to physical memory and independent of the number of processes and of the
+size of their address spaces.  A virtual address consists of the process
+identifier (pid), the page number $p$ and the offset $d$.  To translate it,
+the table is searched for the entry that matches $(\text{pid}, p)$; the
+index $i$ of that entry is the frame number, and the physical address is
+formed from $i$ and $d$ (\cref{fig:l08-inverted}\,(a)).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-inverted}
+  \caption{(a) An inverted page table is searched for $(\text{pid}, p)$;
+    the index of the matching entry is the frame number.  (b) A hashed page
+    table searches only the chain of the bucket selected by the hash
+    function $h$.}
+  \label{fig:l08-inverted}
+\end{figure}
+
+A linear search of the table is slow.  Most translations are served by the
+TLB, but the search on a miss must still be fast, and it is accelerated
+with hashing.  In a \term{hashed page table}[ハッシュページテーブル] a hash
+function applied to the page number, together with the process identifier,
+selects a bucket, which heads a linked list of the entries whose keys hash
+to that bucket (\cref{fig:l08-inverted}\,(b)).  Each element holds the
+process identifier, the page number, the frame number and a pointer to the
+next element, so a translation searches only one short list.
+
+\begin{example}
+  A machine with \SI{16}{\gibi\byte} of physical memory and
+  \SI{4}{\kibi\byte} frames has $2^{34}/2^{12} = 2^{22}$ frames.  With
+  entries of 16 bytes its inverted page table occupies $2^{26}$ bytes,
+  \SI{64}{\mebi\byte}, whether the machine runs ten processes or a thousand.
+\end{example}
+
+\section{Segmentation}
+\label{sec:l08-segmentation}
+
+With segmentation the address space is divided into segments of arbitrary
+size that correspond to logically meaningful components of the process,
+such as its code, data, heap and stack.\source{P3L2, segmentation; OSTEP
+ch.~16; Silberschatz et al.\ ch.~9; Bovet and Cesati ch.~2.}  A virtual
+address, on x86 called a \emph{logical address}, consists of a \emph{segment
+selector} and an offset within the segment.  In its simplest form a segment
+is a contiguous region of physical memory described by its \emph{base}, the
+address at which it starts, and its \emph{limit}, its size.  The physical
+address is $\text{base} + \text{offset}$, and it is valid only if
+$\text{offset} < \text{limit}$; otherwise the access faults.
+
+\begin{example}
+  A process has a code segment with base \texttt{0x4000} and limit
+  \texttt{0x1800}, and a stack segment with base \texttt{0x9000} and limit
+  \texttt{0x0800}.  The logical address (code, \texttt{0x0A20}) translates
+  to \texttt{0x4A20}, since $\texttt{0x0A20} < \texttt{0x1800}$.  The
+  logical address (stack, \texttt{0x0900}) faults, since its offset exceeds
+  the limit of the stack segment.
+\end{example}
+
+On x86 the selector is held in a segment register, such as CS for code, DS
+for data and SS for the stack.  It indexes a \emph{segment descriptor
+table}---the global descriptor table (GDT) or a local descriptor table
+(LDT)---whose entry, the segment descriptor, holds the base, the limit and
+the permissions of the segment.  The sum of base and offset is a
+\emph{linear address}.  Segmentation is combined with paging: the linear
+address is translated into a physical address by the page tables
+(\cref{fig:l08-segmentation}).
+\begin{itemize}
+  \item On 32-bit x86 (IA-32) both mechanisms are active.  A descriptor
+    table holds up to 8192 segment descriptors.  Linux, like most
+    operating systems, defines segments that start at address~0 and span
+    the whole address space, and it relies on paging for translation and
+    protection.
+  \item On x86-64, segmentation is retained only for backward
+    compatibility.  In 64-bit mode the processor treats the segment bases as
+    0 (except for FS and GS) and does not check limits, so paging alone
+    translates addresses.
+\end{itemize}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-segmentation}
+  \caption{Segmentation combined with paging on x86.  The selector indexes
+    the segment descriptor table; an offset within the limit is added to the
+    base, and the resulting linear address is translated by the page
+    tables.}
+  \label{fig:l08-segmentation}
+\end{figure}
+
+\section{Page size}
+\label{sec:l08-page-size}
+
+The size of a page is determined by the number of bits of its
+offset.\source{P3L2, page size; OSTEP ch.~20, 23; Silberschatz et al.\
+ch.~9.}  An offset of 10 bits gives pages of \SI{1}{\kibi\byte}, an offset
+of 12 bits pages of \SI{4}{\kibi\byte}, which is the default on x86.  Many
+architectures support several page sizes at the same time.
+
+On x86, two larger page sizes are available besides the default.  A
+\term{large page}[ラージページ] has a size of \SI{2}{\mebi\byte}, and its
+offset has 21 bits.  A page of \SI{1}{\gibi\byte}, whose offset has 30
+bits, is called a \term{huge page}[ヒュージページ].
+\Cref{tab:l08-page-sizes} compares the three sizes.  (Linux calls pages of
+both larger sizes huge pages.)
+
+\begin{table}[htbp]
+  \centering
+  \caption{Page sizes on x86 and the page table entries needed to map
+    \SI{1}{\gibi\byte} of memory.}
+  \label{tab:l08-page-sizes}
+  \small
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Page size & Offset bits & Entries for \SI{1}{\gibi\byte} & Reduction \\
+    \midrule
+    \SI{4}{\kibi\byte} (default) & 12 & 262\,144 & 1 \\
+    \SI{2}{\mebi\byte} (large)   & 21 & 512      & $2^{9} = 512$ \\
+    \SI{1}{\gibi\byte} (huge)    & 30 & 1        & $2^{18} = 262\,144$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Larger pages have two benefits.  They need fewer page table entries, so the
+page tables are smaller; and each TLB entry covers more memory, so more
+accesses are TLB hits.  Their drawback is wasted memory.
+
+\begin{definition}[Internal fragmentation]
+  Memory that is allocated but unused because an allocation is rounded up
+  to a whole unit, here to a whole page, is lost to
+  \term{internal fragmentation}[内部断片化].
+\end{definition}
+
+A large page is mapped as a whole even if the process uses only part of it,
+so the larger the pages, the more memory internal fragmentation can
+waste.
+
+\begin{example}
+  A process maps \SI{1}{\gibi\byte} of memory.  With \SI{4}{\kibi\byte}
+  pages this takes 262\,144 entries, and a TLB of 64 entries reaches only
+  \SI{256}{\kibi\byte} of it; with \SI{2}{\mebi\byte} pages it takes 512
+  entries, and the same TLB reaches \SI{128}{\mebi\byte}.  A second region
+  of \SI{5222}{\kibi\byte}, however, occupies 1306 pages of \SI{4}{\kibi\byte}, wasting
+  \SI{2}{\kibi\byte}, but three pages of \SI{2}{\mebi\byte}, wasting
+  $6144 - 5222 = \SI{922}{\kibi\byte}$.
+\end{example}
+
+\section{Memory allocation}
+\label{sec:l08-allocation}
+
+Address translation applies a mapping from virtual to physical
+addresses.\source{P3L2, memory allocation, memory allocation challenges;
+OSTEP ch.~17; Silberschatz et al.\ ch.~9--10.}  Page tables record the
+mapping and the MMU checks every access against it, but some other
+component must decide what the mapping is: which physical memory backs each
+page of each process, and which memory is still free.
+
+\begin{definition}[Memory allocator]
+  A \term{memory allocator}[メモリアロケータ] determines which physical
+  memory backs a region of virtual memory, and thereby the mapping from
+  virtual to physical addresses.  Page tables and the MMU only record this
+  mapping and check the validity of accesses and their permissions.
+\end{definition}
+
+Allocators exist at two levels.
+\begin{description}
+  \item[Kernel-level allocators] allocate memory regions, i.e., pages, for
+    the state of the kernel, such as the process control blocks, and for the
+    static state of processes: their code, stack and initialized data.  They
+    also keep track of the free memory in the system.
+  \item[User-level allocators] manage the dynamic state of a process, its
+    heap, through calls such as \texttt{malloc} and \texttt{free}.  The
+    kernel provides the process with a region of memory, and the user-level
+    allocator divides it among the allocations without involving the kernel
+    again.  Examples are dlmalloc, jemalloc, Hoard and tcmalloc.
+\end{description}
+
+The main challenge of an allocator is fragmentation of the free memory.
+
+\begin{definition}[External fragmentation]
+  Free memory suffers from \term{external fragmentation}[外部断片化] when
+  it is split into non-contiguous holes, so that a request for a contiguous
+  region cannot be satisfied although enough memory is free in total.
+\end{definition}
+
+Contiguous physical memory is needed, for example, for large pages, for
+buffers that devices access directly, and for data structures of the
+kernel.  An allocator counters external fragmentation in two ways: it
+places allocations so that free memory stays contiguous, and when memory is
+freed, it coalesces the freed region with adjacent free regions into a
+larger one.
+
+\begin{example}
+  \label{ex:l08-fragmentation}
+  A pool of 12 page frames receives requests for A (3 frames), B (2), C (3)
+  and D (2); later A and C are freed, and a request for E needs 4
+  contiguous frames (\cref{fig:l08-fragmentation}).  If A and C were placed
+  apart, 8 frames are free, but in holes of 3, 3 and 2 frames: E fails.  If
+  A and C were placed next to each other, freeing them leaves a contiguous
+  hole of 6 frames, and E succeeds.
+\end{example}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-fragmentation}
+  \caption{External fragmentation in a pool of 12 frames.  The same requests
+    and frees leave (a) three small holes or (b) one large hole, depending
+    on where the allocator placed A and C.}
+  \label{fig:l08-fragmentation}
+\end{figure}
+
+\section{Linux kernel allocators}
+\label{sec:l08-linux-allocators}
+
+The Linux kernel combines two allocators: a buddy allocator for page frames
+and a slab allocator for kernel objects on top of it.\source{P3L2, Linux
+kernel allocators; OSTEP ch.~17; Silberschatz et al.\ ch.~10; Bovet and
+Cesati ch.~8; Bonwick \cite{bonwick1994}.}
+
+\subsection{Buddy allocator}
+
+\begin{definition}[Buddy allocator]
+  A \term{buddy allocator}[バディアロケータ] manages free memory in blocks
+  whose sizes are powers of two.  A request is rounded up to a power of two
+  and served from the smallest free block that is large enough; a larger
+  block is split in halves, called buddies, until a block of the requested
+  size exists.  When a block is freed and its buddy is also free, the two
+  are merged, and merging continues up the tree.
+\end{definition}
+
+Fragmentation can still occur, but merging works well and is fast: the
+buddy of the block of $2^{k}$ frames that starts at frame $a$ starts at
+frame $a \oplus 2^{k}$, i.e., the two addresses differ in a single bit, so
+the allocator finds a buddy without searching.  The rounding to powers of
+two, however, causes internal fragmentation.
+
+\begin{example}
+  \label{ex:l08-buddy}
+  A buddy allocator manages 16 page frames.  \Cref{tab:l08-buddy} traces
+  five operations, and \cref{fig:l08-buddy} shows the blocks after the
+  third.  The request for 3 frames is rounded up to 4 and that for 7 frames
+  to 8, wasting one frame each.  When B is freed, its buddy 6--7 is free,
+  so the two merge into 4--7; the buddy of 4--7, block 0--3 with $0 = 4
+  \oplus 4$, is also free, so the merge continues to 0--7, and it stops
+  there because the buddy 8--15 is allocated.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Trace of a buddy allocator with 16 page frames.}
+  \label{tab:l08-buddy}
+  \small
+  \begin{tabular}{@{}clll@{}}
+    \toprule
+    Step & Operation & Splits or merges & Free blocks after \\
+    \midrule
+    0 & ---                 & ---                                          & 0--15 \\
+    1 & allocate A (3 $\to$ 4) & split 0--15, 0--7; A $=$ 0--3            & 4--7, 8--15 \\
+    2 & allocate B (2)      & split 4--7; B $=$ 4--5                       & 6--7, 8--15 \\
+    3 & allocate C (7 $\to$ 8) & C $=$ 8--15                              & 6--7 \\
+    4 & free A              & buddy 4--7 is split: no merge                & 0--3, 6--7 \\
+    5 & free B              & merge 4--5 with 6--7, then with 0--3         & 0--7 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-buddy}
+  \caption{The blocks of the buddy allocator of \cref{ex:l08-buddy} after
+    step~3, with the number of frames requested in parentheses.  Dashed
+    blocks are split; the lightly shaded frames are lost to internal
+    fragmentation.}
+  \label{fig:l08-buddy}
+\end{figure}
+
+\subsection{Slab allocator}
+
+Objects of the kernel have sizes that are not powers of two, and the buddy
+allocator would waste much of the memory it gives them.  The Linux kernel
+therefore allocates its objects with a slab allocator \cite{bonwick1994}.
+
+\begin{definition}[Slab allocator]
+  A \term{slab allocator}[スラブアロケータ] keeps a cache for every common
+  object type or size.  Each cache consists of \emph{slabs}, regions of
+  contiguously allocated physical memory, divided into slots of exactly the
+  size of the object.  An allocation takes a free slot from the cache of
+  the object's type, and a free returns the slot to the cache.
+\end{definition}
+
+Since slots have exactly the size of the objects, the slab allocator avoids
+the rounding waste of the buddy allocator---only the remainder at the end of
+a slab is unused---and external fragmentation is not an issue: a slot that is
+freed fits the next object of the same type (\cref{fig:l08-slab}).  The
+underlying slabs are obtained from the buddy allocator.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-slab}
+  \caption{A slab allocator with a cache for small and a cache for large
+    objects.  Every slab is divided into slots of the object size.}
+  \label{fig:l08-slab}
+\end{figure}
+
+\begin{example}
+  A kernel object occupies 1200 bytes.  Allocated separately from a buddy
+  allocator, each object would receive at least one page of
+  \SI{4}{\kibi\byte} and waste 2896 bytes.  A slab of one page holds
+  $\lfloor 4096/1200 \rfloor = 3$ such objects and leaves $4096 - 3600 =
+  496$ bytes unused, about 165 bytes per object.
+\end{example}
+
+\needspace{9\baselineskip}
+\begin{keypoint}
+  Linux allocates page frames with a buddy allocator, whose power-of-two
+  blocks are found and merged without searching but which rounds requests
+  up, and kernel objects with a slab allocator, whose slots have the size
+  of the object and are reused by the next object of the same type.
+\end{keypoint}
+
+\section{Demand paging}
+\label{sec:l08-demand}
+
+Since virtual memory is far larger than physical memory, a virtual page is
+not always present in a page frame.\source{P3L2, demand paging; OSTEP
+ch.~21; Silberschatz et al.\ ch.~10.}  The contents of page frames are
+saved to and restored from secondary storage.
+
+\begin{definition}[Swapping and demand paging]
+  Moving the contents of pages between physical memory and secondary
+  storage is called \term{swapping}[スワッピング].  The pages are stored in
+  a \term{swap partition}[スワップ領域], a region of a disk, of flash
+  memory, or even of the memory of a remote machine.  With
+  \term{demand paging}[デマンドページング], a page is swapped into memory
+  only when the process accesses it.
+\end{definition}
+
+When a process accesses a page that is not in memory, the following steps
+take place (\cref{fig:l08-page-fault}):
+\begin{enumerate}
+  \item The process references a memory address, and the MMU finds the
+    valid bit of its PTE cleared.
+  \item The MMU raises a page fault, which traps into the operating system.
+  \item The operating system determines that the access is legal and where
+    the page is stored in the swap partition.
+  \item It reads the page from the swap partition into a free page frame,
+    using an I/O operation.
+  \item It updates the PTE with the new PFN and sets the valid bit.
+  \item It resets the program counter to the faulting instruction and lets
+    the process continue, so that the reference is executed again and now
+    succeeds.
+\end{enumerate}
+The page frame that the page occupies after it is swapped in is generally
+not the one it occupied before.  If no page frame is free, the operating
+system must first free one (\cref{sec:l08-replacement}).
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-page-fault}
+  \caption{Demand paging: the steps taken when a process references a page
+    that is in the swap partition.}
+  \label{fig:l08-page-fault}
+\end{figure}
+
+Some pages must not be swapped.  A \term{pinned page}[ピン留めページ] is a
+page for which swapping is disabled, so that it stays in physical memory.
+Pages are pinned, for example, when a device accesses them directly by
+their physical address during direct memory access (Lesson~11).
+
+\begin{example}
+  A memory access costs \SI{100}{\nano\second}, and handling a page fault
+  that reads the page from disk costs \SI{8}{\milli\second}, i.e.,
+  $8 \cdot 10^{6}$ nanoseconds, 80\,000 times as much.  With a fraction $p$
+  of accesses faulting, the
+  average access costs $(1-p) \cdot 100 + p \cdot 8 \cdot 10^{6}$
+  nanoseconds.  For $p = 10^{-4}$ this is about \SI{900}{\nano\second}, nine
+  times slower; to stay within \SI{10}{\percent} of \SI{100}{\nano\second},
+  $p$ must not exceed $1.25 \cdot 10^{-6}$, one fault in 800\,000 accesses.
+\end{example}
+
+\section{Page replacement}
+\label{sec:l08-replacement}
+
+When physical memory runs short, the operating system must free page frames
+by swapping pages out.\source{P3L2, freeing up physical memory; OSTEP
+ch.~22; Silberschatz et al.\ ch.~10; Bovet and Cesati ch.~17.}  A page that
+is swapped out but needed again soon costs a page fault and an I/O
+operation, which is expensive, as the example of \cref{sec:l08-demand}
+showed.  The operating system must therefore choose with care the pages
+that it swaps out.  This choice is called
+\term{page replacement}[ページ置換], and it raises two questions: when pages
+should be swapped out, and which ones.
+
+Pages are swapped out by a \term{page-out daemon}[ページアウトデーモン], a
+kernel thread that runs when memory usage exceeds a threshold, the
+\emph{high watermark}.  It preferably runs while CPU usage is below a
+threshold, the \emph{low watermark}, so that it disturbs the applications
+as little as possible.
+
+The ideal victims are pages that will not be used in the future.  The
+future is unknown, so the operating system predicts it from the history of
+accesses.
+\begin{itemize}
+  \item The \term{least recently used}[LRU]\index{LRU|see{least recently used}}
+    (LRU) policy swaps out the page whose last access lies furthest in the
+    past, assuming that a page that has not been used recently will not be
+    used soon.  The access bit of the PTE tells the operating system
+    whether a page has been referenced since the bit was last cleared.
+  \item Pages that need not be written out are cheaper to replace.  The
+    dirty bit tells whether a page has been modified; the contents of a
+    clean page that is already stored on disk can simply be discarded.
+  \item Pages that must stay in memory, such as pinned pages and certain
+    pages of the kernel, are never chosen.
+\end{itemize}
+Linux provides parameters that tune when reclaim starts and stops,
+categorizes pages into types, for instance reclaimable and swappable pages,
+and uses a variation of LRU that gives pages a second
+chance.\caution{In Linux both watermarks are thresholds on free memory:
+reclaim starts below the low and stops above the high one.}
+
+\begin{definition}[Second chance algorithm]
+  The \term{second chance algorithm}[セカンドチャンスアルゴリズム]
+  approximates LRU with the access bit.  It scans the page frames in
+  circular order.  A page whose access bit is set is given a second chance:
+  its bit is cleared, and the scan moves on.  A page whose access bit is
+  clear, i.e., one that has not been referenced since the previous scan
+  cleared its bit, is swapped out.
+\end{definition}
+
+\begin{example}
+  \label{ex:l08-second-chance}
+  Five page frames hold pages A--E with access bits 1, 0, 1, 1, 0, and the
+  scan starts at A.  \Cref{tab:l08-second-chance} traces two replacements.
+  The second scan resumes after the frame that received F, so it examines
+  only C, D and E: C and D are given a second chance, and E, whose bit is
+  clear, is swapped out.  A is not examined at all; because the process
+  referenced it again after the first scan had cleared its bit, it is given
+  a second chance when the scan next reaches it.  C, whose bit was cleared
+  in step~3 and which has not been referenced since, is then the victim.
+\end{example}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Trace of the second chance algorithm.  Access bits are listed in
+    scan order; a newly loaded page has its bit set.}
+  \label{tab:l08-second-chance}
+  \small
+  \begin{tabular}{@{}clll@{}}
+    \toprule
+    Step & Event & Pages examined & Access bits after \\
+    \midrule
+    0 & ---                     & ---                          & A1 B0 C1 D1 E0 \\
+    1 & page fault, load F      & A: clear; B: swap out        & A0 F1 C1 D1 E0 \\
+    2 & process references A, D & ---                          & A1 F1 C1 D1 E0 \\
+    3 & page fault, load G      & C: clear; D: clear; E: swap out & A1 F1 C0 D0 G1 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\needspace{10\baselineskip}
+\begin{keypoint}
+  Demand paging brings a page in on the page fault that first needs it, and
+  a page-out daemon frees frames before memory runs out.  Which pages leave
+  is decided with an approximation of LRU, such as the second chance
+  algorithm, which reads and clears the access bit; the dirty bit tells
+  whether a victim must be written out at all.
+\end{keypoint}
+
+\section{Copy-on-write}
+\label{sec:l08-cow}
+
+The MMU translates addresses, tracks accesses and enforces protection.
+These abilities are also useful for building other services and
+optimizations.\source{P3L2, copy on write; OSTEP ch.~23; Silberschatz et
+al.\ ch.~10.}  One of them avoids unnecessary copies when a process is
+created.
+
+A process created with \texttt{fork}\index{fork@\texttt{fork}} receives a copy of the
+entire address space of its parent (Lesson~2).  Many of its pages, such as
+the code, are static and never change, and a child often calls
+\texttt{exec} soon after its creation, so most of the copying would be
+wasted.
+
+\begin{definition}[Copy-on-write]
+  With \term{copy-on-write}[コピーオンライト]\index{COW|see{copy-on-write}}
+  (COW) the operating system does not copy the address space when it
+  creates a process.  It maps the virtual pages of the new process to the
+  page frames of the original and write-protects these frames in both
+  processes.  A write to such a page causes a page fault, and only then does
+  the operating system copy the page.
+\end{definition}
+
+As long as both processes only read the shared pages, no memory is spent
+and no time is spent on copying.  When one of them writes a page, the
+protection fault lets the operating system recognize the COW page; it
+copies this one page to a new page frame, maps the writing process's page
+to the copy with write permission, and restarts the write
+(\cref{fig:l08-cow}).  The cost of a copy is paid only for pages that are
+actually modified.
+
+\begin{figure}[htbp]
+  \centering
+  \input{figures/l08-cow}
+  \caption{Copy-on-write.  (a) After \texttt{fork}, parent and child map the
+    same write-protected page frames.  (b) The child's write to page~1
+    faults, and the operating system copies only that page.}
+  \label{fig:l08-cow}
+\end{figure}
+
+\begin{example}
+  A process with an address space of 25\,600 pages of \SI{4}{\kibi\byte}
+  (\SI{100}{\mebi\byte}) forks, and the child writes to 40 pages of its
+  stack and data before it calls \texttt{exec}.  Copy-on-write copies
+  40 pages instead of 25\,600, i.e., \SI{0.16}{\percent} of the address
+  space.
+\end{example}
+
+\section{Checkpointing}
+\label{sec:l08-checkpointing}
+
+The same hardware support helps with failure
+management.\source{P3L2, failure management: checkpointing.}
+
+\begin{definition}[Checkpointing]
+  A failure and recovery management technique that periodically saves the
+  state of a process is called \term{checkpointing}[チェックポインティング].
+  After a failure, the process is restarted from its most recent checkpoint
+  rather than from the beginning.
+\end{definition}
+
+Failures may be unavoidable, but with checkpoints recovery is much faster.
+The simplest approach pauses the process and copies its entire state.  The
+pause is long for a large address space, and the approach is expensive if
+it is repeated.  The MMU enables a better approach.
+\begin{itemize}
+  \item The operating system write-protects all pages of the process and
+    copies the entire state once, while the process continues to run.
+  \item From then on it records which pages the process modifies, through
+    the write faults or the dirty bits, and later checkpoints copy only
+    these dirtied pages.  Such \emph{incremental} checkpoints store the
+    differences to the previous checkpoint.
+  \item To restore the process, its state is rebuilt from the full copy and
+    the subsequent differences; the differences can also be merged in the
+    background.
+\end{itemize}
+
+Checkpointing is the basis of further services.
+\begin{description}
+  \item[Debugging] With \emph{rewind-replay}, a program is restarted
+    (rewound) from a checkpoint and re-executed.  If the error does not
+    reappear, successively older checkpoints are used until it is found.
+  \item[Migration] With \term{process migration}[プロセスマイグレーション]
+    the checkpoint of a process is transferred to another machine, where
+    the process continues.  Migration serves disaster recovery and
+    consolidation of processes onto fewer machines.
+\end{description}
+To keep the pause of a migration short, the checkpoints are repeated in a
+fast loop: the operating system copies all pages while the process runs,
+then the pages dirtied during that copy, then those dirtied during the
+second copy, and so on, until so few pages remain that a final
+pause-and-copy is acceptable---or until it is unavoidable because the
+process dirties pages as fast as they are copied.
+
+\needspace{14\baselineskip}
+\begin{example}
+  A process of 50\,000 pages is migrated over a connection that copies
+  25\,000 pages per second, while the process dirties 2000 distinct pages
+  per second.  Pausing the process and copying everything takes
+  \SI{2}{\second}.  With repeated rounds, each of which copies the pages
+  dirtied during the previous one, every round copies \SI{8}{\percent} of
+  the pages of the round before, and after three rounds the final pause
+  lasts about \SI{1}{\milli\second}:
+  \begin{center}
+    \small
+    \begin{tabular}{@{}lrrr@{}}
+      \toprule
+      Round & Pages copied & Duration & Pages dirtied meanwhile \\
+      \midrule
+      1 (process runs)   & 50\,000 & \SI{2}{\second}             & 4000 \\
+      2 (process runs)   & 4000    & \SI{160}{\milli\second}     & 320 \\
+      3 (process runs)   & 320     & \SI{12.8}{\milli\second}    & 26 \\
+      final (paused)     & 26      & \SI{1.04}{\milli\second}    & --- \\
+      \bottomrule
+    \end{tabular}
+  \end{center}
+\end{example}
+
+\needspace{14\baselineskip}
+
+\begin{keypoint}[Lesson summary]
+  Virtual memory decouples address spaces from physical memory; the
+  operating system allocates memory and arbitrates every access, using
+  paging or segmentation and the MMU, which translates addresses and raises
+  faults.  A page table maps VPNs to PFNs (\cref{eq:l08-translation}), and
+  its entries carry valid, dirty, access and protection bits; a page fault
+  hands an access that the MMU cannot complete to the operating system.
+  Flat page tables are too large (\cref{eq:l08-pt-size}), so they are
+  multi-level or inverted and hashed, and the TLB keeps translation fast
+  (\cref{eq:l08-eat}).  Large pages shrink page tables and raise TLB
+  coverage at the cost of internal fragmentation.  Allocators fight external
+  fragmentation; Linux uses a buddy allocator for page frames and a slab
+  allocator for kernel objects.  Demand paging swaps pages in on a page fault,
+  and a page-out daemon swaps pages out, choosing them with LRU
+  approximations such as the second chance algorithm.  The MMU also enables
+  copy-on-write and incremental checkpointing, which in turn supports
+  debugging and process migration.
+\end{keypoint}
+
+\end{document}

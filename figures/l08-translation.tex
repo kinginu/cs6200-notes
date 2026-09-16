@@ -1,0 +1,36 @@
+% Address translation with a (flat) page table: the VPN indexes the page
+% table found through the page table base register; the PFN of the entry
+% is combined with the unchanged offset.
+% Usage: \input{figures/l08-translation}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  cell/.style={draw, minimum height=7mm, inner sep=0pt, anchor=south west},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  hd/.style={font=\scriptsize\sffamily\bfseries, anchor=south}]
+  % virtual address
+  \node[hd, anchor=south west] at (0,37.5) {\iflangja{仮想アドレス}{virtual address}};
+  \node[cell, minimum width=18mm, fill=ln-accent!22] (vpn) at (0,30) {VPN};
+  \node[cell, minimum width=16mm, fill=ln-box] (voff) at (18,30) {\iflangja{オフセット}{offset}};
+  % page table base register
+  \node[cell, minimum width=24mm, minimum height=6mm, fill=ln-source!14, align=center]
+    (ptbr) at (46,36) {\iflangja{ページテーブル\\ベースレジスタ}{page table\\base register}};
+  % page table
+  \foreach \k in {0,...,5} {
+    \draw[fill=white] (46,5*\k) rectangle ++(16,5);
+    \draw[fill=white] (62,5*\k) rectangle ++(8,5);
+  }
+  \draw[fill=ln-accent!22] (46,15) rectangle ++(16,5) node[midway] {PFN};
+  \draw[fill=ln-accent!10] (62,15) rectangle ++(8,5) node[midway, font=\tiny\sffamily] {\iflangja{フラグ}{flags}};
+  \node[lab, anchor=north] at (58,-0.5) {\iflangja{ページテーブル}{page table}};
+  \draw[->] (58,36) -- (58,30);
+  % VPN selects the entry
+  \draw[->] (9,30) |- (46,17.5) node[pos=0.75, above, lab] {\iflangja{索引}{index}};
+  % physical address
+  \node[hd, anchor=north] at (99,13.5) {\iflangja{物理アドレス}{physical address}};
+  \node[cell, minimum width=18mm, fill=ln-accent!22] (pfn) at (82,14) {PFN};
+  \node[cell, minimum width=16mm, fill=ln-box] (poff) at (100,14) {\iflangja{オフセット}{offset}};
+  \draw[->] (70,17.5) -- (82,17.5);
+  % offset copied unchanged
+  \draw[->, densely dashed] (26,37) -- (26,49) -| (108,21)
+    node[pos=0.25, above, lab] {\iflangja{オフセットはそのまま}{offset copied unchanged}};
+\end{tikzpicture}

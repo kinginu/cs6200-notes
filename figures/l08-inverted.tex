@@ -1,0 +1,64 @@
+% (a) Inverted page table: one entry per page frame; the entry matching
+% (pid, p) is searched, and its index i is the frame number.
+% (b) Hashed page table: a hash of (pid, p) selects a bucket whose chain
+% holds (pid, p, frame) entries.
+% Usage: \input{figures/l08-inverted}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  cell/.style={draw, minimum height=6mm, inner sep=0pt, anchor=south west},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  idx/.style={font=\scriptsize\sffamily, text=ln-muted},
+  hd/.style={font=\scriptsize\sffamily\bfseries, anchor=south, align=center},
+  capt/.style={font=\footnotesize\sffamily, anchor=west}]
+  % ================= (a) inverted page table
+  \node[capt] at (0,42) {\iflangja{(a) 逆ページテーブル}{(a) inverted page table}};
+  \node[lab, anchor=south west] at (0,27) {\iflangja{仮想アドレス}{virtual address}};
+  \node[cell, minimum width=10mm, fill=ln-source!16] at (0,20) {pid};
+  \node[cell, minimum width=10mm, fill=ln-accent!22] at (10,20) {$p$};
+  \node[cell, minimum width=10mm, fill=ln-box] at (20,20) {$d$};
+  \node[hd] at (58,31) {\iflangja{フレームごとに 1 エントリ}{one entry per frame}};
+  \foreach \r/\a/\b in {0/7/3, 1/2/12, 2/5/9, 4/7/8} {
+    \draw[fill=white] (48,24-6*\r) rectangle ++(10,6) node[midway] {\a};
+    \draw[fill=white] (58,24-6*\r) rectangle ++(10,6) node[midway] {\b};
+  }
+  \draw[fill=ln-accent!22] (48,6) rectangle ++(10,6) node[midway] {pid};
+  \draw[fill=ln-accent!22] (58,6) rectangle ++(10,6) node[midway] {$p$};
+  \node[idx, anchor=east] at (47.5,9) {$i$};
+  \node[idx] at (58,-1.5) {\iflangja{（索引 $i$ ＝ フレーム番号）}{(index $i$ = frame number)}};
+  \draw (5,20) -- (5,14) -- (15,14);
+  \draw[->] (15,20) |- (44,9) node[pos=0.75, above, lab] {\iflangja{探索}{search}};
+  % physical address
+  \node[cell, minimum width=10mm, fill=ln-accent!22] at (86,6) {$i$};
+  \node[cell, minimum width=10mm, fill=ln-box] at (96,6) {$d$};
+  \node[lab, anchor=north west] at (86,5.5) {\iflangja{物理アドレス}{physical address}};
+  \draw[->] (68,9) -- (86,9);
+  \draw[->, densely dashed] (25,26) -- (25,37) -| (101,12);
+  % ================= (b) hashed page table
+  \node[capt] at (0,-8) {\iflangja{(b) ハッシュページテーブル}{(b) hashed page table}};
+  \node[cell, minimum width=10mm, fill=ln-source!16] at (0,-24) {pid};
+  \node[cell, minimum width=10mm, fill=ln-accent!22] at (10,-24) {$p$};
+  \node[cell, minimum width=10mm, fill=ln-box] at (20,-24) {$d$};
+  \node[draw, circle, inner sep=1pt, fill=white, font=\scriptsize\sffamily] (h) at (34,-21) {$h$};
+  \draw (5,-18) -- (5,-14) -- (34,-14);
+  \draw (15,-18) -- (15,-14);
+  \draw[->] (34,-14) -- (h.north);
+  % hash table buckets
+  \foreach \r in {0,...,4} { \draw[fill=white] (44,-12-5*\r) rectangle ++(8,5); }
+  \draw[fill=ln-accent!22] (44,-27) rectangle ++(8,5);
+  \node[idx] at (48,-34.5) {\iflangja{バケット}{buckets}};
+  \draw[->] (h.east) -- (44,-24.5);
+  % chain entries: pid | p | frame
+  \foreach \x/\a/\b/\c in {60/4/31/17, 88/2/31/6} {
+    \draw[fill=white] (\x,-27) rectangle ++(6,5) node[midway] {\a};
+    \draw[fill=white] (\x+6,-27) rectangle ++(6,5) node[midway] {\b};
+    \draw[fill=ln-accent!10] (\x+12,-27) rectangle ++(6,5) node[midway] {\c};
+    \draw[fill=ln-box] (\x+18,-27) rectangle ++(3,5);
+  }
+  \draw[->] (48,-24.5) -- (60,-24.5);
+  \fill (79.5,-24.5) circle (0.5);
+  \draw[->] (79.5,-24.5) -- (88,-24.5);
+  \node[idx, anchor=north] at (69,-27.5) {pid\quad $p$\quad \iflangja{フレーム}{frame}};
+  \node[idx, anchor=north] at (97,-27.5) {pid\quad $p$\quad \iflangja{フレーム}{frame}};
+  \node[lab, text width=40mm, anchor=north west] at (60,-33)
+    {\iflangja{連鎖を (pid, $p$) で照合}{chain searched for (pid, $p$)}};
+\end{tikzpicture}
