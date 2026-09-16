@@ -1,0 +1,26 @@
+% Virtualization: several virtual machines, each with its own guest OS,
+% applications and virtual resources, on one virtual machine monitor.
+% Usage: \input{figures/l12-vmm}   (width ~96 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  app/.style={draw, rounded corners=1pt, fill=white, minimum height=5mm,
+              minimum width=11.5mm, inner sep=0.5pt, font=\scriptsize\sffamily},
+  gos/.style={draw, fill=ln-accent!12, minimum height=6mm,
+              minimum width=26mm, inner sep=0.5pt},
+  vres/.style={draw, densely dashed, fill=white, minimum height=5mm,
+               minimum width=26mm, inner sep=0.5pt, font=\scriptsize\sffamily},
+  vm/.style={draw=ln-rule, rounded corners=2pt, fill=ln-box},
+  layer/.style={draw, minimum height=7mm, minimum width=96mm, inner sep=1pt},
+  ttl/.style={font=\footnotesize\sffamily\bfseries}]
+  \node[layer, fill=white] at (48,3.5)
+    {\iflangja{物理ハードウェア（CPU，メモリ，デバイス）}{physical hardware (CPUs, memory, devices)}};
+  \node[layer, fill=ln-accent!22] at (48,12.5)
+    {\iflangja{仮想マシンモニタ（ハイパーバイザ）}{virtual machine monitor (hypervisor)}};
+  \foreach \x/\n in {16/1, 48/2, 80/3} {
+    \draw[vm] (\x-15,18) rectangle (\x+15,48);
+    \node[ttl] at (\x,44.5) {VM \n};
+    \node[app] at (\x-7,37.5) {\iflangja{アプリ}{app}};
+    \node[app] at (\x+7,37.5) {\iflangja{アプリ}{app}};
+    \node[gos] at (\x,29.5) {\iflangja{ゲスト OS}{guest OS}};
+    \node[vres] at (\x,22.5) {\iflangja{仮想資源}{virtual resources}};
+  }
+\end{tikzpicture}

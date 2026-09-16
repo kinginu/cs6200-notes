@@ -1,0 +1,67 @@
+% Virtualization models: (a) bare-metal hypervisor with a privileged
+% service VM that owns the device drivers (Xen: dom0 and domU guests);
+% (b) hosted hypervisor: a module in the host OS (KVM in Linux), each VM a
+% host process with QEMU emulating its devices.
+% Usage: \input{figures/l12-models}   (width ~116 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
+  >={Stealth[length=1.6mm]},
+  box/.style={draw, fill=white, inner sep=0.5pt, align=center,
+              font=\scriptsize\sffamily},
+  gos/.style={box, fill=ln-accent!12},
+  vm/.style={draw=ln-rule, rounded corners=2pt, fill=ln-box},
+  svm/.style={draw=ln-accent, rounded corners=2pt, fill=ln-accent!8},
+  lab/.style={font=\scriptsize\sffamily, align=center},
+  hdr/.style={font=\scriptsize\sffamily\bfseries, align=center},
+  pcap/.style={font=\footnotesize\sffamily}]
+  % ================= (a) bare-metal
+  \draw[fill=white] (0,0) rectangle (55,7)
+    node[midway] {\iflangja{ハードウェア}{hardware}};
+  \draw[fill=ln-accent!22] (0,9) rectangle (55,16)
+    node[midway] {\iflangja{ハイパーバイザ（VMM）}{hypervisor (VMM)}};
+  % service VM
+  \draw[svm] (0,18) rectangle (19,52);
+  \node[hdr] at (9.5,49) {\iflangja{サービス VM}{service VM}};
+  \node[lab] at (9.5,45.5) {(dom0)};
+  \node[box, minimum width=16mm, minimum height=7mm] at (9.5,36.5)
+    {\iflangja{管理ツール}{management}};
+  \node[gos, minimum width=16mm, minimum height=9mm] (drv) at (9.5,25.5)
+    {OS +\\\iflangja{ドライバ}{drivers}};
+  \draw[<->, thick, densely dashed, ln-accent] (drv.south) -- (9.5,7);
+  % guest VMs
+  \foreach \x in {29, 47} {
+    \draw[vm] (\x-8,18) rectangle (\x+8,52);
+    \node[hdr] at (\x,49) {\iflangja{ゲスト VM}{guest VM}};
+    \node[lab] at (\x,45.5) {(domU)};
+    \node[box, rounded corners=1pt, minimum width=13mm, minimum height=6mm]
+      at (\x,36.5) {\iflangja{アプリ}{apps}};
+    \node[gos, minimum width=13mm, minimum height=7mm] at (\x,26)
+      {\iflangja{ゲスト OS}{guest OS}};
+  }
+  \node[pcap] at (27.5,-4) {\iflangja{(a) ベアメタル型}{(a) bare-metal}};
+  % ================= (b) hosted
+  \begin{scope}[xshift=61mm]
+  \draw[fill=white] (0,0) rectangle (55,7)
+    node[midway] {\iflangja{ハードウェア}{hardware}};
+  \draw[fill=ln-box] (0,9) rectangle (55,26);
+  \node[hdr] at (27.5,22.5) {\iflangja{ホスト OS（Linux）}{host OS (Linux)}};
+  \node[box, minimum width=24mm, minimum height=7mm] at (14,14.5)
+    {\iflangja{デバイスドライバ}{device drivers}};
+  \node[box, fill=ln-accent!22, minimum width=24mm, minimum height=7mm]
+    at (41,14.5) {\iflangja{KVM モジュール}{KVM module}};
+  % native process
+  \draw[fill=white, rounded corners=2pt] (0,28) rectangle (13,52)
+    node[midway, lab] {\iflangja{通常の\\プロセス}{native\\process}};
+  % VMs as host processes
+  \foreach \x in {24.5, 45.5} {
+    \draw[vm] (\x-9.5,28) rectangle (\x+9.5,52);
+    \node[hdr] at (\x,49.3) {VM};
+    \node[box, rounded corners=1pt, minimum width=15mm, minimum height=5mm]
+      at (\x,43.5) {\iflangja{アプリ}{apps}};
+    \node[gos, minimum width=16mm, minimum height=5.5mm] at (\x,37)
+      {\iflangja{ゲスト OS}{guest OS}};
+    \node[box, densely dashed, minimum width=16mm, minimum height=5mm]
+      at (\x,31) {QEMU};
+  }
+  \node[pcap] at (27.5,-4) {\iflangja{(b) ホスト型}{(b) hosted}};
+  \end{scope}
+\end{tikzpicture}

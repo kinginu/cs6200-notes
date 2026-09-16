@@ -1,0 +1,49 @@
+% x86 protection rings: (a) native OS; (b) virtualization without hardware
+% support (hypervisor in ring 0, guest OS deprivileged to ring 1);
+% (c) root and non-root modes, each with four rings, VM exit / VM entry.
+% Usage: \input{figures/l12-rings}   (width ~118 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  used/.style={draw, fill=ln-accent!12},
+  hv/.style={draw, fill=ln-accent!30},
+  free/.style={draw=ln-rule, fill=white},
+  rl/.style={font=\scriptsize\sffamily, anchor=east, text=ln-muted},
+  hdr/.style={font=\scriptsize\sffamily\bfseries},
+  pcap/.style={font=\footnotesize\sffamily, align=center, anchor=north}]
+  % row labels
+  \foreach \r/\y in {3/27, 2/21, 1/15, 0/9}
+    \node[rl] at (9.5,\y) {\iflangja{リング \r}{ring \r}};
+  % (a) native
+  \draw[used] (11,24) rectangle (31,30) node[midway] {\iflangja{アプリケーション}{applications}};
+  \draw[free] (11,18) rectangle (31,24);
+  \draw[free] (11,12) rectangle (31,18);
+  \draw[used] (11,6)  rectangle (31,12) node[midway] {\iflangja{OS カーネル}{OS kernel}};
+  \node[pcap] at (21,-1) {\iflangja{(a) 仮想化なし}{(a) native}};
+  % (b) hypervisor in ring 0
+  \draw[used] (34,24) rectangle (54,30) node[midway] {\iflangja{アプリケーション}{applications}};
+  \draw[free] (34,18) rectangle (54,24);
+  \draw[used] (34,12) rectangle (54,18) node[midway] {\iflangja{ゲスト OS}{guest OS}};
+  \draw[hv]   (34,6)  rectangle (54,12) node[midway] {\iflangja{ハイパーバイザ}{hypervisor}};
+  \draw[->, thick, ln-caution] (54.3,15) to[out=0, in=0, looseness=2.2]
+    node[right=0.8mm, text=ln-caution] {\iflangja{}{trap}} (54.3,9);
+  % The Japanese label is wider than the gap between panels (b) and (c),
+  % so it is set vertically beside the arc instead of next to it.
+  \iflangja{\node[text=ln-caution, rotate=90] at (60.3,12) {トラップ};}{}
+  \node[pcap] at (44,-1) {\iflangja{(b) リング 0 の\\ハイパーバイザ}{(b) hypervisor\\in ring 0}};
+  % (c) root / non-root
+  \node[hdr] at (74,33) {\iflangja{非ルートモード}{non-root mode}};
+  \node[hdr] at (108,33) {\iflangja{ルートモード}{root mode}};
+  \draw[used] (64,24) rectangle (84,30) node[midway] {\iflangja{アプリケーション}{applications}};
+  \draw[free] (64,18) rectangle (84,24);
+  \draw[free] (64,12) rectangle (84,18);
+  \draw[used] (64,6)  rectangle (84,12) node[midway] {\iflangja{ゲスト OS}{guest OS}};
+  \draw[free] (98,24) rectangle (118,30);
+  \draw[free] (98,18) rectangle (118,24);
+  \draw[free] (98,12) rectangle (118,18);
+  \draw[hv]   (98,6)  rectangle (118,12) node[midway] {\iflangja{ハイパーバイザ}{hypervisor}};
+  \draw[->, thick, ln-caution] (84.3,10.2) -- (97.7,10.2);
+  \draw[->, thick, ln-tip] (97.7,7.8) -- (84.3,7.8);
+  \node[text=ln-caution, anchor=south] at (91,12.2) {VM exit};
+  \node[text=ln-tip, anchor=north] at (91,5.8) {VM entry};
+  \node[pcap] at (91,-1) {\iflangja{(c) ルートモードと非ルートモード}{(c) root and non-root modes}};
+\end{tikzpicture}

@@ -368,6 +368,7 @@ rpcbind	rpcbind	rpcbind	13	portmapper
 external data representation	外部データ表現	がいぶでーたひょうげん	13	
 XDR	XDR	XDR	13	see: external data representation
 big-endian	ビッグエンディアン	びっぐえんでぃあん	13	
+little-endian	リトルエンディアン	りとるえんでぃあん	13	
 remote method invocation	リモートメソッド呼び出し	りもーとめそっどよびだし	13	Java RMI
 RMI	RMI	RMI	13	see: remote method invocation
 distributed file system	分散ファイルシステム	ぶんさんふぁいるしすてむ	14	

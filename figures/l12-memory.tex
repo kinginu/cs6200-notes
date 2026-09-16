@@ -1,0 +1,42 @@
+% Memory virtualization: virtual, physical and machine addresses.  The
+% guest page table maps VA to PA, the hypervisor maps PA to MA; the shadow
+% page table maps VA directly to MA and is the table the MMU uses.
+% Usage: \input{figures/l12-memory}   (width ~120 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  addr/.style={draw, rounded corners=4pt, fill=white, align=center,
+               minimum height=9mm, inner sep=1pt},
+  tab/.style={draw, fill=ln-accent!12, align=center, minimum height=10mm,
+              minimum width=22mm, inner sep=1pt},
+  htab/.style={tab, fill=ln-accent!30},
+  own/.style={font=\scriptsize\sffamily\bfseries, text=ln-accent},
+  lab/.style={font=\scriptsize\sffamily, text=ln-muted, align=center}]
+  \node[addr, minimum width=17mm] (va) at (8.5,22)
+    {\iflangja{仮想\\アドレス}{virtual\\address}};
+  \node[tab] (gpt) at (34,22)
+    {\iflangja{ゲストの\\ページテーブル}{guest\\page table}};
+  \node[addr, minimum width=20mm] (pa) at (60,22)
+    {\iflangja{物理\\アドレス}{physical\\address}};
+  \node[htab] (p2m) at (86,22)
+    {\iflangja{ハイパーバイザの\\PA$\to$MA 対応表}{hypervisor's\\PA$\to$MA map}};
+  \node[addr, minimum width=17mm] (ma) at (111.5,22)
+    {\iflangja{マシン\\アドレス}{machine\\address}};
+  \draw[->] (va) -- (gpt);
+  \draw[->] (gpt) -- (pa);
+  \draw[->] (pa) -- (p2m);
+  \draw[->] (p2m) -- (ma);
+  \node[own, anchor=south] at (gpt.north) {\iflangja{ゲスト OS が管理}{kept by the guest OS}};
+  \node[own, anchor=south] at (p2m.north) {\iflangja{ハイパーバイザが管理}{kept by the hypervisor}};
+  \draw[ln-muted] (23,31.5) -- (23,33.5) -- (97,33.5) -- (97,31.5);
+  \node[lab, anchor=south] at (60,33.7) {\iflangja{アドレスごとに 2 回の変換}{two translations per address}};
+  % shadow page table
+  \node[htab, minimum width=40mm, minimum height=8mm] (spt) at (60,4)
+    {\iflangja{シャドウページテーブル（VA$\to$MA）}{shadow page table (VA$\to$MA)}};
+  \draw[->, very thick, ln-accent] (va.south) |- (spt.west);
+  \draw[->, very thick, ln-accent] (spt.east) -| (ma.south);
+  \draw[->, densely dashed, ln-muted] (gpt.south) -- (44,8.3);
+  \draw[->, densely dashed, ln-muted] (p2m.south) -- (76,8.3);
+  \node[lab] at (60,12.8) {\iflangja{ハイパーバイザが一貫性を保つ}{kept consistent by the hypervisor}};
+  \node[lab, anchor=north] at (60,-0.4)
+    {\iflangja{1 回の変換．MMU と TLB が使用}{one translation, used by the MMU and TLB}};
+\end{tikzpicture}

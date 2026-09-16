@@ -1,0 +1,34 @@
+% Dynamic binary translation with a translation cache: a guest kernel code
+% block is inspected and translated the first time it is about to run;
+% later executions reuse the cached translation.
+% Usage: \input{figures/l12-binary-translation}   (width ~119 mm)
+\begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
+  >={Stealth[length=1.5mm]},
+  stp/.style={draw, rounded corners=1.5pt, fill=white, align=center,
+               minimum height=9mm, inner sep=1pt},
+  hyp/.style={stp, fill=ln-accent!15},
+  dec/.style={draw, diamond, aspect=2.2, fill=ln-box, inner sep=0.3pt,
+              align=center},
+  yn/.style={font=\scriptsize\sffamily\itshape, text=ln-muted}]
+  \node[stp, minimum width=22mm] (blk) at (11,26)
+    {\iflangja{次のゲスト\\カーネルコード\\ブロック}{next guest\\kernel code\\block}};
+  \node[dec] (hit) at (42,26)
+    {\iflangja{変換キャッシュ\\にある?}{in translation\\cache?}};
+  \node[stp, minimum width=32mm] (exe) at (103,26)
+    {\iflangja{変換済みブロックを\\ハードウェアの速度で実行}{execute translated block\\at hardware speed}};
+  \node[hyp, minimum width=22mm] (insp) at (42,8)
+    {\iflangja{命令を\\検査する}{inspect the\\instructions}};
+  \node[hyp, minimum width=26mm] (tr) at (72,8)
+    {\iflangja{問題のある命令を\\別の命令列に置換}{replace problematic\\instructions}};
+  \node[hyp, minimum width=28mm] (st) at (103,8)
+    {\iflangja{変換キャッシュに\\格納する}{store the block in\\the translation cache}};
+  \draw[->] (blk) -- (hit);
+  \draw[->] (hit) -- node[yn, above] {\iflangja{はい}{yes}} (exe);
+  \draw[->] (hit) -- node[yn, right] {\iflangja{いいえ}{no}} (insp);
+  \draw[->] (insp) -- (tr);
+  \draw[->] (tr) -- (st);
+  \draw[->] (st) -- (exe);
+  \draw[->, densely dashed, ln-muted] (exe.north) -- (103,39) -- (11,39)
+    -- (blk.north);
+  \node[yn, anchor=south] at (57,39) {\iflangja{次のブロックへ}{continue with the next block}};
+\end{tikzpicture}
