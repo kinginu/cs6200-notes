@@ -58,7 +58,10 @@ operating system is the layer of software that sits between the two
 
 In short, an operating system \emph{abstracts} the hardware, simplifying
 what it looks like to applications, and \emph{arbitrates} its use,
-overseeing and controlling how applications share it.  The definition
+overseeing and controlling how applications share it.\margin{Latencies the
+abstraction hides: L1 hit \SI{1}{\nano\second}, DRAM
+\SI{80}{\nano\second}, SSD read \SI{50}{\micro\second}, disk seek
+\SI{5}{\milli\second}.  OSTEP ch.~36--37.}  The definition
 names three roles.
 \begin{description}
   \item[Hiding hardware complexity] The operating system presents the
@@ -137,7 +140,9 @@ decides how the operations are applied.
 
 Memory management shows how the three elements work together
 (\cref{tab:l01-elements}).  The abstraction is the memory page, a
-fixed-size block of memory.  The mechanisms allocate a page and map it into
+fixed-size block of memory.\margin{On x86-64 a page is \SI{4}{\kibi\byte} by
+default; huge pages of \SI{2}{\mebi\byte} and \SI{1}{\gibi\byte} also exist.
+Lesson~8.}  The mechanisms allocate a page and map it into
 the address space of a process, so that the process can use it.  Physical
 memory (DRAM) is usually smaller than the total demand of all processes,
 so the operating system also moves some pages to disk and brings them back
@@ -267,7 +272,9 @@ and the operating system interact in three ways (\cref{fig:l01-user-kernel}):
   \item[Signals] travel in the opposite direction.  A
     \term{signal}[シグナル] is a notification that the operating system
     passes to an application, for example that a timer the application
-    has set has expired.
+    has set has expired.\margin{A signal is delivered when the process next
+      returns to user mode, not at an arbitrary instruction.  Signals:
+      Lesson~5.}
 \end{description}
 
 \begin{figure}[htbp]
@@ -311,7 +318,9 @@ operation is requested, how many arguments it takes and where to find
 them.  Arguments are passed either directly, as values, or indirectly, as
 the address of a memory area that holds them.  In the synchronous mode
 described here the process waits until the system call has completed;
-asynchronous system calls are discussed in later lessons.
+asynchronous system calls are discussed in later lessons.\margin{Not every
+call crosses: Linux maps the vDSO into every process, so
+\texttt{clock\_gettime} runs in user mode.  \texttt{vdso(7)}.}
 
 \begin{example}
   Both calls in the following C program ask Linux to write six bytes to
@@ -351,7 +360,11 @@ three properties.
     instructions or on memory accesses that require special privileges.
   \item They require executing a number of instructions to save and
     switch state; on a \SI{2}{\giga\hertz} machine running Linux a
-    transition takes about \SIrange{50}{100}{\nano\second}.
+    transition takes about \SIrange{50}{100}{\nano\second}.\sidenote{On a
+      Core~i7, entering and leaving the kernel cost \num{79} and \num{71}
+      cycles, but a \texttt{pwrite} also evicts half of the
+      \SI{32}{\kibi\byte} L1 data cache, and the application needs up to
+      \num{14000} cycles to recover \cite{soares2010}.}
   \item They switch locality.  The kernel executes different code and uses
     different data than the application, so its instructions replace
     application data in the processor caches.  When the application
@@ -376,7 +389,9 @@ such as the files and directories of a file system.  Grouped by purpose,
 operating systems offer process management, file management, device
 management, memory management, storage management and security.
 
-Applications reach all of these services through system calls.  Different
+Applications reach all of these services through system calls.\margin{Linux on
+x86-64 numbers some \num{390} system calls (\texttt{syscall\_64.tbl}); the C
+library wraps them in a much larger API.}  Different
 operating systems name and structure their calls differently, but they
 provide comparable functionality, as the Windows and Unix calls in
 \cref{tab:l01-syscalls} show.
@@ -471,7 +486,9 @@ become part of it, for example an interface for file systems.  Modules can
 be installed dynamically, according to the workload: a machine that runs a
 database can load a file system optimized for random access.  Since only
 the modules that are needed are loaded, the system is smaller, easier to
-maintain and upgrade, and leaves more resources to applications.  The
+maintain and upgrade, and leaves more resources to applications.\margin{The
+Linux source passed \num{40} million lines in 2025, some \SI{60}{\percent} of
+it drivers; a kernel loads only a small part.}  The
 indirection through the module interface can cost some performance,
 although usually not much, and modules may come from entirely different
 code bases, which makes them a source of bugs.\margin{Silberschatz et al.\
@@ -495,7 +512,11 @@ where correct behavior of the operating system is critical.  On the
 other hand, microkernels are often specialized to the underlying hardware,
 which limits portability; software development is more complex, because
 common operating-system components are harder to find; and the frequent
-crossings of the user/kernel boundary are costly.
+crossings of the user/kernel boundary are costly.\sidenote{How costly is a
+matter of design: Liedtke's L3/L4 \cite{liedtke1993} transferred a short
+message between address spaces in \SI{5}{\micro\second} on a
+\SI{50}{\mega\hertz} i486, where Mach needed about \SI{115}{\micro\second} on
+the same processor; seL4 reports a few hundred cycles per one-way IPC today.}
 
 \begin{table}[htbp]
   \centering
@@ -554,11 +575,14 @@ left).\source{P1L2, Linux and Mac OS architectures; Tanenbaum and Bos
 runs in kernel mode directly on the hardware.  Above it, in user mode, the
 standard library provides the system call interface as functions such as
 \texttt{open}, \texttt{close}, \texttt{read}, \texttt{write} and
-\texttt{fork}; the standard utility programs, such as the shell, editors
-and compilers, use the library; and users interact with the utility
+\texttt{fork};\caution{\texttt{printf} and \texttt{malloc} are library
+functions, not system calls: they call \texttt{write} and \texttt{mmap}
+only when they must.} the standard utility programs, such as the shell,
+editors and compilers, use the library; and users interact with the utility
 programs and with their applications.  The boundaries between these layers
 are the system call interface, the library interface and the user
-interface.
+interface.\tip{\texttt{strace ./prog} lists the system calls a program
+actually makes; \texttt{ltrace} does the same for library calls.}
 
 \begin{figure}[htbp]
   \centering
@@ -571,7 +595,9 @@ interface.
 
 The kernel itself (\cref{fig:l01-linux}, right) is entered through the
 system calls at the top, and at the bottom it handles interrupts and
-contains the dispatcher, which switches the CPU between processes.  In
+contains the dispatcher, which switches the CPU between
+processes.\margin{The dispatcher is the subject of Lesson~7, virtual memory
+and the page cache of Lesson~8, and signals of Lesson~5.}  In
 between lie three components.  The I/O component contains the terminal
 and character device drivers, the sockets, network protocols and network
 device drivers, and the file systems and block device drivers.  The memory
