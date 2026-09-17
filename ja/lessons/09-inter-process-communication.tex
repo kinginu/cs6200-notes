@@ -54,14 +54,15 @@ IPC とは，プロセスどうしの相互作用のためにオペレーティ�
   メッセージを移動させる．
 \end{definition}
 
-カーネルは，通信の確立にも，個々の IPC 操作のすべてにも関与する．送信は，
+カーネルは，\margin{x86-64 では何もしないシステムコール
+でも \SI{100}{\nano\second} の桁の時間がかかり（lmbench の
+\texttt{lat\_syscall}），Meltdown 対策の KPTI があるとその倍になりうる．}%
+通信の確立にも，個々の IPC 操作のすべてにも関与する．送信は，
 メッセージを送信側のアドレス空間からチャネルへコピーするシステムコールであり，
 受信は，それをチャネルから受信側のアドレス空間へコピーするシステムコールで
 ある．したがって，クライアントとサーバの間の要求・応答のやり取りには，ユーザ/
 カーネル境界の横断が4回とデータコピーが4回必要になる
-（\cref{fig:l09-message-ipc}）．\margin{x86-64 では何もしないシステムコール
-でも \SI{100}{\nano\second} の桁の時間がかかり（lmbench の
-\texttt{lat\_syscall}），Meltdown 対策の KPTI があるとその倍になりうる．}
+（\cref{fig:l09-message-ipc}）．
 
 \begin{figure}[htbp]
   \centering
@@ -447,7 +448,7 @@ mode)} は共有メモリオブジェクトを作成または開き，そのフ�
 ミューテックスと条件変数自体が共有領域に置かれていなければならない．そう
 することで，すべてのプロセスが同じデータ構造を操作する．
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{example}
   \label{ex:l09-pshared}
   あるプロセスが領域のレイアウトを定める．領域は同期構成要素から始まる:
@@ -458,7 +459,7 @@ typedef struct {
   char            data[1024];
 } shm_data_t;
 \end{lstlisting}
-  \needspace{6\baselineskip}
+  \Needspace{6\baselineskip}
   そしてセグメントを作成して接続する:
   \begin{lstlisting}[language=C, numbers=none]
 key_t key = ftok("/tmp/app", 120);
@@ -466,7 +467,7 @@ int id = shmget(key, sizeof(shm_data_t),
                 IPC_CREAT | IPC_EXCL | 0600);
 shm_data_t *shm = shmat(id, NULL, 0);
 \end{lstlisting}
-  \needspace{7\baselineskip}
+  \Needspace{7\baselineskip}
   さらに領域の中でプロセス共有のミューテックスを初期化する:
   \begin{lstlisting}[language=C, numbers=none]
 pthread_mutexattr_t attr;

@@ -114,7 +114,10 @@ FTP によるファイル転送や，Subversion のようなバージョン管�
 容易に理解できる．しかし，すべてのファイル操作がネットワークの往復と
 サーバでの処理の代価を払い，またサーバがすべてのクライアントのすべての操作を
 実行するので，DFS が支えられるクライアント数はサーバの処理能力によって
-制限される．
+制限される．\caution{ネットワークの速度はビット毎秒で表される．
+\SI{1}{\giga\bit\per\second} が運べるのは高々
+\SI{125}{\mega\byte\per\second} であり，ここで仮定した速度は
+ギガビット回線をほぼ使い切った値である．}
 
 \begin{figure}[htbp]
   \centering
@@ -129,11 +132,10 @@ FTP によるファイル転送や，Subversion のようなバージョン管�
 \begin{example}
   あるクライアントが \SI{1}{\gibi\byte} のファイルを，
   \SI[per-mode=symbol]{100}{\mebi\byte\per\second} で転送する
-  ネットワーク越しに扱う．要求1回ごとに \SI{1}{\milli\second} の往復が
-  かかる．\caution{ネットワークの速度はビット毎秒で表される．
-  \SI{1}{\giga\bit\per\second} が運べるのは高々
-  \SI{125}{\mega\byte\per\second} であり，ここで仮定した速度は
-  ギガビット回線をほぼ使い切った値である．}クライアントが
+  ネットワーク越しに扱う．\tip{クライアントが読むブロック数が $S/(B\,t_{\mathrm{RTT}})$---1回の
+  ダウンロードに収まる往復の回数---を超えると，ダウンロードが有利になる．
+  ここではおよそ \num{10000} ブロックである．}要求1回ごとに \SI{1}{\milli\second} の往復が
+  かかる．クライアントが
   \SI{4}{\kibi\byte} のブロックを 50 個読むなら，
   遠隔アクセスモデルでは 50 回の要求，およそ \SI{50}{\milli\second} で
   済むのに対し，ファイルのダウンロードには
@@ -141,9 +143,6 @@ FTP によるファイル転送や，Subversion のようなバージョン管�
   \num{200000} ブロックを読むなら，遠隔アクセスモデルでは往復だけで
   \SI{200}{\second} を要するが，ダウンロードは依然として
   \SI{10.2}{\second} であり，その後の読み出しはすべてローカルである．
-  \tip{クライアントが読むブロック数が $S/(B\,t_{\mathrm{RTT}})$---1回の
-  ダウンロードに収まる往復の回数---を超えると，ダウンロードが有利になる．
-  ここではおよそ \num{10000} ブロックである．}
 \end{example}
 
 \subsection{折衷案}
@@ -470,7 +469,7 @@ DFS は\emph{トランザクション}を提供することもできる．アプ
   \end{tabular}
 \end{table}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{ファイルとディレクトリ}
 \label{sec:l14-dirs}
 
@@ -643,7 +642,7 @@ NFS クライアントは，open されたファイルを表す自身のデー�
   ファイルハンドルを得ている．次のプログラムはそれを知らない．コメントは，
   何もキャッシュされていないときに各呼び出しが引き起こす主要な NFSv3 の
   要求を示す．
-  \needspace{10\baselineskip}
+  \Needspace{10\baselineskip}
   \begin{lstlisting}[language=C, numbers=none]
 char buf[4096];
 int fd = open("/home/ana/log.txt", O_RDONLY);
@@ -818,13 +817,13 @@ Nelson ら \cite{nelson1988}．}Nelson，Welch，Ousterhout
   \end{tabular}
 \end{table}
 
-これらの観測から Sprite の設計が導かれる．
+これらの観測から Sprite の設計が導かれる．\margin{Linux も
+ページキャッシュに対して同じことをする．フラッシャスレッドが
+\SI{5}{\second} ごとに起き，\SI{30}{\second} を超えてダーティなままの
+データを書き戻す（\texttt{dirty\_expire\_centisecs}）．}
 \begin{itemize}
   \item クライアントはファイルのブロックをキャッシュし，変更されたブロックを
-    30 秒の遅延をもってサーバへ書き戻す．詳細は後述する．\margin{Linux も
-    ページキャッシュに対して同じことをする．フラッシャスレッドが
-    \SI{5}{\second} ごとに起き，\SI{30}{\second} を超えてダーティなままの
-    データを書き戻す（\texttt{dirty\_expire\_centisecs}）．}
+    30 秒の遅延をもってサーバへ書き戻す．詳細は後述する．
   \item 別のクライアントが書き込んでいたファイルをあるクライアントが
     open すると，サーバはまずそのクライアントからダーティなブロックを
     回収する．
@@ -969,7 +968,7 @@ open する前にそのクライアントにそれらを書き戻すよう求め
   \end{tabular}
 \end{table}
 
-\needspace{18\baselineskip}
+\Needspace{18\baselineskip}
 \begin{keypoint}[章のまとめ]
   分散ファイルシステムは，ネットワークで結ばれたマシン上のファイルを，
   通常のファイルシステムインタフェースを通じて提供する．その構成は，単一の

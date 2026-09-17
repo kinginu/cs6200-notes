@@ -76,7 +76,7 @@ CPU スケジューラは，プロセスと，その中のスレッドが，共�
 がある場合に限られ，ランキューの側も，それが支えるアルゴリズムに合わせて
 設計される．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{実行完了型スケジューリング}
 \label{sec:l07-rtc}
 
@@ -147,7 +147,7 @@ SJF のランキューは実行時間で順序付けられていなければな�
 をともに下げる．実際，同時に到着し，実行完了型でスケジュールされるタスクに
 ついては，これより平均待ち時間の小さい順序は存在しない．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{プリエンプティブスケジューリング}
 \label{sec:l07-preemptive}
 
@@ -252,7 +252,7 @@ $\tau_{n+1} = \alpha t_n + (1-\alpha)\tau_n$ を用いる．$\alpha = 1/2$
 優先度を上回ってそのタスクが実行される．こうしてエージングはスタベー
 ションを防ぐ．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{優先度逆転}
 \label{sec:l07-inversion}
 
@@ -301,7 +301,7 @@ T1 の優先度が与えられ，T2 ではなく T3 が実行されてクリテ�
   に戻る．
 \end{definition}
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 所有者の優先度を引き上げるには，ロック操作が誰が所有者であるかを知らな
 ければならない．これも，ミューテックスのデータ構造に所有者を記録して
 おく理由の1つである（第5章）．\sidenote{1997年7月，火星に着陸した
@@ -332,7 +332,7 @@ pthread_mutex_init(&m, &attr);
   される．講義は継承のみを扱う．}
 \end{keypoint}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{ラウンドロビンスケジューリングとタイムシェアリング}
 \label{sec:l07-rr}
 
@@ -413,7 +413,7 @@ pthread_mutex_init(&m, &attr);
 示したように，タイムスライスはスケジューラとコンテキストスイッチに要する
 時間よりはるかに長くなければならない．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{タイムスライスの長さの選択}
 \label{sec:l07-timeslice}
 
@@ -578,7 +578,7 @@ CPU がタスクの実行に費やす総時間を $t_{\mathrm{run}}$，コンテ
   スライスを，I/O バウンドのタスクは短いタイムスライスを好む．
 \end{keypoint}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{多段フィードバックキュー}
 \label{sec:l07-mlfq}
 
@@ -651,7 +651,7 @@ Corbató は 1990 年にチューリング賞を受賞した．
   に留まる．
 \end{example}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Linux の $O(1)$ スケジューラ}
 \label{sec:l07-o1}
 
@@ -682,7 +682,11 @@ Linux の \term[O1すけじゅーら]{$O(1)$ スケジューラ}[O(1) scheduler]
 \end{itemize}
 
 \begin{example}
-  Bovet と Cesati が記述している Linux~2.6 カーネルでは，nice 値が与える
+  Bovet と Cesati が記述している Linux~2.6 カーネルでは，\caution{2つの
+  番号付けは向きが逆である．優先度の番号が大きいほど，すなわち nice 値が
+  大きいほど優先度は低いが，\texttt{SCHED\_FIFO} と \texttt{SCHED\_RR}
+  が用いる \texttt{sched\_priority}（1--99）は大きいほど優先度が高い．}%
+  nice 値が与える
   優先度である静的優先度が $p$ であるタイムシェアリングのタスクには，
   $p < 120$ なら $(140 - p) \times \SI{20}{\milli\second}$ の，そうで
   なければ $(140 - p) \times \SI{5}{\milli\second}$ のタイムスライスが
@@ -691,10 +695,7 @@ Linux の \term[O1すけじゅーら]{$O(1)$ スケジューラ}[O(1) scheduler]
   \SI{100}{\milli\second}，nice 値 $-10$ のプロセスは
   $30 \times 20 = \SI{600}{\milli\second}$ である．nice 値 5 のプロセスが
   対話的であれば，フィードバックによって優先度は 120 まで高められ，
-  スリープせずに計算するのであれば 130 まで下げられる．\caution{2つの
-  番号付けは向きが逆である．優先度の番号が大きいほど，すなわち nice 値が
-  大きいほど優先度は低いが，\texttt{SCHED\_FIFO} と \texttt{SCHED\_RR}
-  が用いる \texttt{sched\_priority}（1--99）は大きいほど優先度が高い．}
+  スリープせずに計算するのであれば 130 まで下げられる．
 \end{example}
 
 \begin{figure}[htbp]
@@ -721,14 +722,14 @@ Linux の \term[O1すけじゅーら]{$O(1)$ スケジューラ}[O(1) scheduler]
 \term[きげんぎれはいれつ]{期限切れ配列}[expired array]は，タイムスライス
 が満了して非アクティブとなったタスクを保持する．タスクのタイムスライスが
 満了すると，スケジューラはその優先度とタイムスライスを再計算し，タスクを
-期限切れ配列へ移す．\margin{Linux~2.6 カーネルでは，対話的と判定された
-タスクは，期限切れ配列のタスクがすでに待ちすぎている場合を除き，通常は
-アクティブ配列へ戻された．}アクティブ配列にタスクが残らなくなると，
+期限切れ配列へ移す．アクティブ配列にタスクが残らなくなると，
 スケジューラは2つの配列を交換する．これにはポインタを2つ入れ替えるだけで
 よい．この仕組みは，優先度の低いタスクにも実行の機会を与える．優先度の
 高いタスクは長いタイムスライスを受け取るものの，それを使い切れば期限切れ
 配列へ移り，アクティブ配列のすべてのタスクが，優先度の低いものも含めて，
-自分のタイムスライスを使い切るまでそこで待つからである．
+自分のタイムスライスを使い切るまでそこで待つからである．\margin{Linux~2.6 カーネルでは，対話的と判定された
+タスクは，期限切れ配列のタスクがすでに待ちすぎている場合を除き，通常は
+アクティブ配列へ戻された．}
 
 $O(1)$ スケジューラは Ingo Molnar によって Linux~2.5 の開発系列で導入され，
 Linux~2.6 のスケジューラとなった．ストリーミングメディアのような
@@ -736,7 +737,7 @@ Linux~2.6 のスケジューラとなった．ストリーミングメディア�
 ジッタが問題となり，Linux~2.6.23 では，同じく Molnar が書いた Completely
 Fair Scheduler に置き換えられた．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Linux の Completely Fair Scheduler}
 \label{sec:l07-cfs}
 
@@ -832,7 +833,7 @@ $N$ 個のタスクに対して $O(\log N)$ 時間で済む．
   \end{tabular}
 \end{table}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{マルチプロセッサ上のスケジューリング}
 \label{sec:l07-multi}
 
@@ -934,7 +935,7 @@ CPU であり，システムは複数のマルチコアプロセッサを持つ�
   $0.6 + 0.4 \times 1.5 = 1.2$ 倍，すなわち \SI{20}{\percent} 増える．
 \end{example}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{ハイパースレッディング}
 \label{sec:l07-smt}
 
@@ -989,7 +990,7 @@ CPU を複数のタスクで多重化しなければならないのは，タス�
 したがって SMT により，1つの CPU 上のマルチスレッドが I/O のレイテンシを
 隠すのとちょうど同じように，CPU はメモリアクセスのレイテンシを隠せる．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{ハイパースレッディング対応プラットフォームのスケジューリング}
 \label{sec:l07-smt-sched}
 
@@ -1040,7 +1041,7 @@ CPU を複数のタスクで多重化しなければならないのは，タス�
     は残るが，それは小さい．
 \end{description}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \begin{keypoint}
   SMT の CPU では，CPU バウンドのタスクとメモリバウンドのタスクを一緒に
   スケジュールすることで，パイプラインの奪い合いとアイドルサイクルの
@@ -1048,7 +1049,7 @@ CPU を複数のタスクで多重化しなければならないのは，タス�
   スレッド上で2種類のタスクを混ぜるべきである．
 \end{keypoint}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{ハードウェア性能カウンタ}
 \label{sec:l07-counters}
 
@@ -1108,7 +1109,7 @@ CPU バウンドである可能性が高く，LLC ミスの多いタスクはメ
   2つのハードウェアスレッド上に配置するであろう．
 \end{example}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{命令当たりサイクル数は有用な指標か}
 \label{sec:l07-cpi}
 

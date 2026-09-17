@@ -54,8 +54,10 @@
   \node[lab, anchor=east] at (95.6,9) {\iflangja{ヒープ}{heap}};
   \draw[->] ([xshift=-4mm]sv.south) -- (s1.north);
   % ---------------- operations
+  % Japanese: below the arrows; above them the wider "アンマーシャル"
+  % runs into the buffer offset "16".
   \draw[->, thick, ln-accent] (31,20) -- (44.5,20);
-  \node[op] at (37.8,20.8) {\iflangja{マーシャル}{marshal}};
+  \node[op, anchor=\iflangja{north}{south}] at (37.8,\iflangja{19.2}{20.8}) {\iflangja{マーシャル}{marshal}};
   \draw[->, thick, ln-accent] (75.5,20) -- (87,20);
-  \node[op] at (81.3,20.8) {\iflangja{アンマーシャル}{unmarshal}};
+  \node[op, anchor=\iflangja{north}{south}] at (\iflangja{82.3}{81.3},\iflangja{19.2}{20.8}) {\iflangja{アンマーシャル}{unmarshal}};
 \end{tikzpicture}

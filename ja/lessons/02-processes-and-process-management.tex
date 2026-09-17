@@ -201,14 +201,15 @@ PCB の各フィールド（\cref{fig:l02-pcb}）は，異なる時点で維持�
   \item 一部のフィールドは，対応する状態が変化したときに更新される．
     プロセスがより多くのメモリを要求すると，オペレーティングシステムは
     それを割り当て，メモリの範囲と対応付けを更新する．
-  \item その他のフィールドは，PCB 内で最新に保つにはあまりに頻繁に変化
+  \item その他のフィールドは，\margin{\texttt{/proc/PID/status} はこれらの
+    フィールドの多く---状態，親，スレッド数，メモリの範囲，シグナル
+    マスク---を表示する．x86-64 では各タスクが \SI{16}{\kibi\byte} の
+    カーネルスタックも持つ（Linux の \emph{Kernel Stacks} 文書）．}%
+    PCB 内で最新に保つにはあまりに頻繁に変化
     する．プログラムカウンタは命令ごとに変化するので，CPU が自分の
     レジスタに保持する．オペレーティングシステムは，CPU がプロセスの
     ために保持している値を集め，そのプロセスが CPU 上での実行を止める
-    たびに PCB へ退避する．\margin{\texttt{/proc/PID/status} はこれらの
-    フィールドの多く---状態，親，スレッド数，メモリの範囲，シグナル
-    マスク---を表示する．x86-64 では各タスクが \SI{16}{\kibi\byte} の
-    カーネルスタックも持つ（Linux の \emph{Kernel Stacks} 文書）．}
+    たびに PCB へ退避する．
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -414,16 +415,16 @@ D は割り込み可能・不可能の2種類の待ちであり，T は停止し
   \label{fig:l02-creation}
 \end{figure}
 
-ほとんどのオペレーティングシステムは，プロセスを生成する2つの機構を
+ほとんどのオペレーティングシステムは，\caution{\texttt{fork} がコピーするのはメモリでは
+なくページテーブルである．ページが複製されるのは，どちらかが書き込む
+ときだけである（コピーオンライト，第8章）．}%
+プロセスを生成する2つの機構を
 提供する．Unix ではそれらを \texttt{fork} と \texttt{exec} と呼ぶ．
 \begin{description}
   \item[\texttt{fork}] オペレーティングシステムは，
-    \term[fork]{\texttt{fork}}[fork] システムコールによって子のために
+    \term*{\texttt{fork}}[fork]\index{fork@\texttt{fork}} システムコールによって子のために
     新しい PCB を作り，親の PCB をそこへコピーし，親のアドレス空間の
-    複製を子に与える．\caution{\texttt{fork} がコピーするのはメモリでは
-    なくページテーブルである．ページが複製されるのは，どちらかが書き込む
-    ときだけである（コピーオンライト，第8章）．}%
-    子は親の複製であり，同じプログラムと同じプログラム
+    複製を子に与える．子は親の複製であり，同じプログラムと同じプログラム
     カウンタを持つので，呼び出しの後，親も子も \texttt{fork} の次の命令
     から実行を続ける．
   \item[\texttt{exec}] プロセスは，\term[exec]{\texttt{exec}}[exec]
@@ -454,7 +455,7 @@ Android は，アプリケーションを素早く起動するために \texttt{
 Zygote が fork し，Zygote がロードしたものをすでにすべて含む子が，
 そのアプリケーションのプロセスとなる．
 
-\needspace{18\baselineskip}
+\Needspace{18\baselineskip}
 \begin{example}
   \texttt{fork} で子プロセスを生成し，その中で \texttt{exec} により
   \texttt{ls -l} を実行し，子が終わるまで待つプログラムを示す．
@@ -547,7 +548,7 @@ $t_{\mathrm{sched}}$ に対してタイムスライスが長いほど，有用�
 時間の半分が失われ，その 10 倍の長さのタイムスライスなら有用な割合は
 $10/11 \approx \SI{91}{\percent}$ となる．
 
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 \begin{example}
   $t_{\mathrm{sched}} = \SI{0.5}{\milli\second}$ とする．タイムスライス
   が \SI{2}{\milli\second} なら，\cref{eq:l02-useful} より有用な処理は
@@ -604,7 +605,7 @@ I/O キューにあるプロセスは，デバイスが要求を完了するま�
 制御の外にある．スケジューラが選ぶのはレディキューにあるプロセスだけで
 あり，いつ，どのプロセスへコンテキストを切り替えるかを決める．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{keypoint}
   スケジューラは実行中のプロセスをプリエンプトし，レディキューから次の
   プロセスを選んでディスパッチする．スケジューラは同じ CPU 上で実行
@@ -675,7 +676,7 @@ IPC には基本となる2つの種類がある（\cref{fig:l02-ipc}）．
 \texttt{lat\_unix}）．最小のシステムコール1回だけでも
 \SI{100}{\nano\second} 程度を要する．}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{example}
   カーネルのチャネルを通じてメッセージを1つ送るコストが
   \SI{6}{\micro\second}（2回のシステムコールと2回のコピー）であり，

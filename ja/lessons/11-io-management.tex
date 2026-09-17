@@ -195,12 +195,13 @@ dd if=/dev/sda of=head.img bs=512 count=1
   ファイルとして表現されるので，通常のファイル操作でデバイスを扱える．
 \end{keypoint}
 
+\Needspace{6\baselineskip}
 \section{CPU とデバイスの相互作用}
 \label{sec:l11-interactions}
 
-デバイスを使うには，CPU がそのレジスタをアドレス指定でき，デバイスが注意を
-必要とするときに CPU へ伝えられなければならない．\source{P3L5，CPU と
-デバイスの相互作用；OSTEP ch.~36；Silberschatz ら ch.~12．}レジスタを
+デバイスを使うには，\source{P3L5，CPU と
+デバイスの相互作用；OSTEP ch.~36；Silberschatz ら ch.~12．}CPU がそのレジスタをアドレス指定でき，デバイスが注意を
+必要とするときに CPU へ伝えられなければならない．レジスタを
 アドレス指定する方法は2つある．
 
 \begin{definition}[メモリマップドI/O]
@@ -520,7 +521,7 @@ Silberschatz ら ch.~12．}それを発行したスレッドは待つことも�
 デバイスのクラスまたはドライバに対して定義された要求コード，そして要求に
 応じて要求固有のデータへのポインタを取る．
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 \begin{example}
   あるプログラムが1台目の光学ドライブのトレイを開く．
   \begin{lstlisting}[language=C, numbers=none]
@@ -576,7 +577,9 @@ VFS は下層のファイルシステムの詳細をすべてアプリケーシ�
 \source{P3L5，仮想ファイルシステムの抽象化，ディスク上の VFS；OSTEP
 ch.~39--40；Kerrisk ch.~14．}VFS が操作する要素は\emph{ファイル}である．
 プロセスは，開いたファイルをファイルディスクリプタによって参照する
-（\cref{fig:l11-vfs-objects}）．
+（\cref{fig:l11-vfs-objects}）．\margin{記述子 0，1，2 はプロセスの標準入力・標準出力・
+標準エラーである．既定では1つのプロセスが同時に開けるファイルは
+\num{1024} 個である（\texttt{ulimit -n}）．}
 
 \begin{figure}[tb]
   \centering
@@ -593,9 +596,7 @@ ch.~39--40；Kerrisk ch.~14．}VFS が操作する要素は\emph{ファイル}�
   プロセスにとっての開いたファイルの，オペレーティングシステムによる表現で
   ある．プロセスが \texttt{open} から得て，\texttt{read}，\texttt{write}，
   \texttt{sendfile}，ロック，\texttt{close} といったファイルへの操作に渡す
-  小さな整数である．\margin{記述子 0，1，2 はプロセスの標準入力・標準出力・
-  標準エラーである．既定では1つのプロセスが同時に開けるファイルは
-  \num{1024} 個である（\texttt{ulimit -n}）．}
+  小さな整数である．
 \end{definition}
 
 ファイル自身の属性と，そのデータブロックの位置は，ファイルの iノードに記録
@@ -699,7 +700,7 @@ Linux は長らく，ディスク上の構造が VFS の抽象化と密接に対
   \label{fig:l11-ext2}
 \end{figure}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{iノード}
 \label{sec:l11-inodes}
 
@@ -735,10 +736,7 @@ iノードはファイルの全ブロックのブロック番号を保持する�
 \end{description}
 \emph{三重間接ポインタ}はさらにもう1段を加える．ext2 と多くの Unix 系
 ファイルシステムの iノードは，12 個の直接ポインタと，各種類の間接ポインタを
-1つずつ含む．\margin{ext2 の実際の値は，iノードが \SI{128}{\byte} で
-パーティション \SI{16}{\kibi\byte} ごとに1つ，ブロック番号が4バイトであり，
-ブロックが \SI{4}{\kibi\byte} なら $P = 1024$ となる
-（\texttt{mke2fs.conf(5)}）．}
+1つずつ含む．
 
 \begin{figure}[htbp]
   \centering
@@ -750,7 +748,10 @@ iノードはファイルの全ブロックのブロック番号を保持する�
 \end{figure}
 
 ブロックサイズを $B$，ポインタの大きさを $p$ とすると，1ブロックには
-$P = B/p$ 個のポインタが入る．$n_d$ 個の直接ポインタと，3種類の間接ポインタ
+$P = B/p$ 個のポインタが入る．\margin{ext2 の実際の値は，iノードが \SI{128}{\byte} で
+パーティション \SI{16}{\kibi\byte} ごとに1つ，ブロック番号が4バイトであり，
+ブロックが \SI{4}{\kibi\byte} なら $P = 1024$ となる
+（\texttt{mke2fs.conf(5)}）．}$n_d$ 個の直接ポインタと，3種類の間接ポインタ
 を1つずつ持つ iノードが扱えるファイルの大きさは，最大で
 \begin{equation}
   S_{\max} \;=\; \bigl(n_d + P + P^2 + P^3\bigr) \times B .
@@ -794,12 +795,14 @@ $P = B/p$ 個のポインタが入る．$n_d$ 個の直接ポインタと，3種
   ディスクアクセスという代償を払う．
 \end{keypoint}
 
+\Needspace{6\baselineskip}
 \section{ディスクアクセスの最適化}
 \label{sec:l11-optim}
 
-ファイルへのアクセスにはディスクアクセスのコストがかかり，ハードディスクでは
-逐次的でないアクセスのたびにヘッドを動かす時間がかかる．\source{P3L5，
-ディスクアクセスの最適化；OSTEP ch.~37，40，42；Kerrisk ch.~13--14．}
+ファイルへのアクセスには\source{P3L5，
+ディスクアクセスの最適化；OSTEP ch.~37，40，42；Kerrisk ch.~13--14．}%
+ディスクアクセスのコストがかかり，ハードディスクでは
+逐次的でないアクセスのたびにヘッドを動かす時間がかかる．
 ファイルシステムは，ファイルアクセスのオーバーヘッドを減らすために4つの技法
 を用いる（\cref{tab:l11-optim}）．\margin{これらの技法が埋めようとする差は
 大きい．\num{7200}~rpm のディスクは逐次読み出しでは
@@ -838,7 +841,7 @@ $P = B/p$ 個のポインタが入る．$n_d$ 個の直接ポインタと，3種
 
 更新を確実に永続化しなければならないプロセスは，書き込みに続けて
 \texttt{fsync} を呼ぶ．
-\needspace{5\baselineskip}
+\Needspace{5\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 write(fd, rec, sizeof *rec);  /* キャッシュを更新 */
 fsync(fd);                    /* ディスクへ書き出す */
@@ -864,7 +867,7 @@ fsync(fd);                    /* ディスクへ書き出す */
   備え，NVMe では通常 \texttt{none} を使う．}
 \end{example}
 
-\needspace{5\baselineskip}
+\Needspace{5\baselineskip}
 \subsection{プリフェッチ}
 
 要求されたよりも多くのブロックを読むことを
@@ -887,12 +890,13 @@ fsync(fd);                    /* ディスクへ書き出す */
 ディスクの専用領域へ逐次的に書き，記録した更新を定期的に本来のディスク上の
 位置へ反映する（\cref{fig:l11-journal}）．ジャーナルはディスク上にあるので，
 そこに記録された更新はクラッシュを生き延び，後から反映できる．%
-\caution{ジャーナリングは書き込みの総量を減らすわけではない．記録したブロック
-は2回書かれる．散在した書き込みを，1回の逐次書き込みと後でまとめて行う更新に
-置き換えるのである．}ext3 と ext4 のファイルシステムは，ext2 の設計にこのような
+ext3 と ext4 のファイルシステムは，ext2 の設計にこのような
 ジャーナルを加えたものである．
 既定ではメタデータブロックだけをログに記録し，ファイルデータは最終的な位置へ
-直接書く．データもログに記録することは選択肢として用意されている．
+直接書く．データもログに記録することは選択肢として用意されている．%
+\caution{ジャーナリングは書き込みの総量を減らすわけではない．記録したブロック
+は2回書かれる．散在した書き込みを，1回の逐次書き込みと後でまとめて行う更新に
+置き換えるのである．}
 
 \begin{figure}[htbp]
   \centering
@@ -902,7 +906,7 @@ fsync(fd);                    /* ディスクへ書き出す */
   \label{fig:l11-journal}
 \end{figure}
 
-\needspace{16\baselineskip}
+\Needspace{16\baselineskip}
 \begin{keypoint}[章のまとめ]
   I/O デバイスはコマンド・データ・ステータスの各レジスタを見せ，PCIe などの
   インターコネクトを通じて到達され，オペレーティングシステムが標準化した

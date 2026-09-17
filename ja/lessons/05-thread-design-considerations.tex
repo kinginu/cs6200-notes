@@ -4,7 +4,7 @@
 \chapter{スレッド設計上の考慮事項}
 \lessoninfo{
   video={P2L4},
-  textbook={OSTEP \cite{ostep} ch.~6，26--28；Silberschatz ら \cite{silberschatz2018} ch.~4；Kerrisk \cite{kerrisk2010} ch.~20--22，28},
+  textbook={OSTEP \cite{ostep} ch.~6，26--28；Silberschatz ら \cite{silberschatz2018} ch.~4；Kerrisk \cite{kerrisk2010} ch.~\mbox{20--22，28}},
   keywords={ハードプロセス状態，ライトプロセス状態，軽量プロセス，レッドゾーン，適応型ミューテックス，リーパスレッド，割り込みハンドラ，シグナルハンドラ，シグナルマスク，トップハーフ，ボトムハーフ，リアルタイムシグナル，タスク，NPTL},
 }
 
@@ -76,15 +76,15 @@ PCB にはプロセスに共通の情報を残す．\margin{x86-64 の Linux で
 
 カーネルが同じプロセスの2つのカーネルレベルスレッドを切り替えるとき，仮想
 アドレスの対応付けは有効なままであり，保存・復元しなければならないのは
-個々のスレッドに属する状態だけである．\tip{プロセスのすべてのスレッドに
-ついて有効ならハード状態，現在実行中のスレッドについてだけ有効ならライト
-状態である．}その状態の一部はユーザレベル
+個々のスレッドに属する状態だけである．その状態の一部はユーザレベル
 スレッドに関わる．どのシグナルがマスクされているか，および実行中の
 システムコールの引数は，プロセス全体ではなく，そのカーネルレベルスレッド上
 で現在実行しているユーザレベルスレッドに属する．こうしてプロセスの状態は
-2つの部分に分かれる．
+2つの部分に分かれる．\tip{プロセスのすべてのスレッドに
+ついて有効ならハード状態，現在実行中のスレッドについてだけ有効ならライト
+状態である．}
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{definition}[ハードプロセス状態とライトプロセス状態]
   \term[はーどぷろせすじょうたい]{ハードプロセス状態}[hard process state]%
   とは，プロセスの状態のうち，その中で実行されるすべてのユーザレベル
@@ -224,7 +224,7 @@ Stein と Shah のライブラリは，スレッドを生成するとスレッ�
   \label{fig:l05-ult-layout}
 \end{figure}
 
-\needspace{13\baselineskip}
+\Needspace{13\baselineskip}
 \begin{example}
   あるライブラリが各スレッドに \SI{64}{\kibi\byte} のブロックを与える．
   下端に \SI{4}{\kibi\byte} のレッドゾーン，\SI{56}{\kibi\byte} のスタック，
@@ -291,7 +291,7 @@ SunOS~5.0 のカーネルは，プロセスとスレッドについて4種類の
 カーネルは，カーネルレベルスレッドがブロックしたことなど，ライブラリの
 スレッドに影響する事象をライブラリに通知できる．
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \begin{example}
   あるプロセスが6つのユーザレベルスレッドを持ち，そのうち同時に実行される
   必要があるのは高々3つであるとする．\cref{tab:l05-interaction} は，
@@ -448,16 +448,16 @@ T1 をプリエンプトして T3 をスケジュールする．
 
 スレッドの生成は，そのデータ構造とスタックを割り当てて初期化することであり，
 破棄はそれらを解放することである．アプリケーションはスレッドを頻繁に生成・
-破棄するので，これらの構造を再利用することには利点がある．スレッドが終了
+破棄するので，これらの構造を再利用することには利点がある．\margin{glibc も NPTL のスレッドに
+対して同じことを行う．解放されたスタックは最大 \SI{40}{\mebi\byte} の
+キャッシュ（チューナブル \texttt{glibc.pthread.stack\_cache\_size}）に残り，
+次の \texttt{pthread\_create} に渡される．}スレッドが終了
 しても，その構造はすぐには解放されず，スレッドは\emph{デスロー}（death
 row）と呼ばれるリストに置かれる．\term[りーぱすれっど]{リーパスレッド}%
 [reaper thread]が定期的に実行され，デスロー上のスレッドを破棄してその
 データ構造を解放する．リーパが実行される前にスレッド生成の要求が届いた
 場合には，デスロー上のスレッドの構造とスタックが再利用され，それらを
-割り当てて初期化するコストが節約される．\margin{glibc も NPTL のスレッドに
-対して同じことを行う．解放されたスタックは最大 \SI{40}{\mebi\byte} の
-キャッシュ（チューナブル \texttt{glibc.pthread.stack\_cache\_size}）に残り，
-次の \texttt{pthread\_create} に渡される．}
+割り当てて初期化するコストが節約される．
 
 \begin{keypoint}
   カーネルとユーザレベルライブラリは，それぞれ自分のスレッドしか見ない．
@@ -648,7 +648,7 @@ ch.~20--22．}このことは，ハンドラが共有状態にアクセスする
   割り込みまたはシグナルが有効（1）か無効（0）かを示す．
 \end{definition}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 クリティカルセクションの前後でシグナルを無効化するスレッドは，次の形を
 とる．
 \begin{lstlisting}[language=C, numbers=none]
@@ -681,7 +681,7 @@ reset_field_in_mask(mask);  // 有効化
 \texttt{SIG\_BLOCK}，\texttt{SIG\_UNBLOCK}，\texttt{SIG\_SETMASK} のいずれ
 かの操作を取る．
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 \begin{example}
   上の形を POSIX の呼び出しで書くと，同じミューテックスをロックする
   \texttt{SIGALRM} のハンドラに対して次のようになる．
@@ -707,7 +707,7 @@ pthread_sigmask(SIG_SETMASK, &old, NULL);  // 復元
 するようにすれば，他のすべてのコアでその処理が引き起こすオーバーヘッドと
 乱れを避けられる．
 
-\needspace{5\baselineskip}
+\Needspace{5\baselineskip}
 \begin{keypoint}
   ハンドラは割り込まれたスレッドの文脈で実行される．ハンドラが必要とする
   ミューテックスを保持するコードは，それを保持している間，対応する割り込み
@@ -908,7 +908,7 @@ Linux カーネルはプロセスとスレッドを区別しない．\source{P2L
   マルチスレッドプロセスは複数のタスクからなる．
 \end{definition}
 
-\needspace{13\baselineskip}
+\Needspace{13\baselineskip}
 この構造体の主なフィールドは次のとおりである．
 \begin{lstlisting}[language=C, numbers=none]
 struct task_struct {       // 抜粋，Linux 3.x

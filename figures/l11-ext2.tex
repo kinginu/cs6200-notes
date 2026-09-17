@@ -26,10 +26,12 @@
   \bseg{58}{76}{ln-box}{\iflangja{iノード\\ビットマップ}{inode\\bitmap}}
   \bseg{76}{94}{white}{\iflangja{iノード}{inodes}}
   \bseg{94}{116}{white}{\iflangja{データ\\ブロック}{data\\blocks}}
-  \node[note] at (11.5,-5) {\iflangja{ファイルシステム全体の数とサイズ（コピー）}{file-system-wide counts and sizes (copy)}};
-  \node[note] at (30.5,-5) {\iflangja{全ブロックグループの記述子（コピー）}{descriptors of all groups (copy)}};
-  \node[note] at (49,-5) {\iflangja{空きブロックを記録}{tracks free blocks}};
-  \node[note] at (67,-5) {\iflangja{空き iノードを記録}{tracks free inodes}};
-  \node[note] at (85,-5) {\iflangja{iノード番号の連続した範囲}{a range of the inode numbers}};
-  \node[note] at (105,-5) {\iflangja{ファイルのデータ}{file data}};
+  % Japanese notes: explicit breaks between words instead of mid-word breaks
+  % at the text width ("ファイルシステム" needs the wider first note).
+  \node[note, text width=\iflangja{18.8}{17}mm] at (11.5,-5) {\iflangja{ファイルシステム\\全体の数とサイズ\\（コピー）}{file-system-wide counts and sizes (copy)}};
+  \node[note] at (30.5,-5) {\iflangja{全ブロック\\グループの\\記述子（コピー）}{descriptors of all groups (copy)}};
+  \node[note] at (49,-5) {\iflangja{空きブロック\\を記録}{tracks free blocks}};
+  \node[note] at (67,-5) {\iflangja{空き iノード\\を記録}{tracks free inodes}};
+  \node[note] at (85,-5) {\iflangja{iノード番号の\\連続した範囲}{a range of the inode numbers}};
+  \node[note] at (105,-5) {\iflangja{ファイルの\\データ}{file data}};
 \end{tikzpicture}

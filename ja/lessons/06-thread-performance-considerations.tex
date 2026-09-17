@@ -83,7 +83,7 @@ $(k + i - 1)\, s$ に完了する．これらの完了時刻から2つの指標�
 完了率が支配的になる．したがってどちらのモデルが優れているかは，指標にも
 要求の数にも依存する．
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{スレッドの有用性}
 \label{sec:l06-useful}
 
@@ -122,7 +122,7 @@ $(k + i - 1)\, s$ に完了する．これらの完了時刻から2つの指標�
   待つという事実を覆い隠す．
 \end{example}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{性能指標}
 \label{sec:l06-metrics}
 
@@ -179,7 +179,8 @@ ch.~5．}
   \caption{性能指標と，典型的にそれに関心を持つ立場．}
   \label{tab:l06-metrics}
   \small
-  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.25\linewidth}>{\raggedright\arraybackslash}p{0.45\linewidth}>{\raggedright\arraybackslash}p{0.22\linewidth}@{}}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.25\linewidth}>{\raggedright\arraybackslash}p{0.45\linewidth}>{\raggedright\arraybackslash}p{0.25\linewidth}@{}}
     \toprule
     指標 & 測るもの & 関心を持つ立場 \\
     \midrule
@@ -218,7 +219,7 @@ ch.~5．}
   たいてい「場合による」である．
 \end{keypoint}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{マルチプロセスサーバとマルチスレッドサーバ}
 \label{sec:l06-mp-mt}
 
@@ -290,7 +291,7 @@ Silberschatz ら ch.~4．}クライアントが要求を送り，サーバは
   \label{fig:l06-mp-mt}
 \end{figure}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{イベント駆動モデル}
 \label{sec:l06-event}
 
@@ -463,7 +464,7 @@ for (;;) {                            /* ディスパッチャ */
   メモリ，コンテキストスイッチ，同期を節約できる．
 \end{keypoint}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{ブロッキング操作とヘルパ}
 \label{sec:l06-helpers}
 
@@ -572,7 +573,7 @@ Linux でバッファ付きのファイル I/O まで扱えるのは \texttt{io\
   \end{tabular}
 \end{table}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Flash ウェブサーバ}
 \label{sec:l06-flash}
 
@@ -665,7 +666,7 @@ Flash はこのアーキテクチャに，要求当たりの作業量を減ら�
 ある．これらはサーバのアーキテクチャとは独立であり，この事実は
 \cref{sec:l06-methodology}の評価において重要になる．
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Apache ウェブサーバ}
 \label{sec:l06-apache}
 
@@ -705,7 +706,7 @@ Flash はこのアーキテクチャに，要求当たりの作業量を減ら�
   \texttt{event} はアイドルな接続を監視するイベントループを加える．
 \end{note}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{実験の方法論}
 \label{sec:l06-methodology}
 
@@ -804,7 +805,7 @@ $c$ とバイト当たり $b$ がかかるとすれば，一度に1つの接続�
   $R$ は下がり続ける．
 \end{example}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{実験結果}
 \label{sec:l06-results}
 
@@ -874,7 +875,7 @@ $c$ とバイト当たり $b$ がかかるとすれば，一度に1つの接続�
   最良というより，ワークロード全体にわたって良い性能を示す．
 \end{keypoint}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{実験の設計と実施}
 \label{sec:l06-design}
 
@@ -956,7 +957,7 @@ $1 - 0.99^{100} \approx 63\,\%$ である．Dean と Barroso はこれを
   パーセンタイルとスループットの平均を，そのばらつきとともに報告する．
 \end{example}
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 \begin{keypoint}[章のまとめ]
   どの設計が優れているかは，指標とワークロードに依存する．並行サーバは
   プロセス（MP），スレッド（MT），あるいは1つのイベント駆動のスレッド

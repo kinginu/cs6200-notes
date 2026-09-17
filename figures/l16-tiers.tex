@@ -26,7 +26,8 @@
   \node[ttl] at (0,24) {\iflangja{(b) 各層が別のマシン上にある}{(b) each tier on its own machine}};
   \node[cl] (c2) at (7,9) {\iflangja{クライアント}{clients}};
   \foreach \x/\n in {33/{\iflangja{Web サーバ}{web server}}, 69/{\iflangja{アプリケーションサーバ}{application server}}, 105/{\iflangja{データベースサーバ}{database server}}} {
-    \draw[machine] (\x-13,0) rectangle (\x+13,20);
+    % Japanese: 2 mm wider boxes, or "アプリケーションサーバ" touches the frame.
+    \draw[machine] (\x-\iflangja{14}{13},0) rectangle (\x+\iflangja{14}{13},20);
     \node[who] at (\x-12.5,19.5) {\n};
   }
   \node[tier] (p2) at (33,8) {\iflangja{プレゼンテーション}{presentation}};

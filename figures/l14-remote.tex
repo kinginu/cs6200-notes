@@ -11,10 +11,12 @@
   \def\lblocks#1#2#3#4{%
     \foreach \i in {0,...,5} { \draw[fill=white] (#1+\i*4,#2) rectangle ++(4,4); }
     \foreach \i in {#3} { \draw[fill=#4] (#1+\i*4,#2) rectangle ++(4,4); }}
-  \foreach \px/\t in {0/{\iflangja{(a) アップロード・ダウンロード}{(a) upload/download}},
-                      40/{\iflangja{(b) 遠隔アクセス}{(b) remote access}},
-                      80/{\iflangja{(c) 折衷案}{(c) compromise}}} {
-    \node[ttl] at (\px,44) {\t};
+  % \ts: extra title shift in the Japanese edition, where the (a) title is
+  % wider than its panel and would run into the (b) title.
+  \foreach \px/\ts/\t in {0/0/{\iflangja{(a) アップロード・ダウンロード}{(a) upload/download}},
+                      40/2/{\iflangja{(b) 遠隔アクセス}{(b) remote access}},
+                      80/2/{\iflangja{(c) 折衷案}{(c) compromise}}} {
+    \node[ttl] at (\px+\iflangja{\ts}{0},44) {\t};
     \draw[machine] (\px+1,26) rectangle (\px+37,39);
     \node[who] at (\px+1.5,38.6) {\iflangja{クライアント}{client}};
     \draw[machine, fill=ln-box] (\px+1,0) rectangle (\px+37,11);

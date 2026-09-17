@@ -221,7 +221,7 @@ Kivity ら \cite{kivity2007}；Silberschatz ら ch.~18．}
 はなく，通常のアプリケーションも VM の隣でホスト上でそのまま動き続ける
 （\cref{fig:l12-models}b）．
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \term{KVM}[Kernel-based Virtual Machine]%
 \index{Kernel-based Virtual Machine|see{KVM}} \cite{kivity2007} は，Linux の
 ホスト型ハイパーバイザである．ロード可能なカーネルモジュールが Linux を
@@ -445,7 +445,7 @@ Silberschatz ら ch.~18．}この手法はスタンフォード大学の Mendel 
   \label{fig:l12-bt}
 \end{figure}
 
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 \begin{example}
   ゲストのカーネルコードのあるブロックは，ネイティブには
   \SI{5}{\micro\second} で実行される．\sidenote{バイナリ変換は，ハードウェア
@@ -621,7 +621,7 @@ $\to$ 物理はゲストのもの，物理 $\to$ マシンはハイパーバイ�
 \SI{64}{\mega\byte} を占めるので，ハイパーバイザに入るのにページテーブルの
 切り替えも TLB のフラッシュも必要ない \cite{barham2003}．
 
-\needspace{16\baselineskip}
+\Needspace{5\baselineskip}
 \begin{example}
   Xen 上の準仮想化された Linux ゲストが，1回のハイパーコールで3つのページ
   テーブルエントリを変更する．各要求は，ページテーブルエントリのマシンアドレス
@@ -670,7 +670,7 @@ CPU とメモリの多様性は小さい．命令セットアーキテクチャ�
   \label{fig:l12-devices}
 \end{figure}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \subsection{パススルーモデル}
 
 \begin{definition}[パススルーモデル]
@@ -876,6 +876,7 @@ DMA（第11章）で使われるアドレスを変換し割り込みを再対応
   \end{tabular}
 \end{table}
 
+\Needspace{16\baselineskip}
 \begin{keypoint}[章のまとめ]
   仮想化は1台のマシン上で複数のオペレーティングシステムを並行に動かす．
   ハイパーバイザは各 VM に，効率的で隔離されたマシンの複製を与える．ベアメタル

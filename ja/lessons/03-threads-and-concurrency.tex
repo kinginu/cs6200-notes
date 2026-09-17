@@ -248,7 +248,7 @@ Birrell が述べている次の2つの基本機構を全体を通じて用い�
 除けば親と子は対等である．どちらもプロセスのすべての資源にアクセスでき，
 異なるのは実行コンテキストだけである．
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{example}
   親スレッドと子スレッドがどちらも共有リストに挿入する．
   \begin{lstlisting}[language=C, numbers=none]
@@ -319,7 +319,7 @@ Join(t1);                   // ここでは省略可
 である．これは，一度に1つのスレッドしか実行してはならない操作，典型的には
 共有状態の更新を行うプログラムの部分である．
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 Birrell の記法では，クリティカルセクションをブロックとして書く．
 \begin{lstlisting}[language=C, numbers=none]
 Lock(m) {
@@ -336,7 +336,7 @@ Lock(m) {
 挙動であり，Linux の既定の型の挙動でもある．再帰的ミューテックスは明示的に
 要求しなければならない．}
 
-\needspace{12\baselineskip}
+\Needspace{12\baselineskip}
 \begin{example}
   リストを保護するミューテックスを用いると，\cref{sec:l03-creation}の
   挿入は安全になる．
@@ -390,7 +390,7 @@ void safe_insert(int i) {
   可能性があるときに条件変数を通じて待っているスレッドに通知する．
 \end{definition}
 
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 条件変数 \texttt{list\_full} を用いると，両者は次のようになる．
 \begin{lstlisting}[language=C, numbers=none]
 // 消費者: print_and_clear
@@ -400,7 +400,7 @@ Lock(m) {
   my_list.print_and_remove_all();
 } // unlock
 \end{lstlisting}
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 // 生産者: safe_insert
 Lock(m) {
@@ -426,7 +426,7 @@ Birrell のインタフェースには，条件変数 \texttt{cond} に対する
     \texttt{cond} で待っているすべてのスレッドを起こす．
 \end{description}
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 条件変数は，そのミューテックスへの参照と待っているスレッドのリストを保持
 するデータ構造で表される．wait 操作は次のように進む．
 \begin{lstlisting}[language=C, numbers=none]
@@ -469,7 +469,7 @@ signal は，条件が成り立っているかもしれないことを伝える�
 起こされたスレッドがすぐにミューテックスを獲得できる保証はなく，獲得
 したら条件を再検査しなければならない．
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{keypoint}
   \texttt{Wait} は必ずミューテックスを保持した状態で，条件を再検査する
   \texttt{while} ループの中で呼び出す．signal または broadcast は，条件
@@ -533,7 +533,7 @@ Lock(counter_mutex) {
     Signal(write_phase);
 } // unlock
 \end{lstlisting}
-\needspace{14\baselineskip}
+\Needspace{14\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 // ライタ
 Lock(counter_mutex) {
@@ -601,7 +601,7 @@ Lock(counter_mutex) {
   \end{tabular}
 \end{table}
 
-\needspace{14\baselineskip}
+\Needspace{14\baselineskip}
 \subsection{クリティカルセクションの構造}
 
 リーダ・ライタ問題の解は，ミューテックスと条件変数を組み合わせて使うコード
@@ -616,7 +616,7 @@ Lock(mutex) {
       cond_var_with_correct_waiting_threads);
 } // unlock
 \end{lstlisting}
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 代理変数を用いる場合は，資源に対する操作をミューテックスの外に出し，全体を
 3つの部分に分ける．
 \begin{lstlisting}[language=C, numbers=none]
@@ -636,7 +636,7 @@ Lock(mutex) {
 } // unlock
 \end{lstlisting}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \begin{keypoint}
   ミューテックスだけで強制できる方針は「一度に1つのスレッド」の1つしか
   ない．短いクリティカルセクションで更新される代理変数を用いると，
@@ -695,7 +695,7 @@ Lock(mutex) {
 スプリアスウェイクアップと呼ぶ．\texttt{while} ループはどちらにも対処
 する．}
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 通知が共有状態に依存しない場合，対策は通知をアンロックの後に移すことで
 ある．
 \begin{lstlisting}[language=C, numbers=none]
@@ -732,7 +732,7 @@ Silberschatz ら ch.~8．}
   しない状況である．
 \end{definition}
 
-\needspace{10\baselineskip}
+\Needspace{10\baselineskip}
 最も単純な場合は，2つのスレッドと2つのミューテックスが関わるものである．
 どちらのスレッドも \texttt{foo(A, B)} を実行するために資源 A と B を必要と
 するが，それらを保護するミューテックスを逆の順序でロックする．
@@ -819,7 +819,7 @@ T1 が \texttt{m\_A} を，T2 が \texttt{m\_B} を，どちらも2番目の
     を再起動する．
 \end{description}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{keypoint}
   デッドロックは待ちグラフの閉路である．すべてのミューテックスを1つの
   大域的な順序で獲得すれば，実行時コストなしにそのような閉路を防止できる．
