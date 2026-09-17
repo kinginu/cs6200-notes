@@ -199,7 +199,7 @@ accesses the memory.  This policy is called
 access to a page faults, and the operating system then allocates a page
 frame for the page and establishes the mapping in the page table.
 
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 \begin{example}
   The following code reserves \SI{256}{\mebi\byte} but receives page frames
   only as the loop touches the $2^{28}/2^{12} = 65\,536$ pages one after
@@ -819,7 +819,7 @@ allocation touches no shared state and takes no lock (Lesson~10).}
   496$ bytes unused, about 165 bytes per object.
 \end{example}
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{keypoint}
   Linux allocates page frames with a buddy allocator, whose power-of-two
   blocks are found and merged without searching but which rounds requests
@@ -968,7 +968,7 @@ variation of LRU that gives pages a second chance.
   \end{tabular}
 \end{table}
 
-\needspace{10\baselineskip}
+\Needspace{10\baselineskip}
 \begin{keypoint}
   Demand paging brings a page in on the page fault that first needs it, and
   a page-out daemon frees frames before memory runs out.  Which pages leave
@@ -1082,7 +1082,7 @@ process dirties pages as fast as they are copied.\margin{This loop is called
 the process at the destination at once and faults its pages across the
 network.}
 
-\needspace{14\baselineskip}
+\Needspace{14\baselineskip}
 \begin{example}
   A process of 50\,000 pages is migrated over a connection that copies
   25\,000 pages per second, while the process dirties 2000 distinct pages
@@ -1106,7 +1106,7 @@ network.}
   \end{center}
 \end{example}
 
-\needspace{14\baselineskip}
+\Needspace{14\baselineskip}
 
 \begin{keypoint}[Lesson summary]
   Virtual memory decouples address spaces from physical memory; the

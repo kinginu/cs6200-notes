@@ -338,7 +338,10 @@ is in one of the following states (\cref{fig:l02-states}):
     indicates success or an error; a process that causes a fault, such as
     an invalid memory access, is terminated by the operating system.
     Either way the process enters the
-    \term{terminated state}[終了状態].
+    \term{terminated state}[終了状態].\caution{Linux does not separate
+    ready from running: both are \texttt{TASK\_RUNNING}, which \texttt{ps}
+    prints as R\@.  S and D are the two kinds of waiting, interruptible and
+    uninterruptible, and T is a stopped process.}
 \end{description}
 
 \begin{figure}[htbp]
@@ -349,10 +352,7 @@ is in one of the following states (\cref{fig:l02-states}):
 \end{figure}
 
 \Cref{tab:l02-trace} traces one process through its life
-cycle.\caution{Linux does not separate ready from running: both are
-\texttt{TASK\_RUNNING}, which \texttt{ps} prints as R\@.  S and D are the
-two kinds of waiting, interruptible and uninterruptible, and T is a stopped
-process.}  Note that
+cycle.  Note that
 only one transition, the dispatch, gives the process the CPU; every other
 transition takes it away or leaves the process without it.
 
@@ -411,7 +411,7 @@ process is \texttt{systemd}.)
 Most operating systems provide two mechanisms for creating processes, in
 Unix called \texttt{fork} and \texttt{exec}:
 \begin{description}
-  \item[\texttt{fork}] With the \term[fork]{\texttt{fork}}[fork] system
+  \item[\texttt{fork}] With the \term*{\texttt{fork}}[fork]\index{fork@\texttt{fork}} system
     call the operating system creates a new PCB for the child, copies the
     PCB of the parent into it, and gives the child a copy of the parent's
     address space.\caution{\texttt{fork} copies page tables, not memory:
@@ -448,7 +448,7 @@ To launch an application, Zygote forks, and the child, which already
 contains everything Zygote has loaded, becomes the process of the
 application.
 
-\needspace{18\baselineskip}
+\Needspace{18\baselineskip}
 \begin{example}
   A program that creates a child process with \texttt{fork}, runs
   \texttt{ls -l} in it with \texttt{exec}, and waits until the child has
@@ -540,7 +540,7 @@ only as long as a run of the scheduler, half of the CPU time is lost; with a
 timeslice ten times as long, the useful fraction is $10/11 \approx
 \SI{91}{\percent}$.
 
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 \begin{example}
   Let $t_{\mathrm{sched}} = \SI{0.5}{\milli\second}$.  With a timeslice of
   \SI{2}{\milli\second}, \cref{eq:l02-useful} gives $2/2.5 =
@@ -597,7 +597,7 @@ device has completed its request; the scheduler chooses only among the
 processes in the ready queue, and decides when to switch contexts and to
 which process.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{keypoint}
   The scheduler preempts the running process, and chooses and dispatches
   the next one from the ready queue.  Because it runs on the same CPU, its
@@ -659,15 +659,15 @@ There are two basic kinds of IPC (\cref{fig:l02-ipc}):
 \end{figure}
 
 Shared memory moves the cost of communication from the individual exchanges
-to the setup.  Once the region is mapped, an exchange involves no copy and
-no crossing into the kernel, but creating the mapping is itself costly, so
-which of the two mechanisms is cheaper follows from how many exchanges the
-processes make.\margin{Measured on Linux, a round trip through a pipe costs
+to the setup.\margin{Measured on Linux, a round trip through a pipe costs
 on the order of \SI{10}{\micro\second} and one through a Unix-domain socket
 somewhat more (lmbench \texttt{lat\_pipe}, \texttt{lat\_unix}); a minimal
-system call alone costs some \SI{100}{\nano\second}.}
+system call alone costs some \SI{100}{\nano\second}.}  Once the region is
+mapped, an exchange involves no copy and no crossing into the kernel, but
+creating the mapping is itself costly, so which of the two mechanisms is
+cheaper follows from how many exchanges the processes make.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{example}
   Suppose that sending a message through a kernel channel costs
   \SI{6}{\micro\second} (two system calls and two copies), and that

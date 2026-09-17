@@ -451,7 +451,7 @@ does---as a database system does.
   \end{tabular}
 \end{table}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Files and directories}
 \label{sec:l14-dirs}
 
@@ -599,12 +599,12 @@ returns a file handle.
   file system and the file within it---and the client treats it as opaque.
 \end{definition}
 
-The NFS client keeps the handle with its representation of the open file
+The NFS client keeps the handle with its representation of the open
+file\margin{The handle is \SI{32}{\byte} and of fixed size in NFSv2; later
+versions make it variable, at most \SI{64}{\byte} in NFSv3 \cite{rfc1813}
+and \SI{128}{\byte} in NFSv4 \cite{rfc7530}.}
 and passes it in every subsequent request, such as a read, a write or a
-request for the attributes of the file.\margin{The handle is
-\SI{32}{\byte} and of fixed size in NFSv2; later versions make it variable,
-at most \SI{64}{\byte} in NFSv3 \cite{rfc1813} and \SI{128}{\byte} in NFSv4
-\cite{rfc7530}.}  A server typically encodes in the
+request for the attributes of the file.  A server typically encodes in the
 handle an identifier of the file system, the inode number of the file, and
 a \emph{generation number} that changes whenever the inode is reused.  If
 the file is removed on the server, by a local process or by another

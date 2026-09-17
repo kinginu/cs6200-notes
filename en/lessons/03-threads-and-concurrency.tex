@@ -135,7 +135,11 @@ switch back when the request completes (\cref{fig:l03-idle-time}).  The
 other thread then gains $t_{\mathrm{idle}} - t_{\mathrm{ctx}}$ of CPU time,
 while the blocked thread resumes $t_{\mathrm{ctx}}$ later than it would
 have; the two switches together cost $2\,t_{\mathrm{ctx}}$.  Switching pays
-off when the time gained exceeds the delay, that is, when
+off when the time gained exceeds the delay, that is, when\margin{A disk seek
+(some \SI{10}{\milli\second}) or an SSD read (some \SI{100}{\micro\second})
+repays two switches many times over; a wait of the order of a memory access
+(under \SI{100}{\nano\second}) never does, and such short waits are spun on
+instead (Lesson~10).}
 \begin{equation}
   t_{\mathrm{idle}} \;>\; 2\, t_{\mathrm{ctx}} .
   \label{eq:l03-idle}
@@ -143,11 +147,7 @@ off when the time gained exceeds the delay, that is, when
 Because a context switch between threads avoids the address-space switch,
 its $t_{\mathrm{ctx}}$ is smaller than that of a switch between processes,
 and \cref{eq:l03-idle} holds for shorter idle periods.  Multithreading
-therefore lets a program hide idle time even on one CPU.\margin{A disk seek
-(some \SI{10}{\milli\second}) or an SSD read (some \SI{100}{\micro\second})
-repays two switches many times over; a wait of the order of a memory access
-(under \SI{100}{\nano\second}) never does, and such short waits are spun on
-instead (Lesson~10).}
+therefore lets a program hide idle time even on one CPU.
 
 \begin{figure}[htbp]
   \centering
@@ -253,7 +253,7 @@ the child are freed.  Apart from this, parent and child are equals: both can
 access all resources of the process, and they differ only in their
 execution contexts.
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{example}
   A parent thread and a child thread both insert into a shared list:
   \begin{lstlisting}[language=C, numbers=none]
@@ -322,7 +322,7 @@ code executed while a mutex is held is the \term{critical section}[クリティ�
 part of the program that performs an operation which only one thread at a
 time may perform, typically an update of shared state.
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 Birrell's notation makes the critical section a block:
 \begin{lstlisting}[language=C, numbers=none]
 Lock(m) {
@@ -338,7 +338,7 @@ locks a mutex it already holds deadlocks against itself.  POSIX prescribes
 this for \texttt{PTHREAD\_MUTEX\_NORMAL}, the behaviour of the default type
 on Linux; a recursive mutex has to be requested explicitly.}
 
-\needspace{12\baselineskip}
+\Needspace{12\baselineskip}
 \begin{example}
   With a mutex that protects the list, the insertion of
   \cref{sec:l03-creation} becomes safe:
@@ -394,7 +394,7 @@ producer whose insertion fills the list.
   it may hold.
 \end{definition}
 
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 With a condition variable \texttt{list\_full}, the two sides become:
 \begin{lstlisting}[language=C, numbers=none]
 // consumer: print_and_clear
@@ -404,7 +404,7 @@ Lock(m) {
   my_list.print_and_remove_all();
 } // unlock
 \end{lstlisting}
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 // producers: safe_insert
 Lock(m) {
@@ -430,7 +430,7 @@ Birrell's interface has three operations on a condition variable
     on \texttt{cond}.
 \end{description}
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 A condition variable is represented by a data structure that holds a
 reference to its mutex and the list of waiting threads.  The wait
 operation proceeds as follows:
@@ -473,7 +473,7 @@ condition variable only says that the condition may hold; the woken thread
 cannot be guaranteed access to the mutex immediately, and it must re-check
 the condition once it has.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \begin{keypoint}
   Always call \texttt{Wait} with the mutex held, inside a \texttt{while}
   loop that re-tests the condition.  Signal or broadcast after changing the
@@ -537,7 +537,7 @@ Lock(counter_mutex) {
     Signal(write_phase);
 } // unlock
 \end{lstlisting}
-\needspace{14\baselineskip}
+\Needspace{14\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 // WRITER
 Lock(counter_mutex) {
@@ -611,7 +611,7 @@ threads waiting on one condition variable wait for different predicates.}
 
 The readers-writers solution shows the general shape of code that uses a
 mutex together with condition variables.  A critical section that may have to wait is written as
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 Lock(mutex) {
   while (!predicate_indicating_access_ok)
@@ -621,7 +621,7 @@ Lock(mutex) {
       cond_var_with_correct_waiting_threads);
 } // unlock
 \end{lstlisting}
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 With a proxy variable, the operation on the resource is split out of the
 mutex into three parts:
 \begin{lstlisting}[language=C, numbers=none]
@@ -641,7 +641,7 @@ Lock(mutex) {
 } // unlock
 \end{lstlisting}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \begin{keypoint}
   A mutex by itself enforces one policy: one thread at a time.  Proxy
   variables, updated in short critical sections, allow more complex access
@@ -699,7 +699,7 @@ still holds; they are simply moved to the wait queue of the mutex
 without any signal a spurious wake-up; the \texttt{while} loop handles
 both.}
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 When the notifications do not depend on the shared state, the fix is to
 move them after the unlock:
 \begin{lstlisting}[language=C, numbers=none]
@@ -736,7 +736,7 @@ ch.~8.}
   ever does.
 \end{definition}
 
-\needspace{10\baselineskip}
+\Needspace{10\baselineskip}
 The simplest case involves two threads and two mutexes.  Both threads need resources A and B to execute
 \texttt{foo(A, B)}, but they lock the protecting mutexes in opposite
 order:

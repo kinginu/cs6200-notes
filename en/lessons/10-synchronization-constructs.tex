@@ -180,9 +180,9 @@ permits: 1 is a mutex, $n$ is $n$ slots, 0 is an event a thread waits for.}
   \end{tabular}
 \end{table}
 
+\Needspace{12\baselineskip}
 \subsection{POSIX semaphores}
 
-\needspace{9\baselineskip}
 POSIX defines semaphores in \texttt{<semaphore.h>}:
 \begin{lstlisting}[language=C, numbers=none]
 #include <semaphore.h>
@@ -202,7 +202,7 @@ such as a shared memory segment of Lesson~9.  \texttt{sem\_wait} and
 \caution{A semaphore has no owner: any thread may post, even one that
 never waited.}
 
-\needspace{14\baselineskip}
+\Needspace{5\baselineskip}
 \begin{example}
   A server allows at most four requests at a time to reach its back-end
   database:
@@ -242,7 +242,7 @@ thread libraries offer it as a construct of its own.
   hold only while no other thread holds the lock in either mode.
 \end{definition}
 
-\needspace{12\baselineskip}
+\Needspace{5\baselineskip}
 A thread states in which mode it needs the lock, and the construct
 enforces the policy.  In the Linux kernel the type is
 \texttt{rwlock\_t}:\margin{Linux's \texttt{rwlock\_t} spins; the blocking
@@ -490,7 +490,7 @@ We first try to implement a spinlock with ordinary instructions, in the
 form of the textbook's first attempt at a lock.\source{P3L4, sync building
 block: spinlock, need for hardware support, atomic instructions; OSTEP
 ch.~28; Silberschatz et al.\ ch.~6.}
-\needspace{10\baselineskip}
+\Needspace{10\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 #define FREE 0
 #define BUSY 1
@@ -557,7 +557,7 @@ Common examples are:
     B and back to A passes (the ABA problem).}
 \end{description}
 
-\needspace{14\baselineskip}
+\Needspace{5\baselineskip}
 Written as C functions that the processor executes atomically, the first
 and the last are:
 \begin{lstlisting}[language=C, numbers=none]
@@ -577,7 +577,7 @@ int compare_and_swap(int *p, int expected,
 }
 \end{lstlisting}
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 With \texttt{test\_and\_set} the spinlock becomes correct:
 \begin{lstlisting}[language=C, numbers=none]
 void spinlock_lock(int *lock) {
@@ -758,7 +758,7 @@ because it writes on every iteration.
 The \term{test-and-test-and-set}[テストアンドテストアンドセット] technique
 first reads the lock with an ordinary instruction and executes
 \texttt{test\_and\_set} only when the lock appears free:
-\needspace{5\baselineskip}
+\Needspace{5\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 void spinlock_lock(int *lock) {
   while (*lock == BUSY || test_and_set(lock) == BUSY)
@@ -824,7 +824,7 @@ The bursts arise because all waiting threads react to a release at the same
 moment.  Making them wait a moment before they touch the lock again spreads
 the reactions out.  The delay can be placed after the lock has been seen to
 become free:
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 void spinlock_lock(int *lock) {
   while (*lock == BUSY || test_and_set(lock) == BUSY) {
@@ -956,6 +956,7 @@ in 4.2 (2015).}
   \end{tabular}
 \end{table}
 
+\Needspace{18\baselineskip}
 \begin{keypoint}[Lesson summary]
   Mutexes and condition variables are error-prone, limited in expressive
   power and dependent on hardware support.  Spinlocks busy-wait instead of

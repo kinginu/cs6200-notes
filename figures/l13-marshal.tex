@@ -1,7 +1,7 @@
 % Marshalling and unmarshalling the arguments of sum(count, values).
 % The pointer value is not sent; the pointed-to array is copied into the
 % buffer and recreated at a different address on the server.
-% Usage: \input{figures/l13-marshal}   (width ~120 mm)
+% Usage: \input{figures/l13-marshal}   (width ~117 mm, fits the 120 mm body)
 \begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
   >={Stealth[length=1.6mm]},
   cell/.style={draw, fill=white, minimum height=5mm, inner sep=0pt,
@@ -41,21 +41,21 @@
   \node[lab, anchor=north] at (63.5,15.3)
     {\iflangja{要素}{elements}};
   % ---------------- server address space
-  \node[hdr] at (105,42) {\iflangja{サーバのアドレス空間}{server address space}};
-  \node[lab, anchor=west] at (90,36.5) {\iflangja{スタック}{stack}};
-  \node[var] (sc) at (111,31) {3};
-  \node[var] (sv) at (111,25) {\texttt{0x9c40}};
-  \node[vname] at (102.5,31) {\texttt{count}};
-  \node[vname] at (102.5,25) {\texttt{values}};
-  \node[elem] (s1) at (101.5,9) {7};
-  \node[elem] (s2) at (108.5,9) {$-2$};
-  \node[elem] (s3) at (115.5,9) {300};
-  \node[addr, anchor=north west] at (98,6.3) {0x9c40};
-  \node[lab, anchor=east] at (97.6,9) {\iflangja{ヒープ}{heap}};
+  \node[hdr] at (103,42) {\iflangja{サーバのアドレス空間}{server address space}};
+  \node[lab, anchor=west] at (88,36.5) {\iflangja{スタック}{stack}};
+  \node[var] (sc) at (109,31) {3};
+  \node[var] (sv) at (109,25) {\texttt{0x9c40}};
+  \node[vname] at (100.5,31) {\texttt{count}};
+  \node[vname] at (100.5,25) {\texttt{values}};
+  \node[elem] (s1) at (99.5,9) {7};
+  \node[elem] (s2) at (106.5,9) {$-2$};
+  \node[elem] (s3) at (113.5,9) {300};
+  \node[addr, anchor=north west] at (96,6.3) {0x9c40};
+  \node[lab, anchor=east] at (95.6,9) {\iflangja{ヒープ}{heap}};
   \draw[->] ([xshift=-4mm]sv.south) -- (s1.north);
   % ---------------- operations
   \draw[->, thick, ln-accent] (31,20) -- (44.5,20);
   \node[op] at (37.8,20.8) {\iflangja{マーシャル}{marshal}};
-  \draw[->, thick, ln-accent] (75.5,20) -- (89,20);
-  \node[op] at (82.3,20.8) {\iflangja{アンマーシャル}{unmarshal}};
+  \draw[->, thick, ln-accent] (75.5,20) -- (87,20);
+  \node[op] at (81.3,20.8) {\iflangja{アンマーシャル}{unmarshal}};
 \end{tikzpicture}

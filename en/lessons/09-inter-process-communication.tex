@@ -462,7 +462,7 @@ default only the threads of the creating process may use them.  Second, the
 mutex and the condition variable themselves must reside in the shared
 region, so that all processes operate on the same data structures.
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{example}
   \label{ex:l09-pshared}
   A process defines the layout of the region, which begins with the
@@ -474,7 +474,7 @@ typedef struct {
   char            data[1024];
 } shm_data_t;
 \end{lstlisting}
-  \needspace{6\baselineskip}
+  \Needspace{6\baselineskip}
   It creates and attaches the segment:
   \begin{lstlisting}[language=C, numbers=none]
 key_t key = ftok("/tmp/app", 120);
@@ -482,7 +482,7 @@ int id = shmget(key, sizeof(shm_data_t),
                 IPC_CREAT | IPC_EXCL | 0600);
 shm_data_t *shm = shmat(id, NULL, 0);
 \end{lstlisting}
-  \needspace{7\baselineskip}
+  \Needspace{7\baselineskip}
   and it initializes a process-shared mutex inside the region:
   \begin{lstlisting}[language=C, numbers=none]
 pthread_mutexattr_t attr;

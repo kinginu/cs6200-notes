@@ -13,7 +13,9 @@
   fn/.style={font=\scriptsize\ttfamily},
   what/.style={font=\tiny\sffamily, text=ln-muted},
   lab/.style={font=\scriptsize\sffamily, text=ln-muted}]
-  \newcommand{\lnFile}[2]{{\scriptsize\ttfamily #1}\\[-0.4ex]{\tiny\sffamily\color{ln-muted}#2}}
+  % English descriptions at \scriptsize: \tiny is unreadable on screen, and
+  % the widest ("types, constants", 16.4 mm) still fits the 18.5 mm box.
+  \newcommand{\lnFile}[2]{{\scriptsize\ttfamily #1}\\[-0.4ex]{\iflangja{\tiny}{\scriptsize}\sffamily\color{ln-muted}#2}}
   % interface and compiler
   \node[file] (x) at (60,52) {\lnFile{sum.x}{\iflangja{XDR インタフェース}{XDR interface}}};
   \node[tool] (rpcgen) at (60,40) {\texttt{rpcgen}};

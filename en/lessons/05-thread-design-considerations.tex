@@ -86,7 +86,7 @@ and the arguments of a system call in progress belong to the user-level
 thread that currently runs on a kernel-level thread, not to the whole
 process.  The state of a process thus divides into two parts.
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 \begin{definition}[Hard and light process state]
   The \term{hard process state}[ハードプロセス状態] is the part of the
   state of a process that is relevant to all user-level threads executing
@@ -228,7 +228,7 @@ whose stack overflowed, which makes the error easy to diagnose
   \label{fig:l05-ult-layout}
 \end{figure}
 
-\needspace{13\baselineskip}
+\Needspace{13\baselineskip}
 \begin{example}
   A library gives each thread a block of \SI{64}{\kibi\byte}: a
   \SI{4}{\kibi\byte} red zone at the bottom, a \SI{56}{\kibi\byte} stack,
@@ -297,7 +297,7 @@ kernel-level threads through system calls, requesting more when it needs
 them; the kernel can notify the library of events that affect its threads,
 such as a kernel-level thread blocking.
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \begin{example}
   A process has six user-level threads, of which at most three need to run
   at the same time.  \Cref{tab:l05-interaction} traces how the library and
@@ -449,19 +449,19 @@ while the owner is running, exactly as here.}
 
 Creating a thread allocates and initializes its data structures and its
 stack, and destroying it frees them.  Because applications create and
-destroy threads frequently, reusing these structures pays off.  When a
+destroy threads frequently, reusing these structures pays off.\margin{glibc does the same for NPTL threads: a freed stack stays in a
+cache of up to \SI{40}{\mebi\byte} (tunable
+\texttt{glibc.pthread.stack\_cache\_size}) and is handed to the next
+\texttt{pthread\_create}.}  When a
 thread exits, its structures are not freed immediately; the thread is
 placed on a list called the \emph{death row}.  A \term{reaper thread}%
 [リーパスレッド] runs periodically, destroys the threads on the death row
 and frees their data structures.  If a request to create a thread arrives
 before the reaper has run, the structure and stack of a thread on the
 death row are reused, which saves the cost of allocating and initializing
-them.\margin{glibc does the same for NPTL threads: a freed stack stays in a
-cache of up to \SI{40}{\mebi\byte} (tunable
-\texttt{glibc.pthread.stack\_cache\_size}) and is handed to the next
-\texttt{pthread\_create}.}
+them.
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 \begin{keypoint}
   The kernel and the user-level library each see only their own threads.
   System calls and signals let them coordinate, but decisions such as
@@ -655,7 +655,7 @@ it holds mutexes that their handlers need.
   or signal is enabled (1) or disabled (0).
 \end{definition}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 A thread that disables a signal around a critical section follows this
 pattern:
 \begin{lstlisting}[language=C, numbers=none]
@@ -688,10 +688,13 @@ returns to.  A single-threaded process changes its signal mask with
 \texttt{pthread\_sigmask}; both take one of the operations
 \texttt{SIG\_BLOCK}, \texttt{SIG\_UNBLOCK} or \texttt{SIG\_SETMASK}.
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 \begin{example}
   The pattern above written with POSIX calls, for a handler of
-  \texttt{SIGALRM} that locks the same mutex:
+  \texttt{SIGALRM} that locks the same mutex:%
+  \caution{\texttt{pthread\_mutex\_lock} is not async-signal-safe; a
+    handler should rather set a flag, and every thread that may run it
+    must block the signal.}
   \begin{lstlisting}[language=C, numbers=none]
 sigset_t set, old;
 sigemptyset(&set);
@@ -702,9 +705,6 @@ pthread_mutex_lock(&m);
 pthread_mutex_unlock(&m);
 pthread_sigmask(SIG_SETMASK, &old, NULL);  // restore
 \end{lstlisting}
-  \caution{\texttt{pthread\_mutex\_lock} is not async-signal-safe; a
-    handler should rather set a flag, and every thread that may run it
-    must block the signal.}
 \end{example}
 
 \subsection{Interrupts on multicore systems}
@@ -714,7 +714,7 @@ enabled.  Enabling a given interrupt on a single core only, so that only
 that core handles it, avoids the overhead and the perturbation that
 handling it would cause on all the other cores.
 
-\needspace{5\baselineskip}
+\Needspace{5\baselineskip}
 \begin{keypoint}
   Handlers run in the context of the interrupted thread.  Code that holds
   a mutex needed by a handler must disable the corresponding interrupt or
@@ -909,7 +909,7 @@ resources.
   task, a multithreaded process of several tasks.
 \end{definition}
 
-\needspace{16\baselineskip}
+\Needspace{16\baselineskip}
 The main fields of the structure are:
 \begin{lstlisting}[language=C, numbers=none]
 struct task_struct {       // abridged, Linux 3.x

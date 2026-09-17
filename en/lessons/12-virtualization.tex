@@ -231,7 +231,7 @@ drivers, scheduling, memory management and other services need not be
 re-implemented, and ordinary applications continue to run natively on the
 host next to the VMs (\cref{fig:l12-models}b).
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 The \term{Kernel-based Virtual Machine}[KVM] (KVM)
 \cite{kivity2007}\index{KVM|see{Kernel-based Virtual Machine}} is the
 hosted hypervisor of Linux.  A loadable kernel module turns Linux into a
@@ -464,7 +464,7 @@ applications in ring~3 run directly \cite{bugnion2012}.}
   \label{fig:l12-bt}
 \end{figure}
 
-\needspace{8\baselineskip}
+\Needspace{8\baselineskip}
 \begin{example}
   A block of guest kernel code executes natively in
   \SI{5}{\micro\second}.\sidenote{Binary translation did not become obsolete
@@ -650,7 +650,7 @@ transitions: Xen, for instance, occupies the top \SI{64}{\mega\byte} of
 every guest address space, so that entering the hypervisor requires no
 change of page table and no TLB flush \cite{barham2003}.
 
-\needspace{16\baselineskip}
+\Needspace{5\baselineskip}
 \begin{example}
   A paravirtualized Linux guest on Xen changes three page table entries
   with a single hypercall.  Each request gives the machine address of a
@@ -701,7 +701,7 @@ device resides and in how the device accesses of a VM reach it
   \label{fig:l12-devices}
 \end{figure}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \subsection{Passthrough model}
 
 \begin{definition}[Passthrough model]
@@ -780,8 +780,8 @@ been installed.  \Cref{tab:l12-devices} summarizes the three models.
   \caption{Device virtualization models compared.}
   \label{tab:l12-devices}
   \small
-  \begin{tabular}{@{}>{\raggedright}p{18mm}>{\raggedright}p{19mm}%
-      >{\raggedright}p{20mm}>{\raggedright}p{23mm}%
+  \begin{tabular}{@{}>{\raggedright}p{18mm}>{\raggedright}p{20mm}%
+      >{\raggedright}p{21.5mm}>{\raggedright}p{20.5mm}%
       >{\raggedright\arraybackslash}p{23mm}@{}}
     \toprule
     Model & Physical device driven by & Driver in the guest & Sharing and
@@ -888,7 +888,7 @@ a VM.
   \label{tab:l12-cpu}
   \small
   \begin{tabular}{@{}>{\raggedright}p{24mm}>{\raggedright}p{16mm}%
-      >{\raggedright}p{27mm}>{\raggedright}p{22mm}%
+      >{\raggedright}p{29mm}>{\raggedright}p{20mm}%
       >{\raggedright\arraybackslash}p{14mm}@{}}
     \toprule
     Approach & Guest OS & Problematic instructions & Main overhead
@@ -908,6 +908,7 @@ a VM.
   \end{tabular}
 \end{table}
 
+\Needspace{14\baselineskip}
 \begin{keypoint}[Lesson summary]
   Virtualization runs several operating systems concurrently on one
   machine; a hypervisor gives each VM an efficient, isolated duplicate of

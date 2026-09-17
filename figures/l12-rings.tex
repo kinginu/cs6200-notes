@@ -25,10 +25,10 @@
   \draw[used] (34,12) rectangle (54,18) node[midway] {\iflangja{ゲスト OS}{guest OS}};
   \draw[hv]   (34,6)  rectangle (54,12) node[midway] {\iflangja{ハイパーバイザ}{hypervisor}};
   \draw[->, thick, ln-caution] (54.3,15) to[out=0, in=0, looseness=2.2]
-    node[right=0.8mm, text=ln-caution] {\iflangja{}{trap}} (54.3,9);
-  % The Japanese label is wider than the gap between panels (b) and (c),
-  % so it is set vertically beside the arc instead of next to it.
-  \iflangja{\node[text=ln-caution, rotate=90] at (60.3,12) {トラップ};}{}
+    node[right=0.8mm, text=ln-caution] {} (54.3,9);
+  % Both labels are wider than the gap between panels (b) and (c), whose
+  % white boxes would cover them, so they are set vertically beside the arc.
+  \node[text=ln-caution, rotate=90] at (60.3,12) {\iflangja{トラップ}{trap}};
   \node[pcap] at (44,-1) {\iflangja{(b) リング 0 の\\ハイパーバイザ}{(b) hypervisor\\in ring 0}};
   % (c) root / non-root
   \node[hdr] at (74,33) {\iflangja{非ルートモード}{non-root mode}};

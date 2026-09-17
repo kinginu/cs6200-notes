@@ -324,7 +324,10 @@ the processes that access it (\cref{fig:l15-migration}).
     the unit whenever a different node accesses it, which is expensive when
     nodes take turns for short periods, and it cannot serve several nodes at
     the same time.
-  \item[Replication] The DSM copies a unit to several nodes, each of which
+  \item[Replication] The DSM copies a unit to several nodes,\tip{Count
+    messages: with $n$ replicas a write costs $n-1$ invalidations, and the
+    next access on each invalidated node costs a fetch.  Replication pays
+    while the local reads it saves outnumber them.} each of which
     accesses its local replica; caching is a form of
     replication\index{replication}.
     Replication is the more general technique: it lets several nodes read,
@@ -333,10 +336,7 @@ the processes that access it (\cref{fig:l15-migration}).
     (\cref{sec:l15-management}): when one replica is written, the others
     must be invalidated or updated.  This overhead grows with the number of
     replicas, and the DSM can control it by limiting the number of replicas
-    of each unit.\tip{Count messages: with $n$ replicas a write costs $n-1$
-    invalidations, and the next access on each invalidated node costs a
-    fetch.  Replication pays while the local reads it saves outnumber
-    them.}
+    of each unit.
 \end{description}
 
 \begin{figure}[htbp]
@@ -636,14 +636,14 @@ one, plus a TLB shootdown on the other CPUs that hold the mapping.}
 \begin{example}
   Page $p$ initially resides only on node~1, its owner, which maps it
   read-write.  \Cref{tab:l15-mmu} traces accesses by three nodes under MRSW
-  access with invalidation on write.  When node~2 obtains a replica in
+  access with invalidation on write.\tip{Per node the mapping of a page is
+  a three-state machine---none, RO, RW---and only the transitions fault: a
+  read takes none to RO, a write RO to RW; another node's access
+  downgrades it to RO or to none.}  When node~2 obtains a replica in
   step~1, node~1's mapping is downgraded to read-only, so that a later write
   by node~1 would fault and invalidate the replica.  Of the seven accesses,
   four fault; the reads in steps~2 and~3 and the write in step~5 complete
-  in hardware, because the mappings already permit them.\tip{Per node the
-  mapping of a page is a three-state machine---none, RO, RW---and only the
-  transitions fault: a read takes none to RO, a write RO to RW; another
-  node's access downgrades it to RO or to none.}
+  in hardware, because the mappings already permit them.
 \end{example}
 
 \begin{table}[htbp]
@@ -680,7 +680,7 @@ one, plus a TLB shootdown on the other CPUs that hold the mapping.}
   accesses proceed at hardware speed.
 \end{keypoint}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Consistency models}
 \label{sec:l15-models}
 

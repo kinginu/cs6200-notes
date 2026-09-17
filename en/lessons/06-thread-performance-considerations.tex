@@ -86,7 +86,7 @@ per second against $w/t = 32$ for boss-workers, and in a large batch this
 higher rate dominates.  Which model is better thus depends both on the
 metric and on the number of requests.
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Usefulness of threads}
 \label{sec:l06-useful}
 
@@ -125,7 +125,7 @@ in use.
   ten waits twenty times longer than most.
 \end{example}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Performance metrics}
 \label{sec:l06-metrics}
 
@@ -226,7 +226,7 @@ loads favour different server architectures.
   better?}\ is typically \enquote{it depends}.
 \end{keypoint}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Multi-process and multithreaded servers}
 \label{sec:l06-mp-mt}
 
@@ -299,7 +299,7 @@ architectures were first compared but is no longer a concern.
   \label{fig:l06-mp-mt}
 \end{figure}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{The event-driven model}
 \label{sec:l06-event}
 
@@ -468,7 +468,7 @@ concurrently, no synchronization is needed.
   provided that no handler blocks.
 \end{keypoint}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Blocking operations and helpers}
 \label{sec:l06-helpers}
 
@@ -574,7 +574,7 @@ the corresponding request.
   \end{tabular}
 \end{table}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{The Flash web server}
 \label{sec:l06-flash}
 
@@ -669,7 +669,7 @@ These optimizations were novel in 1999 and are common in web servers today.
 They are independent of the server architecture, a fact that matters for
 the evaluation in \cref{sec:l06-methodology}.
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{The Apache web server}
 \label{sec:l06-apache}
 
@@ -712,7 +712,7 @@ connections.
   watches idle connections.
 \end{note}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Experimental methodology}
 \label{sec:l06-methodology}
 
@@ -810,7 +810,7 @@ is \num{100} at a time.}
   while $R$ keeps falling.
 \end{example}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Experimental results}
 \label{sec:l06-results}
 
@@ -883,7 +883,7 @@ performance results; Pai et al.}
   across workloads rather than best for each.
 \end{keypoint}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \section{Designing and running experiments}
 \label{sec:l06-design}
 
@@ -971,7 +971,7 @@ experiment do not support any statement.
   throughput together with their spread.
 \end{example}
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 \begin{keypoint}[Lesson summary]
   Which design is better depends on the metric and on the workload.  A
   concurrent server can use processes (MP), threads (MT) or one

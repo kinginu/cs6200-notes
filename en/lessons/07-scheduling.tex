@@ -77,7 +77,7 @@ scheduling algorithm are tightly coupled.  An algorithm can be implemented
 efficiently only with a runqueue that makes its selection cheap, and a
 runqueue is designed for the algorithm that it serves.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Run-to-completion scheduling}
 \label{sec:l07-rtc}
 
@@ -153,7 +153,7 @@ lowers both averages.  In fact, for tasks that
 arrive together and run to completion, no other order yields a smaller
 average wait time.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Preemptive scheduling}
 \label{sec:l07-preemptive}
 
@@ -257,7 +257,7 @@ longer a task waits, the higher its effective priority becomes, until it
 exceeds that of the arriving tasks and the task runs.  Aging thus prevents
 starvation.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Priority inversion}
 \label{sec:l07-inversion}
 
@@ -303,7 +303,7 @@ acquires the mutex and runs, and T1 completes at time 7, ahead of T2.
   lock.
 \end{definition}
 
-\needspace{9\baselineskip}
+\Needspace{9\baselineskip}
 To boost the owner, the lock operation must know who the owner is; this is
 another reason for recording the owner in the mutex data structure
 (Lesson~5).\sidenote{In July 1997 the Mars Pathfinder lander reset itself
@@ -333,7 +333,7 @@ pthread_mutex_init(&m, &attr);
   is blocked.  The lecture treats only inheritance.}
 \end{keypoint}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Round robin scheduling and timesharing}
 \label{sec:l07-rr}
 
@@ -414,7 +414,7 @@ keep this overhead small, the timeslice must be much longer than the time
 taken by the scheduler and the context switch, as \cref{eq:l02-useful}
 showed for the time of the scheduler alone.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Choosing the timeslice length}
 \label{sec:l07-timeslice}
 
@@ -570,7 +570,7 @@ context switches.  Then
   tasks short ones.
 \end{keypoint}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Multi-level feedback queues}
 \label{sec:l07-mlfq}
 
@@ -642,7 +642,7 @@ Corbató \cite{corbato1962}, who received the Turing Award in 1990.
   \SI{8}{\milli\second} timeslice and stays at the top level.
 \end{example}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{The Linux O(1) scheduler}
 \label{sec:l07-o1}
 
@@ -711,15 +711,15 @@ array, with the rest of its timeslice, when it becomes ready again.
 The \term{expired array}[期限切れ配列] holds the tasks whose timeslices
 have expired and that are therefore inactive.  When the timeslice of a task
 expires, the scheduler recomputes its priority and timeslice and moves it to
-the expired array.\margin{In the Linux~2.6 kernels a task judged interactive
-was normally returned to the active array instead, unless the tasks in the
-expired array had already waited too long.}  When no more tasks remain in the active array, the
+the expired array.  When no more tasks remain in the active array, the
 scheduler swaps the two arrays, which requires only exchanging two
 pointers.  This arrangement also gives tasks of low priority a chance to
 run: a task of high priority, although it receives a long timeslice, moves
 to the expired array once it has used that timeslice, and waits there
 until every task in the active array, including those of low priority, has
-used its own.
+used its own.\margin{In the Linux~2.6 kernels a task judged interactive
+was normally returned to the active array instead, unless the tasks in the
+expired array had already waited too long.}
 
 The $O(1)$ scheduler was introduced by Ingo Molnar in the Linux~2.5
 development series and became the scheduler of Linux~2.6.  As workloads
@@ -727,7 +727,7 @@ became more interactive, with applications such as streaming media, its
 jitter became a problem, and in Linux~2.6.23 it was replaced by the
 Completely Fair Scheduler, also written by Molnar.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{The Linux Completely Fair Scheduler}
 \label{sec:l07-cfs}
 
@@ -827,7 +827,7 @@ $N$ tasks.
   \end{tabular}
 \end{table}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Scheduling on multiprocessors}
 \label{sec:l07-multi}
 
@@ -925,7 +925,7 @@ interconnect.
   $0.6 + 0.4 \times 1.5 = 1.2$, that is, by \SI{20}{\percent}.
 \end{example}
 
-\needspace{7\baselineskip}
+\Needspace{5\baselineskip}
 \section{Hyperthreading}
 \label{sec:l07-smt}
 
@@ -978,7 +978,7 @@ pays off by a wide margin here.  With SMT, a CPU can therefore hide the
 latency of memory accesses, just as multithreading on a single CPU hides the
 latency of I/O.
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Scheduling for hyperthreaded platforms}
 \label{sec:l07-smt-sched}
 
@@ -1027,14 +1027,14 @@ arrive from memory.  \Cref{fig:l07-smt} shows the three possible pairings.
     one cycle in five, but it is small.
 \end{description}
 
-\needspace{6\baselineskip}
+\Needspace{6\baselineskip}
 \begin{keypoint}
   On an SMT CPU, co-scheduling a CPU-bound with a memory-bound task avoids
   both contention for the pipeline and idle cycles.  The scheduler should
   therefore mix the two kinds of tasks on the hardware threads of each CPU.
 \end{keypoint}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Hardware performance counters}
 \label{sec:l07-counters}
 
@@ -1093,7 +1093,7 @@ architecture, based on well-understood characteristics of workloads.
   two hardware threads of the same CPU.
 \end{example}
 
-\needspace{7\baselineskip}
+\Needspace{7\baselineskip}
 \section{Is cycles per instruction a useful metric?}
 \label{sec:l07-cpi}
 

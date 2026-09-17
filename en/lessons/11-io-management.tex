@@ -416,27 +416,27 @@ Going through the kernel is not strictly necessary.
 \end{definition}
 
 The code that would otherwise run in the kernel driver is then provided by a
-\emph{user-level driver}, a library linked into the application.  The
-operating system retains coarse-grained control: it can, for example,
-enable or disable the device, or grant additional processes access to
-it.\sidenote{Kernel bypass is routine in high-performance networking:
-InfiniBand and RoCE adapters expose queue pairs to a process through the
-verbs API, and DPDK drives Ethernet adapters entirely from user space, the
-kernel only setting them up.  Lesson~15 uses such adapters for remote direct
-memory access.}
+\emph{user-level driver}, a library linked into the
+application.\sidenote{Kernel bypass is routine in high-performance
+networking: InfiniBand and RoCE adapters expose queue pairs to a process
+through the verbs API, and DPDK drives Ethernet adapters entirely from user
+space, the kernel only setting them up.  Lesson~15 uses such adapters for
+remote direct memory access.}  The operating system retains coarse-grained
+control: it can, for example, enable or disable the device, or grant
+additional processes access to it.
 Bypass relies on features of the device:
 \begin{itemize}
   \item The device must have sufficient registers, so that some of them can
     be mapped into a user process while those needed for control remain
     accessible only to the kernel.
   \item If several processes use the device, the device must be able to
-    \emph{demultiplex}, that is, determine to which process data belong.  In
-    a typical device access the kernel does this: its network stack, for
-    example, inspects the headers of an arriving packet to find the
-    receiving process.  With bypass the device itself must do
-    so.\margin{PCIe devices do this with SR-IOV: one card presents many
+    \emph{demultiplex}, that is, determine to which process data
+    belong.\margin{PCIe devices do this with SR-IOV: one card presents many
     virtual functions, each with its own registers and queues, mappable into
-    a different process or virtual machine (Lesson~12).}
+    a different process or virtual machine (Lesson~12).}  In a typical
+    device access the kernel does this: its network stack, for example,
+    inspects the headers of an arriving packet to find the receiving
+    process.  With bypass the device itself must do so.
 \end{itemize}
 
 \section{Synchronous and asynchronous access}
@@ -534,7 +534,7 @@ file descriptor (\cref{sec:l11-vfs-abs}) of an open device file, a request
 code defined for the device class or driver, and, depending on the request,
 a pointer to request-specific data.
 
-\needspace{11\baselineskip}
+\Needspace{11\baselineskip}
 \begin{example}
   A program opens the tray of the first optical drive:
   \begin{lstlisting}[language=C, numbers=none]
@@ -647,6 +647,7 @@ soft state: they exist only in memory and have no on-disk representation.
 \end{definition}
 
 \begin{example}
+  \looseness=-1
   A process opens \texttt{/users/joe/notes.txt}.  Starting from the dentry
   of \texttt{/}, the VFS reads each directory on the path to find the next
   component and its inode, creating the dentries of \texttt{users},
@@ -717,14 +718,14 @@ $8 \times 4096 = \num{32768}$ blocks, that is \SI{128}{\mebi\byte}.}
   \label{fig:l11-ext2}
 \end{figure}
 
-\needspace{6\baselineskip}
+\Needspace{4\baselineskip}
 \section{Inodes}
 \label{sec:l11-inodes}
 
-A file is identified by its inode, and the inode is the index of all disk
-blocks of the file: it lists the blocks, in order, together with the
-metadata.\source{P3L5, inodes, inodes with indirect pointers; OSTEP ch.~40;
-Kerrisk ch.~14.}  In its simplest form the inode contains the block numbers
+A file is identified by its inode,\source{P3L5, inodes, inodes with
+indirect pointers; OSTEP ch.~40; Kerrisk ch.~14.} and the inode is the index
+of all disk blocks of the file: it lists the blocks, in order, together with
+the metadata.  In its simplest form the inode contains the block numbers
 of all blocks of the file.  Sequential and random access are then equally
 easy: with block size $B$, the byte at offset $o$ lies in the block whose
 number is entry $\lfloor o/B \rfloor$ of the list.  The size of a file,
@@ -774,6 +775,7 @@ indirect kinds can address files of up to
 \end{equation}
 
 \begin{example}
+  \looseness=-1
   With \SI{4}{\kibi\byte} blocks and 8~bytes per pointer, a block
   holds $P = 4096/8 = 512$ pointers.  The 12 direct pointers address
   $12 \times \SI{4}{\kibi\byte} = \SI{48}{\kibi\byte}$; the indirect pointer
@@ -854,7 +856,7 @@ a few hundred kilobytes per second.}
 
 A process that must make an update durable follows the write with
 \texttt{fsync}:
-\needspace{5\baselineskip}
+\Needspace{3\baselineskip}
 \begin{lstlisting}[language=C, numbers=none]
 write(fd, rec, sizeof *rec);  /* updates the cache */
 fsync(fd);                    /* flushes it to disk */
@@ -883,7 +885,7 @@ access.
   \texttt{none}.}
 \end{example}
 
-\needspace{5\baselineskip}
+\Needspace{5\baselineskip}
 \subsection{Prefetching}
 
 Reading more blocks than a request asks for is called
@@ -921,7 +923,7 @@ well is an option.
   \label{fig:l11-journal}
 \end{figure}
 
-\needspace{16\baselineskip}
+\Needspace{14\baselineskip}
 \begin{keypoint}[Lesson summary]
   An I/O device presents command, data and status registers, reached
   through interconnects such as PCIe and operated by a device driver behind
