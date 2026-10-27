@@ -104,9 +104,9 @@ CPU and block otherwise.\index{adaptive mutex}
 
 \begin{example}
   Suppose blocking a thread and later resuming it costs \SI{8}{\micro\second}
-  in total.\margin{Measured: a context switch costs about
-  \SI{3.4}{\micro\second} directly, plus the cache refill after it.  Li et
-  al., ExpCS 2007.}  If the owner holds a lock for at most
+  in total.\margin{Measured on a 2007 dual Xeon: a context switch
+  costs \SI{3.8}{\micro\second} directly, plus the cache refill after it
+  (Li et al., ExpCS 2007; a dated number).}  If the owner holds a lock for at most
   \SI{0.5}{\micro\second}, a waiting thread spins for at most
   \SI{0.5}{\micro\second}, one sixteenth of the cost of blocking.  If
   instead the owner performs a \SI{5}{\milli\second} disk read while
@@ -118,7 +118,9 @@ Because a spinlock needs nothing but a shared word and an atomic
 instruction, it is the basic construct from which more complex constructs
 are built.  An operating system kernel, for example, protects the short
 critical sections that update the state of a mutex and its queue of
-blocked threads with a spinlock.
+blocked threads with a spinlock.\margin{In Linux, \texttt{spin\_lock} also
+disables preemption on the local CPU, so a lock holder is never
+descheduled while others spin (kernel locking documentation).}
 
 \section{Semaphores}
 \label{sec:l10-semaphore}
@@ -200,7 +202,9 @@ the \texttt{sem\_t} itself must reside in memory that those processes share,
 such as a shared memory segment of Lesson~9.  \texttt{sem\_wait} and
 \texttt{sem\_post} are the wait and post operations.%
 \caution{A semaphore has no owner: any thread may post, even one that
-never waited.}
+never waited.}\margin{Since Linux 2.6 (glibc NPTL) POSIX semaphores are
+built on futexes: an uncontended \texttt{sem\_wait} or \texttt{sem\_post}
+is a single atomic instruction in user space.}
 
 \Needspace{5\baselineskip}
 \begin{example}
@@ -223,7 +227,9 @@ void handle_request(struct request *r) {
 }
 \end{lstlisting}
   A fifth thread that calls \texttt{handle\_request} while four requests
-  are in progress blocks in \texttt{sem\_wait} until one of them posts.
+  are in progress blocks in \texttt{sem\_wait} until one of them
+  posts.\caution{POSIX \texttt{sem\_wait} can fail with \texttt{EINTR}
+  when a signal arrives; callers must test the return value and retry.}
 \end{example}
 
 \section{Reader-writer locks}
@@ -270,7 +276,9 @@ pthread_rwlock_unlock(&m);   /* release either mode */
 \end{lstlisting}
 
 Implementations agree on the basic policy but differ in details that affect
-program behaviour:
+program behaviour:\tip{Use a reader-writer lock only when readers are many
+and critical sections long enough to pay for the extra bookkeeping; for
+short sections a plain mutex is often faster.}
 \begin{itemize}
   \item \textbf{Recursive read locking.}  When a thread acquires the read
     lock twice, implementations differ in whether one
@@ -321,10 +329,12 @@ is woken it re-acquires the lock before it continues, again without any
 explicit lock operation.  Conceptually the monitor performs the locking
 and the checks on entry, and the unlocking, the checks and the signalling
 on exit.  The signalling itself is nevertheless explicit in the classical
-designs---Hoare's monitors offer wait and signal, Mesa adds notify and
-broadcast---and so are the conditions on which threads wait; monitor
-designs with automatic signalling go further and re-evaluate the waiting
-conditions themselves whenever a thread leaves the monitor.
+designs---Hoare's monitors offer wait and signal; Mesa replaces signal with
+notify, a hint, and adds broadcast (Lampson and Redell
+\cite{lampson1980})---and so are the conditions on which threads
+wait.\margin{Monitor designs with automatic signalling go further: they
+re-evaluate the waiting conditions whenever a thread leaves the
+monitor.}
 
 \begin{example}
   A bounded buffer of capacity \texttt{N} as a monitor, in C-like
@@ -381,7 +391,9 @@ it.}
 The term \emph{monitor} also denotes a programming style.  Structuring
 every critical section with explicit enter and exit code built from a mutex
 and condition variables, as in Lesson~3, applies the discipline of a
-monitor without support from the language.
+monitor without support from the language.\margin{Same wait-in-a-loop
+discipline as the condition variables of Lesson~3; the monitor only hides
+the mutex.}
 
 \section{Other synchronization constructs}
 \label{sec:l10-other}
@@ -440,7 +452,7 @@ safe while it is being modified.
   No thread ever waits for another.
 \end{definition}
 
-The \term{read-copy-update}[RCU]\index{RCU|see{read-copy-update}} (RCU)
+The \term{read-copy-update}[RCU]\index{RCU|see{read-copy-update}}
 mechanism \cite{mckenney1998}, now part of the Linux kernel, applies this
 idea to data that is read far more often than it is written.  Readers take
 no lock at all.  A writer copies the current version, modifies the copy and
@@ -475,6 +487,35 @@ count or replacing a pointer---and this requires support from the hardware.
   \end{tabular}
 \end{table}
 
+\subsection{Synchronization in the Linux kernel}
+\label{sec:l10-linux}
+
+The Linux kernel offers most of the constructs of this lesson under its own
+names.\source{Silberschatz et al.\ ch.~7; Linux kernel locking
+documentation.}
+\begin{itemize}
+  \item \texttt{spinlock\_t} with \texttt{spin\_lock} and
+    \texttt{spin\_unlock}: a spinlock.
+  \item \texttt{rwlock\_t}: the spinning reader-writer lock of
+    \cref{sec:l10-rwlock}.
+  \item \texttt{struct semaphore} with \texttt{down} and \texttt{up}, and
+    \texttt{struct rw\_semaphore}: a counting semaphore and a reader-writer
+    lock that block.
+  \item \texttt{struct mutex} with \texttt{mutex\_lock} and
+    \texttt{mutex\_unlock}: a blocking lock with an owner.
+  \item RCU, as described above.
+\end{itemize}
+Beneath them, the type \texttt{atomic\_t} provides atomic integer
+operations such as \texttt{atomic\_inc} and \texttt{atomic\_cmpxchg}, built
+on the atomic instructions of \cref{sec:l10-hw}.  A spinning lock may be
+held only briefly, and its holder must not sleep.  A blocking lock may be
+held across operations that sleep, such as I/O, but it can be taken only
+where sleeping is allowed, not in an interrupt handler.  Most critical
+sections in the kernel are a few instructions long, far shorter than a
+context switch, so the kernel mostly spins (\cref{sec:l10-spinlock});
+because \texttt{spin\_lock} disables preemption, a holder runs until it
+releases the lock, and the spinning stays short.
+
 \begin{keypoint}
   Spinlocks trade CPU time for context switches; semaphores admit a bounded
   number of threads; reader-writer locks package the readers-writers
@@ -486,8 +527,7 @@ count or replacing a pointer---and this requires support from the hardware.
 \section{Hardware support for synchronization}
 \label{sec:l10-hw}
 
-We first try to implement a spinlock with ordinary instructions, in the
-form of the textbook's first attempt at a lock.\source{P3L4, sync building
+We first attempt a spinlock with ordinary instructions.\source{P3L4, sync building
 block: spinlock, need for hardware support, atomic instructions; OSTEP
 ch.~28; Silberschatz et al.\ ch.~6.}
 \Needspace{10\baselineskip}
@@ -556,6 +596,10 @@ Common examples are:
     \caution{Compare-and-swap tests values, not history: a change from A to
     B and back to A passes (the ABA problem).}
 \end{description}
+Further variants, such as \texttt{read\_and\_decrement} and
+\texttt{read\_and\_clear}, and in general \texttt{fetch\_and\_op} for an
+operation \emph{op}, follow the same pattern; which of them exist differs
+per architecture.
 
 \Needspace{5\baselineskip}
 Written as C functions that the processor executes atomically, the first
@@ -594,7 +638,9 @@ already marked the lock busy, so the thread leaves the loop as the owner.
 If the lock is busy, it returns \texttt{BUSY} after writing \texttt{BUSY}
 over \texttt{BUSY}, which changes nothing, and the thread tries again.  Of
 several threads that execute \texttt{test\_and\_set} on a free lock at the
-same time, exactly one obtains \texttt{FREE}.
+same time, exactly one obtains \texttt{FREE}.\margin{On x86, \texttt{xchg}
+with a memory operand is implicitly locked, so no \texttt{lock} prefix is
+needed (Intel SDM vol.~2).}
 
 \begin{example}
   Compare-and-swap updates shared data without any lock.  A counter is
@@ -653,7 +699,7 @@ progress at the same time.
 Every CPU has its own cache.  Memory is slower to reach than the cache,
 both because it is physically farther away and because the CPUs contend
 for the bus or interconnect that leads to it; the caches hide this
-latency.\margin{Skylake: L1 4 cycles, L2 12, L3 about 40, DRAM about
+latency.\margin{Skylake (2015): L1 4 cycles, L2 12, L3 about 40, DRAM about
 \SI{80}{\nano\second}.  Intel optimization manual.}
 
 When several CPUs work on the same data, however, copies of one memory
@@ -702,7 +748,8 @@ its execution on one CPU must exclude executions on the same location on
 every other CPU.  In the model used here it therefore does not work on a
 private cached copy; it bypasses the cache, is applied to the memory
 location itself, and leaves every cache coherent.\margin{Real processors
-instead take exclusive ownership of the cache line, at a similar cost.}  An
+instead take exclusive ownership of the cache line, at a cost that is high
+only when the line must be fetched from another cache.}  An
 atomic instruction on a multiprocessor is consequently more expensive than
 the same instruction on a single-CPU system, and than an ordinary
 instruction on the same data: it reaches memory, it contends with the other
@@ -751,7 +798,8 @@ No implementation is ideal in all three metrics: the first two ask a
 waiting thread to touch the lock as often as possible, the third asks it to
 touch the lock as rarely as possible.  The \texttt{test\_and\_set} loop of
 \cref{sec:l10-hw} is ideal in latency and delay but poor in contention,
-because it writes on every iteration.
+because it writes on every iteration.\tip{Latency = free lock, delay =
+release to acquire, contention = traffic while waiting.}
 
 \subsection{Spinning on read}
 
@@ -785,28 +833,28 @@ What the technique does for contention depends on the platform:
     propagated to all caches, so every waiting thread sees \texttt{FREE} at
     the same moment and they issue their \texttt{test\_and\_set}
     instructions together.
-  \item[CC, write-invalidate] Contention becomes worse than with the plain
-    loop.  Every \texttt{test\_and\_set}, including those that fail,
-    invalidates the copies in all other caches, so each spinning thread
-    misses on its next read and fetches the lock word from memory again;
-    a release therefore causes a burst of atomic instructions followed by a
-    burst of cache misses.
+  \item[CC, write-invalidate] Contention is improved only during the
+    hold.  At each release every waiter misses, reads, and issues a
+    \texttt{test\_and\_set}, and every failing \texttt{test\_and\_set}
+    invalidates all copies again; with short critical sections these
+    bursts make it nearly as bad as the plain loop.
 \end{description}
 Spinning on read removes the traffic of the waiting period, not the traffic
 of the release.\margin{All waiters reacting to one release is a
 \emph{thundering herd}, the effect \texttt{FUTEX\_CMP\_REQUEUE} avoids in
 Lesson~3.}  When critical sections are short and many threads wait,
-the releases follow one another so closely that these bursts dominate,
-which is why the technique performs worst of all under heavy contention on
-write-invalidate hardware.
+the releases follow one another so closely that these bursts dominate.
+Under heavy contention on write-invalidate hardware the technique is
+therefore the worst of the alternatives Anderson compared against the
+queue and delay locks; plain \texttt{test\_and\_set} is worse still.
 
 \begin{example}
   A light-load case, in which spinning on read is at its best.  On four
   CPUs a thread on CPU~1 holds a lock for \SI{1}{\milli\second} while
   threads on CPUs 2--4 spin.  With the plain \texttt{test\_and\_set} loop,
   one iteration taking \SI{50}{\nano\second},\margin{Uncontended, a
-  \texttt{lock}-prefixed operation costs about 20 cycles; contended, about
-  200.  Agner Fog, instruction tables.} each spinning thread performs
+  \texttt{lock}-prefixed operation costs about 20 cycles on Skylake-class
+  cores.  Agner Fog, instruction tables.} each spinning thread performs
   $\SI{1}{\milli\second}/\SI{50}{\nano\second} = \num{20000}$ iterations,
   so the hold costs $3\times\num{20000} = \num{60000}$ writes to the lock
   word, each of which invalidates or updates the copies in the other
@@ -882,18 +930,19 @@ The queue is an array of flags, one per thread, each either
 next free place, which an arriving thread obtains with
 \texttt{read\_and\_increment}:
 \begin{lstlisting}[language=C, numbers=none]
+/* N is a power of two, so % N survives wraparound */
 int flags[N];    /* flags[0] = HAS_LOCK, rest wait */
-int queuelast = 0;
+unsigned queuelast = 0;
 
-int queue_lock(void) {
-  int me = read_and_increment(&queuelast) % N;
+unsigned queue_lock(void) {
+  unsigned me = read_and_increment(&queuelast) % N;
   while (flags[me] == MUST_WAIT)
     ;                     /* spin on a private flag */
   flags[me] = MUST_WAIT;  /* reset for the next round */
   return me;
 }
 
-void queue_unlock(int me) {
+void queue_unlock(unsigned me) {
   flags[(me + 1) % N] = HAS_LOCK;
 }
 \end{lstlisting}
@@ -923,17 +972,28 @@ write-invalidate caches \cite{anderson1990}.\margin{The Sequent Symmetry
 put 20 Intel 80386 CPUs on one shared bus, which all coherence traffic had
 to cross.}  Under high load---many CPUs
 competing for the same lock---the queueing lock performed best and
-test-and-test-and-set worst, with the delay-based locks in between.  Under
+test-and-test-and-set worst of the alternatives compared, with the
+delay-based locks in between; plain \texttt{test\_and\_set}, measured
+separately, was worse still.  Among the delay-based locks, a static delay
+did slightly better than a dynamic one at high load, and a delay after
+every reference slightly better than a delay after release, which Anderson
+attributes to the invalidation-based coherence of the Symmetry.  Under
 light load the order was reversed: test-and-test-and-set performed best,
-because its latency and delay are the smallest, and the queueing lock
-worst, because every acquisition pays for its bookkeeping.  No
+because its latency and delay are the smallest, and the queueing lock had
+the highest latency, because every acquisition pays for its bookkeeping.
+On the Symmetry that bookkeeping included a lock: the machine had no atomic
+\texttt{read\_and\_increment}, so the queueing lock obtained its sequence
+number through an explicit lock with backoff, which is part of the
+measured latency.  Static delays, finally, are inappropriate when few
+threads spin, so at light load the dynamic delay is the better choice.  No
 implementation is best under all conditions; the choice depends on the
 expected contention and on the instructions the platform
 provides.\sidenote{Anderson's queueing lock needs an array of $N$ flags per
 lock.  The MCS lock (Mellor-Crummey and Scott, 1991) replaces it with a
 list of per-thread nodes, so the lock itself is one word.  Linux adopted a
 FIFO ticket lock in 2.6.25 (2008), after unfair hand-offs were found to
-starve threads on an 8-core Opteron, and the MCS-based \texttt{qspinlock}
+starve threads on an 8-core Opteron (LWN, \enquote{Ticket spinlocks},
+2008), and the MCS-based \texttt{qspinlock}
 in 4.2 (2015).}
 
 \begin{table}[htbp]
@@ -947,7 +1007,7 @@ in 4.2 (2015).}
     \toprule
     Implementation & Latency & Delay & Contention \\
     \midrule
-    \texttt{test\_and\_set}  & good & good & poor \\
+    \texttt{test\_and\_set}  & good & good & worst \\
     Test-and-test-and-set    & fair & fair & poor on write-invalidate \\
     Delay after release      & fair & poor & better \\
     Delay on every reference & fair & poor & better, also on NCC \\
@@ -969,7 +1029,9 @@ in 4.2 (2015).}
   instructions such as test-and-set and compare-and-swap, which on a shared
   memory multiprocessor must also keep the CPUs' caches coherent.  Testing
   the lock before test-and-set helps at light load, but under heavy load on
-  write-invalidate platforms it performs worst of all; delaying the waiting
+  write-invalidate platforms it is the worst of the alternatives Anderson
+  compared against the queue and delay locks, and plain test-and-set is
+  worse still; delaying the waiting
   threads, and above all queueing them on private flags, keeps the
   coherence traffic of a contended lock under control.
 \end{keypoint}

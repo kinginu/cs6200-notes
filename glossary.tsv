@@ -441,3 +441,11 @@ big data	ビッグデータ	びっぐでーた	16
 MapReduce	MapReduce	MapReduce	16	
 bounded buffer	有界バッファ	ゆうかいばっふぁ	4	
 hyperthreading	ハイパースレッディング	はいぱーすれっでぃんぐ	7	see: simultaneous multithreading
+service VM	サービスVM	さーびすVM	12	
+VM entry	VM entry	VM entry	12	
+VM control structure	VM制御構造	VMせいぎょこうぞう	12	VMCS (Intel), VMCB (AMD)
+user-level driver	ユーザレベルドライバ	ゆーざれべるどらいば	11	
+dentry cache	dentry キャッシュ	dentryきゃっしゅ	11	
+journal	ジャーナル	じゃーなる	11	
+page cache	ページキャッシュ	ぺーじきゃっしゅ	11	indexed in a margin note (buffer cache)
+elevator algorithm	エレベータアルゴリズム	えれべーたあるごりずむ	11	SCAN; indexed in a margin note (I/O scheduling)

@@ -25,9 +25,12 @@
   % write path
   \draw[->, thick, ln-accent] ([xshift=-6mm]k1.south) -- ++(0,-12) |- (m.west)
     node[lab, pos=0.25, left, text=ln-accent] {\iflangja{(1) 書き込み}{(1) write}};
-  % coherence
-  \draw[->, thick, ln-caution, densely dashed] (m.east) -| ([xshift=6mm]k3.south);
+  % coherence: the writer's bus transaction updates or invalidates the
+  % other copies, so the dashed arrows start at the bus, not at memory
+  \draw[->, thick, ln-caution, densely dashed]
+    ([xshift=6mm]k3.south |- 0,-6) -- ([xshift=6mm]k3.south);
   \node[lab, text=ln-caution] at (89,-9.5)
     {\iflangja{(2) 更新または無効化}{(2) update or invalidate}};
-  \draw[->, thick, ln-caution, densely dashed] ([xshift=8mm]m.north) -- ([xshift=8mm]k2.south);
+  \draw[->, thick, ln-caution, densely dashed]
+    ([xshift=8mm]k2.south |- 0,-6) -- ([xshift=8mm]k2.south);
 \end{tikzpicture}
