@@ -4,7 +4,7 @@
 \chapter{遠隔手続き呼び出し}
 \lessoninfo{
   video={P4L1},
-  textbook={OSTEP \cite{ostep} ch.~48；Silberschatz ら \cite{silberschatz2018} ch.~3；Birrell と Nelson \cite{birrell1984}；RFC 5531 \cite{rfc5531}，RFC 4506 \cite{rfc4506}},
+  textbook={OSTEP \cite{ostep} ch.~48；Silberschatz ら \cite{silberschatz2018} ch.~3；Birrell と Nelson \cite{birrell1984}；RFC 5531 \cite{rfc5531}，RFC 4506 \cite{rfc4506}，RFC 1833 \cite{rfc1833}},
   keywords={遠隔手続き呼び出し，スタブ，RPCランタイム，インタフェース定義言語，マーシャリング，アンマーシャリング，バインディング，レジストリ，部分障害，Sun RPC，XDR，rpcgen，rpcbind，Java RMI},
 }
 
@@ -27,7 +27,7 @@
 \section{なぜ遠隔手続き呼び出しか}
 \label{sec:l13-why}
 
-2つのクライアント・サーバアプリケーションを考える．\source{P4L1，なぜ RPC か，
+2つのクライアント・サーバアプリケーションが問題を示す．\source{P4L1，なぜ RPC か，
 RPC の利点；Birrell と Nelson \cite{birrell1984}；OSTEP ch.~48．}第1のもの
 では，クライアントがサーバにファイルを要求し，サーバはそのファイルの内容を
 返す．第2のものでは，クライアントが画像とともに画像処理アルゴリズムの名前と
@@ -100,7 +100,9 @@ Ethernet で結ばれた2台の Dorado ワークステーションの間で行�
   \item[より高水準のプロトコル] RPC はトランスポート層の上のプロトコルである．
     クライアントを認証しその呼び出しを認可するアクセス制御や，耐障害性の機構
     を組み込むことができ，TCP や UDP など異なるトランスポートプロトコルを
-    使えることが望ましい．
+    使えることが望ましい．\margin{Sun RPC は UDP と TCP の上で動作する
+    \cite{rfc5531}．NFS は UDP で始まり，NFSv4 は TCP のような輻輳制御を持つ
+    トランスポートを要求する \cite{rfc7530}．}
 \end{description}
 
 表現の違いのうち最も一般的なのは，複数バイトからなる値のバイトを格納する順序
@@ -137,7 +139,9 @@ RPC の手順；Birrell と Nelson \cite{birrell1984}；OSTEP ch.~48．}RPC で�
   呼び出しとメッセージの間の変換を行う．\emph{クライアントスタブ}はクライア
   ントにリンクされ，遠隔の手続きのインタフェースを持つ．引数をメッセージに
   詰め，応答から結果を取り出す．\emph{サーバスタブ}はサーバにリンクされ，引数
-  を取り出し，手続きの実際の実装を呼び出し，その結果を応答に詰める．
+  を取り出し，手続きの実際の実装を呼び出し，その結果を応答に詰める．%
+  \margin{第1章のシステムコールのラッパと同じ考え方である．本体が境界を
+  越えるローカルな手続きである．}
 \end{definition}
 
 \begin{definition}[RPC ランタイム]
@@ -173,7 +177,9 @@ RPC は次の手順で進む．番号は \cref{fig:l13-steps} のものである
   \item[2 マーシャル] クライアントスタブが引数をマーシャルする．すなわち
     バッファへ直列化する（\cref{sec:l13-marshalling}）．
   \item[3 送信] クライアントの RPC ランタイムが，バインドの際に合意した
-    トランスポートプロトコルでメッセージをサーバへ送る．
+    トランスポートプロトコルでメッセージをサーバへ送る．\tip{トレース上では，
+    手順 2--5 と帰り道のそれに対応する手順は純粋なオーバーヘッドである．
+    手順~6 のローカルな呼び出しにスタブとランタイムが付け加えるコストである．}
   \item[4 受信] サーバの RPC ランタイムがメッセージを受信し，サーバスタブへ
     渡す．アクセス制御の検査はこの時点で行われる．\caution{Sun RPC の既定の
     資格情報 \texttt{AUTH\_SYS} は，クライアントが自称するユーザ ID と
@@ -259,7 +265,9 @@ RPC システムは2種類の IDL のいずれかを使える．
 大きさが固定のデータについては，インタフェースの型が，ある値がどこで終わり次の
 値がどこから始まるかを受信側に伝える．配列や文字列のように大きさが可変のデータ
 には追加の情報が要る．要素の前に長さを符号化するか，あるいは C の文字列を NUL
-文字が終端するように，特別な値で終わりを示すかである．
+文字が終端するように，特別な値で終わりを示すかである．\caution{C の文字列は
+NUL で終端される．XDR の文字列は長さに続いてバイト列として送られ，終端記号は
+付かない（\cref{ex:l13-string}）．}
 
 \begin{example}
   \label{ex:l13-marshal}
@@ -477,8 +485,9 @@ program SUM_PROG {                     /* サービス */
 } = 0x20000123;                        /* プログラム番号 */
 \end{lstlisting}
 
-データ型 \texttt{sum\_in} と \texttt{sum\_out} は引数と結果を記述する．手続き
-は引数を1つ取り結果を1つ返すので，複数の値は構造体にまとめる．サービス自体は
+データ型 \texttt{sum\_in} と \texttt{sum\_out} は引数と結果を記述する．
+\texttt{rpcgen} は既定では引数を1つ，結果を1つしか許さない（\texttt{-N} を
+付ければ引数は複数でもよい）ので，複数の値は構造体にまとめる．サービス自体は
 \emph{プログラム}であり，1つ以上のバージョンを含み，各バージョンが手続きを
 含む．\texttt{.x} 言語のこの部分は RPC 言語であり，プロトコルとともに定義された
 XDR の拡張である \cite{rfc5531}．プログラム，バージョン，手続きは番号で識別
@@ -497,7 +506,8 @@ XDR の拡張である \cite{rfc5531}．プログラム，バージョン，手�
 Sun RPC のスタブは，XDR の記述を C のコードに翻訳するコンパイラ
 \term{rpcgen}[rpcgen] が生成する．\source{P4L1，XDR のコンパイル，XDR の
 コンパイルのまとめ；OSTEP ch.~48．}コマンド \texttt{rpcgen -C sum.x}
-（\texttt{-C} は ANSI~C を選ぶ）は，4つのファイルを生成する
+（\texttt{-C} は ANSI~C を選ぶ．現在の Linux の \texttt{rpcgen} では既定）
+は，4つのファイルを生成する
 （\cref{fig:l13-rpcgen}）．
 \begin{description}
   \item[\texttt{sum.h}] データ型とスタブ手続きの C の宣言，および
@@ -582,7 +592,7 @@ Sun RPC のレジストリはマシンごとである．\source{P4L1，SunRPC �
 デーモンはスーパーユーザの権限で起動しなければならない．サーバが起動すると，
 生成された \texttt{main} が，プログラムの各バージョンを各トランスポートに
 ついて登録する（\cref{fig:l13-rpcbind}，手順 1）．あるマシンの登録は
-\texttt{rpcinfo -p} で一覧できる．
+\texttt{rpcinfo -p} で一覧できる．以下はその抜粋である．
 
 \begin{lstlisting}[numbers=none]
 $ rpcinfo -p
@@ -590,15 +600,20 @@ $ rpcinfo -p
     100000    4   tcp    111  portmapper
     100000    2   udp    111  portmapper
     100003    3   tcp   2049  nfs
+ 536871203    1   udp  39871
  536871203    1   tcp  40123
 \end{lstlisting}
 
-各行はプログラム番号，バージョン，トランスポートプロトコル，ポートを示す．
+各行はプログラム番号，バージョン，トランスポートプロトコル，ポートを示す．%
+\margin{\texttt{rpcinfo -p host} は遠隔の \texttt{rpcbind} に問い合わせる．
+Linux のパッケージ名は \texttt{rpcbind} であり，以前は \texttt{portmap}
+であった．}
 デーモン自身はポート 111 のプログラム \texttt{100000} として現れ，NFS サーバは
 プログラム \texttt{100003} として現れる．\margin{NFS は登録されたポート 2049
-でも待ち受ける．NFSv4 のクライアントはバインディングのプロトコルを使わないこと
-になっている \cite{rfc8881}．}最後の行が \texttt{sum} サーバで
-あり，そのプログラム番号 \texttt{0x20000123} が 10 進で表示されている．
+でも待ち受ける．NFSv4.1 のクライアントは RPC のバインディングプロトコルを
+使うべきでない \cite{rfc8881}．}最後の2行が \texttt{sum} サーバであり，
+生成された \texttt{main} が UDP と TCP について登録したものである．その
+プログラム番号 \texttt{0x20000123} が 10 進で表示されている．
 
 \begin{figure}[htbp]
   \centering
@@ -617,7 +632,8 @@ $ rpcinfo -p
 クライアントはそれをすべてのスタブに渡す．\margin{サーバ自身のポートは動的に
 割り当てられ，再起動のたびに変わるので，ファイアウォールであらかじめ開けておく
 ことができない．また \texttt{rpcbind} は誰の問い合わせにも答えるので，露出した
-デーモンはサービス拒否攻撃の増幅に悪用されてきた．}%
+デーモンは UDP のリフレクション攻撃に使われてきた
+\cite{cisa2014amplification}．}%
 ハンドルはサーバのアドレスのほか，
 認証情報と直近の呼び出しの状態を保持し，エラーメッセージはそこから得られる．
 クライアントの全体を以下に示す．
@@ -659,9 +675,11 @@ int main(int argc, char *argv[])
 ---例えばサーバマシンに到達できなかった，呼び出しがタイムアウトしたなどを---
 ハンドルに記録しており，\texttt{clnt\_perror} がそれを表示する．応答を受け
 取れない呼び出しはタイムアウトする．UDP の場合，ランタイムは待つ間に要求を
-再送する．\margin{UDP では RPC メッセージが1つのデータグラム---ペイロードは
-最大 \SI{65507}{\byte}---に収まらなければならない．glibc のランタイムは
-呼び出しがタイムアウトするまで \SI{5}{\second} ごとに再送する．}
+再送する．\sidenote{UDP 上の RPC メッセージは既定で \SI{8800}{\byte}
+（\texttt{UDPMSGSIZE}）に制限される．libtirpc は \SI{15}{\second} ごとに
+再送するので，\texttt{rpcgen} のスタブの \SI{25}{\second} のタイムアウトでは
+要求は1度だけ再送される．glibc はバージョン 2.32 で Sun RPC を削除しており，
+Linux は libtirpc を使う．}
 
 \section{XDR のデータ型とルーチン}
 \label{sec:l13-xdr-types}
@@ -720,8 +738,8 @@ XDR は，整数，浮動小数点数，列挙，ブール，構造体など，C
 \subsection{XDR ルーチン}
 
 ファイル \texttt{sum\_xdr.c} は，インタフェースのデータ型ごとに1つの XDR
-ルーチンを含む．\texttt{rpcgen} が生成する \texttt{sum\_in} 用のルーチンは
-次のとおりである．
+ルーチンを含む．\texttt{rpcgen} が生成する \texttt{sum\_in} 用のルーチンは，
+ほぼそのままの形で次のとおりである．
 
 \begin{lstlisting}[language=C, numbers=none]
 bool_t
@@ -755,8 +773,9 @@ xdr_sum_in(XDR *xdrs, sum_in *objp)
 符号化；RFC 5531 \cite{rfc5531}；RFC 4506 \cite{rfc4506}．}
 \begin{description}
   \item[トランスポートヘッダ] TCP や UDP などのトランスポートプロトコルと，
-    その下位のプロトコルのヘッダ．\margin{バイトストリームの上では，各メッセージ
-    の前に \SI{4}{\byte} のレコードマークが置かれる．最上位ビットが最終
+    その下位のプロトコルのヘッダ．\margin{バイトストリームの上では，1つの
+    メッセージが1つ以上のフラグメントからなる1つのレコードであり，各フラグ
+    メントの前に \SI{4}{\byte} のヘッダが置かれる．最上位ビットが最終
     フラグメントの印，残る 31 ビットが長さである \cite{rfc5531}．}
   \item[RPC ヘッダ] 呼び出しの識別情報．クライアントが応答を要求に対応付ける
     ための要求識別子（\emph{xid}），プログラム番号，バージョン番号，手続き
@@ -797,6 +816,7 @@ xdr_sum_in(XDR *xdrs, sum_in *objp)
 文字列は，メモリ上の表現と通信路上の表現の違いを示す．
 
 \begin{example}
+  \label{ex:l13-string}
   \texttt{string name<32>} と宣言された文字列 \texttt{"kernel"} は，
   クライアントとサーバのメモリ上では \SI{7}{\byte} を占める．6文字と終端の
   NUL である．XDR はこれを \SI{12}{\byte} に符号化する．\SI{4}{\byte} の
@@ -857,7 +877,9 @@ int total = s.sum(new int[] { 7, -2, 300 });
 オブジェクトとともに直列化される．\caution{複製は呼び出しのたびに作られ，サーバ
 が複製に加えた変更はクライアントからは見えない．\cref{sec:l13-pointers} の
 直列化されたポインタと同じ落とし穴である．}%
-遠隔オブジェクトはスタブとして参照渡しされる．
+遠隔オブジェクトはスタブとして参照渡しされる．\margin{指されたデータを複製
+する Sun RPC と対照的に，RMI は直列化可能な引数を複製し，遠隔オブジェクトは
+参照渡しする（\cref{tab:l13-design}）．}
 
 \begin{figure}[htbp]
   \centering
@@ -897,8 +919,11 @@ int total = s.sum(new int[] { 7, -2, 300 });
 
 Java RMI は各側に3つの層を持つ．最上位は，クライアント側ではスタブ，サーバ側
 では\emph{スケルトン}であり，スケルトンは呼び出しをアンマーシャルして遠隔
-オブジェクトへディスパッチする．\margin{JDK~1.2 以降はスタブが直接ディス
-パッチし，スケルトンは生成されない．}その下の2つの層は RMI ランタイムが提供
+オブジェクトへディスパッチする．\margin{JDK~1.2 以降，スケルトンは不要である．
+サーバのランタイムがリフレクションでディスパッチする．J2SE~5.0 以降はスタブ
+が動的に生成され，\texttt{rmic} は JDK~15 で削除された．}その下の2つの層は
+RMI ランタイムが提供
+
 する．
 \begin{description}
   \item[リモート参照層] 呼び出しのセマンティクスを決める．単一のオブジェクト
