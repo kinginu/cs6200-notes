@@ -19,22 +19,22 @@ Chapters appear here as soon as both editions are finished and pushed.
 
 | # | Lecture | Lesson | en | ja |
 |---|---|---|---|---|
-| 1 | P1L2 | Introduction to Operating Systems | | |
-| 2 | P2L1 | Processes and Process Management | | |
+| 1 | P1L2 | Introduction to Operating Systems | ✅ | ✅ |
+| 2 | P2L1 | Processes and Process Management | ✅ | ✅ |
 | 3 | P2L2 | Threads and Concurrency | ✅ | ✅ |
-| 4 | P2L3 | Threads Case Study: PThreads | | |
-| 5 | P2L4 | Thread Design Considerations | | |
-| 6 | P2L5 | Thread Performance Considerations | | |
-| 7 | P3L1 | Scheduling | | |
-| 8 | P3L2 | Memory Management | | |
-| 9 | P3L3 | Inter-Process Communication | | |
-| 10 | P3L4 | Synchronization Constructs | | |
-| 11 | P3L5 | I/O Management | | |
-| 12 | P3L6 | Virtualization | | |
-| 13 | P4L1 | Remote Procedure Calls | | |
-| 14 | P4L2 | Distributed File Systems | | |
-| 15 | P4L3 | Distributed Shared Memory | | |
-| 16 | P4L4 | Datacenter Technologies | | |
+| 4 | P2L3 | Threads Case Study: PThreads | ✅ | ✅ |
+| 5 | P2L4 | Thread Design Considerations | ✅ | ✅ |
+| 6 | P2L5 | Thread Performance Considerations | ✅ | ✅ |
+| 7 | P3L1 | Scheduling | ✅ | ✅ |
+| 8 | P3L2 | Memory Management | ✅ | ✅ |
+| 9 | P3L3 | Inter-Process Communication | ✅ | ✅ |
+| 10 | P3L4 | Synchronization Constructs | ✅ | ✅ |
+| 11 | P3L5 | I/O Management | ✅ | ✅ |
+| 12 | P3L6 | Virtualization | ✅ | ✅ |
+| 13 | P4L1 | Remote Procedure Calls | ✅ | ✅ |
+| 14 | P4L2 | Distributed File Systems | ✅ | ✅ |
+| 15 | P4L3 | Distributed Shared Memory | ✅ | ✅ |
+| 16 | P4L4 | Datacenter Technologies | ✅ | ✅ |
 
 The lesson structure follows the public Udacity course (ud923, P1L2–P4L4);
 P1L1 is course logistics and has no chapter.
