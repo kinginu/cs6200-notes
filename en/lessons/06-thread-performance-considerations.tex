@@ -23,9 +23,9 @@ experiments.
 Lesson~3 compared the boss-workers and pipeline patterns by the total time
 they need to complete a batch of requests.  That is only one of several
 reasonable criteria, and a different criterion can reverse the
-verdict.\source{P2L5, which threading model is better.}  Consider a server
-with five threads that receives a batch of $n$ requests, each of which
-needs \SI{125}{\milli\second} of processing:
+verdict.\source{P2L5, which threading model is better.}  A server with
+five threads receives a batch of $n$ requests, each of which needs
+\SI{125}{\milli\second} of processing:
 \begin{itemize}
   \item in the boss-workers configuration one thread is the boss, whose own
     time per request is negligible, and $w = 4$ threads are workers, each of
@@ -91,7 +91,7 @@ metric and on the number of requests.
 \label{sec:l06-useful}
 
 The earlier lessons gave several reasons for using
-threads.\source{P2L5, are threads useful, visual metaphor; OSTEP ch.~26.}
+threads.\source{P2L5, are threads useful; OSTEP ch.~26.}
 \begin{itemize}
   \item \textbf{Parallelization}: on several CPUs, threads that work on
     parts of the same task speed it up.
@@ -112,7 +112,9 @@ percentile.  For the owner of the hardware it is the utilization of
 resources such as the CPU.  Three measures thus recur for any system that
 serves requests: how many requests it completes per unit time, how long a
 request takes to be answered, and how much of the capacity of the system is
-in use.
+in use.\tip{Throughput times average response time is the number of
+requests in the system, Little's law of \cref{sec:l06-methodology}: a quick
+check on any measured pair.}
 
 \begin{example}
   A server handles 200 requests: 180 receive a response after
@@ -121,7 +123,9 @@ in use.
   \SI{58}{\milli\second}$.  The 95th percentile is the smallest value that
   at least 95\,\% of the requests do not exceed; in sorted order the 190th
   response time is \SI{400}{\milli\second}, so the 95th percentile is
-  \SI{400}{\milli\second}.  The average hides the fact that one request in
+  \SI{400}{\milli\second}.\caution{A percentile is not an average of the
+  slowest requests: the 95th percentile ignores the worst 5\,\% entirely.}
+  The average hides the fact that one request in
   ten waits twenty times longer than most.
 \end{example}
 
@@ -166,7 +170,7 @@ The most common metrics are the following.
     its submission until it starts to execute.  It matters when users care
     about when their jobs start rather than when they finish.
   \item[CPU utilization] The \term{CPU utilization}[CPU使用率] is the
-    fraction of time during which the CPU performs useful work; utilization
+    fraction of time during which the CPU is busy; utilization
     metrics for other resources are defined in the same way.
 \end{description}
 
@@ -209,11 +213,12 @@ agreement is then itself a metric.
   \end{tabular}
 \end{table}
 
-\subsection{It depends}
+\subsection{Dependence on metric and workload}
 
 The question whether threads are useful therefore has no single answer.
 The answer depends on the metric, as \cref{sec:l06-compare} showed for
-average and total completion time, and it depends on the workload: the
+average and total completion time, and it depends on the workload
+(\cref{sec:l06-methodology}): the
 better of two threading models changed with the number of requests.  The
 same holds for most design decisions in operating systems.  Different kinds
 of graphs favour different shortest-path algorithms, different patterns of
@@ -222,8 +227,8 @@ loads favour different server architectures.
 
 \begin{keypoint}
   No design is best in general.  A comparison is meaningful only for a
-  stated metric and a stated workload, and the answer to \enquote{which is
-  better?}\ is typically \enquote{it depends}.
+  stated metric and a stated workload, and which of two designs is better
+  typically depends on both.
 \end{keypoint}
 
 \Needspace{6\baselineskip}
@@ -276,6 +281,9 @@ processes, which inherit the socket and all call \texttt{accept} on it.
   single process whose threads, sharing one address space, each process
   requests concurrently (\cref{fig:l06-mp-mt}b).
 \end{definition}
+\caution{\enquote{Multithreaded} here is the server model of this lesson
+(Pai et al.), not the one-to-one or many-to-one mapping models of
+Lesson~3.}
 
 The threads can be organized in several ways: every thread may execute all
 the steps, accepting connections itself; or, in the boss-workers pattern of
@@ -390,7 +398,9 @@ wait for the disk as well.
 
 Lesson~3 showed that on a single CPU, switching to another thread while a
 thread waits for I/O pays off when the idle time exceeds the cost of the two
-context switches, $t_{\mathrm{idle}} > 2\, t_{\mathrm{ctx}}$.  When there is
+context switches, $t_{\mathrm{idle}} > 2\, t_{\mathrm{ctx}}$.\margin{Lesson~7
+revisits the CPU scheduler whose time-slicing this lesson counts as
+context-switch overhead.}  When there is
 no idle time, context switches are pure overhead: they consume CPU cycles
 that could have processed requests.\margin{Lesson~2 gives the price: about
 \SI{3.8}{\micro\second} of direct work per switch, and more than
@@ -415,8 +425,10 @@ the dispatcher uses one of three system calls.
 interest on every call; the kernel checks all of them, and the application
 scans the result, although typically only a few are ready.  Their cost
 therefore grows with the number of open connections.\caution{\texttt{select}
-is capped as well: an \texttt{fd\_set} holds \texttt{FD\_SETSIZE} = \num{1024}
-descriptors on Linux.  \texttt{poll} and \texttt{epoll} have no such limit.}
+is capped as well: on Linux it handles only descriptors below
+\texttt{FD\_SETSIZE} = \num{1024}.  \texttt{poll} has no such limit, and
+the limit of \texttt{epoll} is \texttt{/proc/\allowbreak sys/\allowbreak fs/\allowbreak epoll/\allowbreak max\_user\_watches}
+(select(2), epoll(7)).}
 \texttt{epoll},
 available on Linux, eliminates most of this overhead: descriptors are
 registered once, and each call returns only those that are
@@ -427,17 +439,12 @@ FreeBSD~4.1 (2000) and \texttt{epoll} in Linux~2.5.44 (2002), generally
 available with Linux~2.6.}
 
 \begin{example}
-  The skeleton of a dispatcher built on \texttt{epoll}, with the state of
-  each request in a \texttt{struct conn}:
+  The skeleton of a dispatcher built on \texttt{epoll}.  The state of each
+  request is kept in a \texttt{struct conn}, which holds the descriptor,
+  the buffers, the file and the offset reached, and in \texttt{handler} a
+  pointer to the function for the next step:
   \begin{lstlisting}[language=C, numbers=none]
-struct conn {                   /* one per request */
-    int fd;
-    void (*handler)(struct conn *);   /* next step */
-    /* buffers, file, offset, ... */
-};
-
-int ep = epoll_create1(0);
-/* handlers register descriptors with epoll_ctl */
+int ep = epoll_create1(0);   /* fds added: epoll_ctl */
 for (;;) {                                /* dispatcher */
     struct epoll_event ev[64];
     int n = epoll_wait(ep, ev, 64, -1);   /* wait */
@@ -592,7 +599,8 @@ Before a handler sends file data, the dispatcher uses the system call
 (\cref{fig:l06-flash}).\tip{\texttt{mincore} answers with one byte per page:
 with the \SI{4}{\kibi\byte} pages of x86-64, a \SI{4}{\mebi\byte} mapping
 needs a vector of \num{1024} bytes.}  If they are, a handler sends the data
-at once, and this cannot block.  If they are not, the dispatcher passes the
+at once, and this normally does not block (the pages can still be evicted
+between the test and the send).  If they are not, the dispatcher passes the
 request to a helper through a pipe.  The helper accesses the pages, which
 brings them into memory and may block, and then reports completion to the
 dispatcher through a pipe.
@@ -633,7 +641,7 @@ static bool in_memory(void *addr, size_t len)
 
 /* dispatcher, before file data are sent */
 if (in_memory(c->map, c->len))
-    send_data(c);                    /* cannot block */
+    send_data(c);                    /* rarely blocks */
 else
     ask_helper(c);                   /* through a pipe */
 \end{lstlisting}
@@ -651,21 +659,24 @@ request.
     request to a helper and back.
   \item[Gather I/O] The response header and the file data are sent with a
     single vector I/O operation, \texttt{writev}, which passes several
-    memory regions at once and so saves a system call; a network interface
-    with scatter-gather DMA can transfer non-contiguous buffers without
-    first assembling them in one.\margin{Linux goes one step further:
+    memory regions at once and so saves a system call.  The kernel still
+    copies the regions from user space into its socket buffers; a network
+    interface with scatter-gather DMA can then gather these kernel buffers
+    without assembling them in one, but it does not avoid the
+    copy.\margin{Linux goes one step further:
     \texttt{sendfile} (2.2, 1999) copies file data into the socket inside
     the kernel, without a trip through user space.}
-  \item[Alignment] The kernel copies the regions given to \texttt{writev}
-    into a contiguous buffer of its own, and the copy is slower when the
-    regions are not aligned to the machine word.  Flash therefore pads every
-    response header to a multiple of 32 bytes, by lengthening
-    variable-length header fields, so that the file data that follow the
-    header are copied at an aligned position.\caution{Despite its usual
+  \item[Alignment] The copy of the regions given to \texttt{writev} into
+    the kernel is slower when the regions are not aligned.  Flash therefore
+    aligns every response header on a 32-byte boundary and pads its length
+    to a multiple of 32 bytes, by lengthening variable-length header
+    fields, to match the 32-byte cache lines of the machines it targeted;
+    the file data that follow the header are then copied at an aligned
+    position.\caution{Despite its usual
     name, \emph{alignment for DMA}, this optimization makes the copy into
     kernel buffers cheaper rather than avoiding it.}
 \end{description}
-These optimizations were novel in 1999 and are common in web servers today.
+These optimizations are common in web servers today.
 They are independent of the server architecture, a fact that matters for
 the evaluation in \cref{sec:l06-methodology}.
 
@@ -692,24 +703,33 @@ block.
   \caption{The Apache web server.  (a) Modules register handlers at the
     stages of request processing that the core provides.  (b) Several
     processes, each a boss (B) with a pool of workers (W); dashed circles are
-    workers created as load increases.}
+    the workers that the model of the lecture adds as load increases,
+    whereas the \texttt{worker} module keeps a fixed number per process.}
   \label{fig:l06-apache}
 \end{figure}
 
 The execution contexts combine the multi-process and multithreaded models
-(\cref{fig:l06-apache}b).  Apache runs several processes, and each process
-is a boss-workers server with a dynamic thread pool.  Both the number of
-threads in each pool and the number of processes are adjusted to the load,
-for instance by the number of idle workers or of pending
-connections.
+(\cref{fig:l06-apache}b).  In the model of the lecture, Apache runs several
+processes, and each process is a boss-workers server with a dynamic thread
+pool.  Both the number of threads in each pool and the number of processes
+are adjusted to the load, for instance by the number of idle workers or of
+pending connections.  The real \texttt{worker} module described below
+scales differently: each child process creates a fixed number of worker
+threads (\texttt{ThreadsPerChild}) and one listener thread, and the load is
+followed by creating or terminating child processes, so that the number of
+idle threads stays between \texttt{MinSpareThreads} and
+\texttt{MaxSpareThreads}.
 
 \begin{note}
   In Apache~2 the skeleton is itself a module: accepting connections and
   managing the processes and threads is the task of a
   \emph{multi-processing module}, which selects the structure of the
   execution contexts.  \texttt{prefork} uses processes only, \texttt{worker}
-  is the hybrid described here, and \texttt{event} adds an event loop that
-  watches idle connections.
+  combines processes with a fixed number of threads in each, and
+  \texttt{event} adds an event loop that watches idle
+  connections.\margin{Apache httpd~2.4 defaults to the \texttt{event} MPM on
+  Linux; \texttt{prefork} and \texttt{worker} remain selectable (Apache
+  docs, \enquote{Multi-Processing Modules}).}
 \end{note}
 
 \Needspace{6\baselineskip}
@@ -817,7 +837,10 @@ is \num{100} at a time.}
 The results of the evaluation depend above all on whether the requested
 data are in memory.\source{P2L5, experimental results, summary of
 performance results; Pai et al.}
-\Cref{tab:l06-results} summarizes the findings described below.
+\Cref{tab:l06-results} summarizes the findings described
+below.\tip{Read each row of the table as \enquote{workload: who wins} and ask
+which resource limits that workload: the CPU for cached data, the disk for
+large data sets.}
 
 \begin{table}[htbp]
   \centering
@@ -850,8 +873,9 @@ performance results; Pai et al.}
     running Solaris~2.6 and FreeBSD~2.2.6 \cite{pai1999}.}  All servers show a similar trend.
     SPED performs best.  Flash comes close, but it pays for the
     \texttt{mincore} test on every request, which here is never needed.
-    Zeus shows an anomaly at some file sizes, which Pai et al.\ attribute to
-    the alignment problem described above.  MT and MP are slower because of
+    On FreeBSD, Zeus shows an anomaly for files of 10--\SI{100}{\kilo\byte},
+    which Pai et al.\ suspect stems from the alignment problem described
+    above.  MT and MP are slower because of
     synchronization and context switching, and Apache, which lacks the
     optimizations, is slowest.
   \item[Owlnet trace] The data set is small and mostly fits in the cache,
@@ -866,9 +890,9 @@ performance results; Pai et al.}
     processes need.  Flash performs best: its small footprint leaves more
     memory for caching, so fewer requests need blocking I/O, and it needs no
     synchronization.  Apache is again the slowest of all the servers
-    measured.\margin{Over the workloads measured, Flash \enquote{matches or
-    exceeds the performance of existing Web servers by up to 50\,\%}
-    \cite{pai1999}.}
+    measured.\margin{Pai et al.\ report that Flash \enquote{can match or
+    exceed the performance of existing Web servers by up to 50\,\% across a
+    wide range of real workloads} \cite{pai1999}.}
   \item[Optimizations] Measurements of Flash with various combinations of
     the caches of path names, response headers and mapped files show that
     each optimization contributes substantially.  Apache would have
@@ -934,7 +958,7 @@ that is varied, and uses a relevant workload.  The best-case and worst-case
 scenarios should be included.  The combinations of factors should be
 useful: many combinations merely repeat the same point.
 
-Two rules govern comparisons.  First, compare \emph{apples to apples}: two
+Two rules govern comparisons.  First, compare \emph{like with like}: two
 configurations whose results are compared must differ only in the factor
 under study.  If one server is measured with a light
 workload on a large machine and another with a heavy workload on a small
@@ -979,7 +1003,7 @@ experiment do not support any statement.
   when asynchronous I/O is unavailable (AMPED, AMTED).  Flash, an AMPED
   server, comes close to SPED when data are cached and matches or exceeds
   the alternatives when the workload needs the disk; Apache combines
-  processes with dynamic thread pools.  Sound experiments choose relevant
+  processes with pools of threads.  Sound experiments choose relevant
   metrics and workloads, compare configurations that differ in the factor
   under study, compare against a baseline, repeat runs and draw conclusions.
 \end{keypoint}

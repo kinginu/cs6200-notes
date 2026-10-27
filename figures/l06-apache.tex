@@ -1,5 +1,7 @@
 % Apache: (a) the core invokes modules registered for the stages of request
-% processing; (b) several processes, each a boss with a dynamic worker pool.
+% processing; (b) several processes, each a boss with workers; dashed circles
+% are workers added under load in the lecture's model (Apache's worker MPM
+% keeps a fixed number per process and scales by processes).
 % Usage: \input{figures/l06-apache}   (width ~116 mm)
 \begin{tikzpicture}[x=1mm, y=1mm, font=\footnotesize\sffamily,
   box/.style={draw, rounded corners=2pt, fill=ln-box, align=center, inner sep=1pt},
@@ -38,5 +40,5 @@
       {\iflangja{プロセス}{process} \n};
   }
   \node at (113,13) {\dots};
-  \node[lab] at (86,-3) {\iflangja{プロセス数もスレッド数も負荷に応じて増減}{processes and thread pools grow and shrink with load}};
+  \node[lab] at (86,-3) {\iflangja{プロセス数は負荷に応じて増減}{the number of processes follows the load}};
 \end{tikzpicture}
