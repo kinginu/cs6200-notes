@@ -449,3 +449,7 @@ dentry cache	dentry キャッシュ	dentryきゃっしゅ	11
 journal	ジャーナル	じゃーなる	11	
 page cache	ページキャッシュ	ぺーじきゃっしゅ	11	indexed in a margin note (buffer cache)
 elevator algorithm	エレベータアルゴリズム	えれべーたあるごりずむ	11	SCAN; indexed in a margin note (I/O scheduling)
+delegation	デリゲーション	でりげーしょん	14	NFSv4
+close-to-open consistency	close-to-open 一貫性	くろーずとぅおーぷんいっかんせい	14	NFS
+stale file handle	失効したファイルハンドル	しっこうしたふぁいるはんどる	14	NFS error ESTALE
+generation number	世代番号	せだいばんごう	14	NFS file handle

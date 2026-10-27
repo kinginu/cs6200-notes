@@ -25,9 +25,9 @@ Supporting threads requires data structures at two levels: in the kernel
 for kernel-level threads, and in the user-level library for user-level
 threads.\source{P2L4, thread data structures: single CPU, at scale; hard
 and light process state; rationale for data structures; Eykholt et al.\
-\cite{eykholt1992}; OSTEP ch.~26.}  Consider first a process whose
-user-level threads all run on a single kernel-level thread (the many-to-one
-model of Lesson~3).  The kernel describes the process by its PCB, which
+\cite{eykholt1992}; OSTEP ch.~26.}  A process whose user-level threads
+all run on one kernel-level thread (the many-to-one model of Lesson~3) is
+the simplest case.  The kernel describes the process by its PCB, which
 holds the virtual address mappings together with the execution context of
 the kernel-level thread: its registers, stack pointer and stack.  The
 user-level library keeps a data structure for each user-level thread, with
@@ -94,9 +94,8 @@ process.  The state of a process thus divides into two parts.
   \term{light process state}[ライトプロセス状態] is the part that is
   relevant only to the subset of user-level threads currently associated
   with a particular kernel-level thread, such as the signal mask and the
-  system call arguments.\caution{The two terms come from the Solaris
-    literature and from the lecture; textbooks usually speak instead of
-    per-process and per-thread state.}
+  system call arguments.\caution{The two terms come from the lecture; textbooks
+    speak of per-process and per-thread state.}
 \end{definition}
 
 \subsection{Why several data structures}
@@ -192,9 +191,14 @@ so that the library returns a meaningful error.
 The thread data structure contains the execution context (the registers,
 including the stack pointer), the signal mask, the priority, the
 \emph{thread-local storage}, and the stack.  Thread-local storage holds the
-variables that the thread functions declare as private to each thread;
-they are known at compile time, so the compiler can reserve space for them
-in every thread.  The stack size is set by a library default or by the
+variables that the program declares as private to each thread.  Their
+total size is computed by the run-time linker when the program starts, and
+the library allocates the thread-local storage of every new thread at the
+base of its stack; the thread structure itself is kept in thread-local
+storage.\caution{Lecture vs paper: the lecture says that thread-local
+storage is known at compile time, so that space can be reserved for it in
+every thread.  In Stein and Shah its size is fixed only at program start,
+by the run-time linker.}  The stack size is set by a library default or by the
 application.  Since the size of all parts is known when the thread is
 created, the library can allocate the structures of successive threads
 next to one another in contiguous memory, which gives good locality.
@@ -258,7 +262,10 @@ information that the kernel needs even when the process is not running,
 such as scheduling information, and it is never swapped out.  The CPU
 structure identifies the thread currently running on each
 CPU.\margin{On SPARC processors, which have spare registers, SunOS keeps
-the pointer to the current thread in a dedicated register.}
+the pointer to the current thread in a dedicated register.}%
+\margin{Linux keeps one run queue, \texttt{struct rq}, per CPU and a
+per-CPU pointer to the current task (\texttt{kernel/sched}); the SunOS CPU
+structure plays the same role.}
 
 \begin{table}[htbp]
   \centering
@@ -276,7 +283,7 @@ the pointer to the current thread in a dedicated register.}
     Kernel-level thread & kernel-level registers, stack pointer,
       scheduling information, pointers to the associated LWP, process and
       CPU; not swappable \\
-    CPU & current thread, list of kernel-level threads, dispatching and
+    CPU & current thread, idle thread, dispatching and
       interrupt-handling information \\
     \bottomrule
   \end{tabular}
@@ -304,7 +311,11 @@ such as a kernel-level thread blocking.
   the kernel adjust the number of kernel-level threads.\margin{On Linux
     \texttt{pthread\_setconcurrency} has no effect: with a one-to-one
     library there is nothing to choose, and POSIX lets an implementation
-    ignore the hint.}
+    ignore the hint.}\caution{Lecture vs paper: the lecture speaks of
+    blocking I/O in general.  SunOS sends \texttt{SIGWAITING} only when
+    every LWP of the process is in an indefinite wait, such as a read on a
+    terminal or a socket, not a disk read, and the library catches it only
+    while it has more threads than LWPs.}
 \end{example}
 
 \begin{table}[htbp]
@@ -321,9 +332,10 @@ such as a kernel-level thread blocking.
         kernel creates K1--K3. & K1--K3 \\
     2 & U1--U3 run on K1--K3; U4--U6 wait on a user-level condition. &
         3 running \\
-    3 & U1 and U2 issue blocking I/O requests, and K1 and K2 block in
-        the kernel.  Meanwhile U4 becomes ready. & 2 blocked, 1 running \\
-    4 & U3 also issues a blocking request, so no kernel-level thread is
+    3 & U1 and U2 issue blocking reads on a terminal or socket
+        (indefinite waits), and K1 and K2 block in the kernel.  Meanwhile
+        U4 becomes ready. & 2 blocked, 1 running \\
+    4 & U3 also issues such a read, so no kernel-level thread is
         left to run U4 and the whole process would stall.  When K3 blocks,
         the kernel therefore notifies the library---in SunOS~5.0 with the
         signal \texttt{SIGWAITING}; the library requests another
@@ -394,8 +406,8 @@ CPUs, synchronization-related issues, destroying threads; Eykholt et al.\
 
 On a multiprocessor the library runs on several kernel-level threads at
 the same time, and a decision taken on one CPU can require an action on
-another.  Consider user-level threads T1, T2 and T3 with priorities
-$\text{T3} > \text{T2} > \text{T1}$, which the library runs on two
+another.  Let T1, T2 and T3 be user-level threads with priorities
+$\text{T3} > \text{T2} > \text{T1}$, run by the library on two
 kernel-level threads, K1 and K2, on two CPUs (\cref{fig:l05-multi-cpu}).
 T2 holds mutex \texttt{m} on CPU~1.  T3 runs on CPU~2 and tries to lock
 \texttt{m}; it blocks, and the library schedules T1 on K2.  When T2
@@ -403,7 +415,10 @@ unlocks \texttt{m}, the library, executing on CPU~1, finds that T3 is
 runnable again and has a higher priority than T1, which is running.  T1
 must be preempted, but the library code on CPU~1 cannot modify the
 registers of CPU~2.  It sends a signal to K2; the signal makes K2 execute
-the library on CPU~2, which preempts T1 and schedules T3.
+the library on CPU~2, which preempts T1 and schedules T3.\margin{The
+signal reaches CPU~2 as an interrupt: if K2 is running there, the kernel
+sends an inter-processor interrupt to that CPU, which enters the kernel and
+delivers the signal (in Linux, \texttt{kick\_process}).}
 
 \begin{figure}[htbp]
   \centering
@@ -427,7 +442,8 @@ owner is likely to release the mutex before these context switches would
 complete, and it is cheaper for the second thread to \emph{spin}: to stay
 on its CPU and repeatedly check whether the mutex is free.  If the owner is not running,
 spinning is useless, since the mutex cannot be released before the owner
-is scheduled again.
+is scheduled again.\tip{Spin only if the expected wait is shorter than two
+context switches; otherwise block.}
 
 \begin{definition}[Adaptive mutex]
   An \term{adaptive mutex}[適応型ミューテックス] is a mutex whose lock
@@ -453,13 +469,17 @@ destroy threads frequently, reusing these structures pays off.\margin{glibc does
 cache of up to \SI{40}{\mebi\byte} (tunable
 \texttt{glibc.pthread.stack\_cache\_size}) and is handed to the next
 \texttt{pthread\_create}.}  When a
-thread exits, its structures are not freed immediately; the thread is
-placed on a list called the \emph{death row}.  A \term{reaper thread}%
-[リーパスレッド] runs periodically, destroys the threads on the death row
-and frees their data structures.  If a request to create a thread arrives
-before the reaper has run, the structure and stack of a thread on the
-death row are reused, which saves the cost of allocating and initializing
-them.
+detached thread exits, its structures are not freed immediately; the
+thread is placed on a list called the \emph{death row}.  (A thread that is
+not detached waits on a list of zombies until another thread joins it.)  A
+\term{reaper thread}[リーパスレッド] destroys the threads on the death row
+and frees their data structures; it runs when the library has idle LWPs or
+when the death row reaches a limit.  The stacks it frees go to a cache,
+from which the library takes the stack of a new thread, which saves the
+cost of allocating and initializing it.\caution{Lecture vs paper: the
+lecture has a new thread reuse the structure of a thread still on the
+death row, before the reaper runs.  In Stein and Shah the reuse goes
+through the cache of stacks that the reaper fills.}
 
 \Needspace{11\baselineskip}
 \begin{keypoint}
@@ -625,7 +645,9 @@ them.
 
 A signal can also be sent explicitly to one thread, for example with
 \texttt{pthread\_kill}; like a synchronous signal, it is then delivered to
-that thread only.
+that thread only.\margin{A signal reaches user space only when the
+receiving thread returns from the kernel (Lesson~1); the kernel consults
+the pending signals that are not blocked on every such return.}
 
 \section{Disabling interrupts and signals}
 \label{sec:l05-masks}
@@ -712,7 +734,11 @@ pthread_sigmask(SIG_SETMASK, &old, NULL);  // restore
 On a multicore system an interrupt can be directed to any CPU that has it
 enabled.  Enabling a given interrupt on a single core only, so that only
 that core handles it, avoids the overhead and the perturbation that
-handling it would cause on all the other cores.
+handling it would cause on all the other cores.\sidenote{On Linux
+\texttt{/proc/interrupts} lists the count of every interrupt source, one
+column per CPU, and \texttt{/proc/irq/}$N$\texttt{/smp\_affinity} holds the
+mask of the CPUs to which interrupt $N$ may be routed.  The
+\texttt{irqbalance} daemon, where it runs, adjusts these masks.}
 
 \Needspace{5\baselineskip}
 \begin{keypoint}
@@ -737,15 +763,19 @@ handler has run.
     \term{real-time signal}[リアルタイムシグナル], instances are queued:
     if the signal is raised $n$ times, the handler is called $n$ times.
     POSIX reserves the range \texttt{SIGRTMIN} to \texttt{SIGRTMAX} for
-    them.
+    them.\caution{Queuing depends on the signal number, not on the call:
+      a real-time signal queues whether it is sent with \texttt{kill} or
+      \texttt{sigqueue}, a standard signal never has more than one pending
+      instance; \texttt{sigqueue} with \texttt{SA\_SIGINFO} only adds a
+      data value (\texttt{signal(7)}).}
 \end{description}
 
 \begin{example}
   A thread blocks both \texttt{SIGUSR1}, a standard signal, and the
   real-time signal \texttt{SIGRTMIN}.  While they are blocked, each signal
-  is raised four times; then the thread unblocks them.  The handler of
-  \texttt{SIGUSR1} runs once, because the four instances collapse into one
-  pending signal; the handler of \texttt{SIGRTMIN} runs four times.
+  is raised three times; then the thread unblocks them.  The handler of
+  \texttt{SIGUSR1} runs once, because the three instances collapse into one
+  pending signal; the handler of \texttt{SIGRTMIN} runs three times.
 \end{example}
 
 \section{Interrupts as threads}
@@ -767,8 +797,11 @@ there, and the pinned thread resumes.  Only if the handler blocks on a
 mutex does the interrupt thread become a complete thread, which the
 scheduler treats like any other, and the pinned thread continues at once.
 
-The same idea underlies a common way of dividing the work of interrupt
-handling (\cref{fig:l05-top-bottom}).\margin{Of the Linux deferral
+A related design, which SunOS~5.0 did not adopt, divides the work of
+interrupt handling into two parts (\cref{fig:l05-top-bottom}).  Eykholt et
+al.\ reject it because it requires restructuring the device drivers and
+always costs a full context switch, whereas an interrupt thread becomes a
+full thread only when its handler blocks.\margin{Of the Linux deferral
 mechanisms, only work queues and threaded handlers may block.}
 
 \begin{definition}[Top half and bottom half]
@@ -801,12 +834,15 @@ scheme pays off when
   \label{eq:l05-break-even}
 \end{equation}
 where $N_{\mathrm{int}}$ and $N_{\mathrm{mutex}}$ are the numbers of
-interrupts and of mutex operations.  Mutexes are locked and unlocked far
-more often than interrupts occur, so the balance is
-positive.\margin{Linux makes the same trade: booting with
+interrupts and of mutex operations.  The model counts only the fixed cost and assumes
+that handlers rarely block: converting an interrupt thread into a full
+thread costs much more, a flush of the SPARC register windows, and Eykholt
+et al.\ claim the net gain only as long as interrupts do not block too
+frequently.  Mutexes are locked and unlocked far more often than
+interrupts occur, so the balance is positive.\margin{Linux makes the same trade: booting with
 \texttt{threadirqs} runs handlers in threads, and under
 \texttt{PREEMPT\_RT}, mainline since Linux~6.12, that is the default for
-every handler not marked \texttt{IRQF\_NO\_THREAD}.}
+every handler not marked \texttt{IRQF\_NO\_THREAD} or per-CPU.}
 
 \begin{example}
   A system handles 2\,000 interrupts and performs 150\,000 mutex operations
@@ -974,11 +1010,32 @@ this way.
 
 POSIX threads in current Linux systems are implemented by the
 \term{Native POSIX Thread Library}[NPTL]\index{NPTL|see{Native POSIX
-Thread Library}} (NPTL), which uses the one-to-one model: every user-level
-thread is a task.  The kernel therefore sees every thread with its
-information, such as its signal mask, and the coordination problems of
-\cref{sec:l05-interaction,sec:l05-thread-signals} do not arise.  The
-drawbacks that once argued against the one-to-one model have faded: traps
+Thread Library}} (NPTL).  Its design \cite{drepper2005} rests on a few
+points:
+\begin{itemize}
+  \item the one-to-one model: every user-level thread is a task, so the
+    kernel sees every thread with its information, such as its signal mask,
+    and the coordination problems of
+    \cref{sec:l05-interaction,sec:l05-thread-signals} do not arise;
+  \item synchronization built on futexes (Lesson~4), which enter the kernel
+    only to wait or to wake;
+  \item POSIX signal semantics implemented in the kernel: a signal sent to
+    the process goes to one of its threads that does not block it, a fatal
+    signal terminates the whole process, and stop and continue signals act
+    on all its threads;
+  \item no manager thread: \texttt{clone} was extended so that a thread
+    starts and terminates without help, and at its exit the kernel clears
+    the thread identifier in user memory and wakes a futex on it, which
+    \texttt{pthread\_join} waits for;
+  \item scalability: the kernel scheduler of the time ran in constant time
+    whatever the number of threads, and new kernel support for
+    thread-local storage removed the limit of 8192 threads per process that
+    LinuxThreads had on IA-32.\margin{In Drepper and Molnar's benchmark
+      NPTL creates and destroys threads several times faster than
+      LinuxThreads and NGPT; the 15 minutes against 2 seconds of Lesson~3
+      came from the reworked kernel exit handling.}
+\end{itemize}
+The drawbacks that once argued against the one-to-one model have faded: traps
 into the kernel have become much cheaper, and memory and the range of
 thread identifiers are large enough for many kernel-level threads.  NPTL
 replaced LinuxThreads, an earlier library that also created one task per

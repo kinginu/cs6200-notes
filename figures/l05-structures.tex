@@ -1,12 +1,13 @@
 % Thread-related data structures at scale: user-level thread structures in
 % the library, PCBs holding the hard process state, kernel-level threads
-% holding the light process state, and CPU structures.
+% holding the light process state (signal mask, system call arguments)
+% besides their own registers and stack, and CPU structures.
 % Usage: \input{figures/l05-structures}   (width ~118 mm)
 \begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
   >={Stealth[length=1.5mm]},
   ult/.style={draw, fill=white, minimum width=10mm, minimum height=5mm,
               inner sep=0.5pt, align=center},
-  klt/.style={draw, fill=white, minimum width=16mm, minimum height=11mm,
+  klt/.style={draw, fill=white, minimum width=16mm, minimum height=14mm,
               inner sep=0.5pt, align=center},
   pcb/.style={draw, fill=ln-box, minimum height=14mm, inner sep=0.5pt,
               align=center},
@@ -33,7 +34,8 @@
   \foreach \x/\n in {32/1, 54/2, 76/3}
     \node[klt] (k\n) at (\x,24)
       {\textbf{KLT\,\n}\\\iflangja{ライト状態}{light state}\\
-       \iflangja{レジスタ等}{regs, stack}};
+       \iflangja{(マスク・引数)}{(mask, args)}\\
+       \iflangja{＋レジスタ等}{+ regs, stack}};
   \draw[->] (pcbp.east) -- (k1.west);
   \draw[->] (k1.east) -- (k2.west);
   \draw[->] (k2.east) -- (k3.west);
@@ -47,16 +49,17 @@
     {\iflangja{プロセス Q}{process Q}\\\iflangja{（シングル\\スレッド）}{(single-\\threaded)}};
   \node[pcb, minimum width=11mm] (pcbq) at (95.5,24)
     {\iflangja{Q の}{PCB}\\\iflangja{PCB}{of Q}};
-  \node[klt, minimum width=14mm] (kq) at (111,24)
+  \node[klt, minimum width=14mm] (kq) at (110.5,24)
     {\textbf{KLT}\\\iflangja{ライト状態}{light state}\\
-     \iflangja{レジスタ等}{regs, stack}};
+     \iflangja{(マスク・引数)}{(mask, args)}\\
+     \iflangja{＋レジスタ等}{+ regs, stack}};
   \draw[->] (pcbq.east) -- (kq.west);
   % ---- CPUs
   \node[cpu] (c0) at (32,5) {CPU\,0};
   \node[cpu] (c1) at (76,5) {CPU\,1};
-  \node[cpu] (c2) at (111,5) {CPU\,2};
+  \node[cpu] (c2) at (110.5,5) {CPU\,2};
   \draw[<->] (k1.south) -- (c0.north);
   \draw[<->] (k3.south) -- (c1.north);
   \draw[<->] (kq.south) -- (c2.north);
-  \node[lab, anchor=north] at (54,18) {\iflangja{実行中でない}{not running}};
+  \node[lab, anchor=north] at (54,16) {\iflangja{実行中でない}{not running}};
 \end{tikzpicture}
