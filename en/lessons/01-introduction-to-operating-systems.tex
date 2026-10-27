@@ -5,7 +5,7 @@
 \lessoninfo{
   video={P1L2},
   textbook={OSTEP \cite{ostep} ch.~2, 6; Silberschatz et al.\ \cite{silberschatz2018} ch.~1--2},
-  keywords={operating system, abstraction, arbitration, mechanism, policy, kernel mode, user mode, trap, system call, signal, monolithic operating system, modular operating system, microkernel, Linux},
+  keywords={operating system, abstraction, arbitration, mechanism, policy, kernel mode, user mode, trap, system call, signal, monolithic operating system, modular operating system, microkernel},
 }
 
 Every application depends on an operating system to use the CPUs, the
@@ -58,10 +58,10 @@ operating system is the layer of software that sits between the two
 
 In short, an operating system \emph{abstracts} the hardware, simplifying
 what it looks like to applications, and \emph{arbitrates} its use,
-overseeing and controlling how applications share it.\margin{Latencies the
-abstraction hides: L1 hit \SI{1}{\nano\second}, DRAM
-\SI{80}{\nano\second}, SSD read \SI{50}{\micro\second}, disk seek
-\SI{5}{\milli\second}.  OSTEP ch.~36--37.}  The definition
+overseeing and controlling how applications share it.\margin{One file
+abstraction spans devices that differ by orders of magnitude: a flash page
+read takes \SIrange{25}{75}{\micro\second} (OSTEP ch.~44), a disk seek
+\SIrange{4}{9}{\milli\second} (OSTEP ch.~37).}  The definition
 names three roles.
 \begin{description}
   \item[Hiding hardware complexity] The operating system presents the
@@ -89,11 +89,16 @@ names three roles.
     execution is not affected by the others.  It provides
     \term{protection}[保護] by preventing an application from accessing
     resources that have not been assigned to it, such as the memory of
-    other applications or of the operating system itself.
+    other applications or of the operating system itself.  Isolation thus
+    limits the effect of one application on another, while protection
+    limits what an application may touch.
 \end{description}
 
-The operating system thus consists of components such as the CPU scheduler,
-the memory manager, device drivers and file systems.  Application programs
+The operating system thus consists of components such as the CPU
+scheduler,\caution{``Operating system'' is used loosely: strictly it is the
+kernel, the part that runs in kernel mode (\cref{sec:l01-boundary}); a
+distribution such as Ubuntu also ships the shell, libraries and utilities
+(Silberschatz et al.\ ch.~1).} the memory manager, device drivers and file systems.  Application programs
 that merely use these services, such as a spreadsheet or a media player,
 are not part of it, even when they are distributed together with it.
 
@@ -116,8 +121,15 @@ for.\source{P1L2, operating system examples.}  On desktop and server
 machines the main examples are Microsoft Windows and the UNIX-based
 systems, among them Mac OS X, which derives from BSD UNIX, and Linux.  On
 embedded devices such as smartphones they include Android, which is based
-on Linux, iOS and Symbian.  Each makes design choices suited to its
-environment; the lessons that follow use Linux as their main example.
+on Linux,\margin{Android runs the Linux kernel under its own user
+space---the Bionic C library and the ART runtime---instead of the GNU tools
+(\url{source.android.com}).} iOS and Symbian.  Each makes design choices suited
+to its environment.  A desktop system favors the responsiveness of the
+interactive applications of a single user.  An embedded system must work
+within a small memory and a limited battery, often under real-time
+deadlines.  A server system must serve many users and requests with high
+throughput and must keep running for long periods.  The lessons that
+follow use Linux as their main example.
 
 \section{Abstractions, mechanisms and policies}
 \label{sec:l01-elements}
@@ -146,7 +158,10 @@ Lesson~8.}  The mechanisms allocate a page and map it into
 the address space of a process, so that the process can use it.  Physical
 memory (DRAM) is usually smaller than the total demand of all processes,
 so the operating system also moves some pages to disk and brings them back
-when they are accessed again.  The policy decides which pages to move: with
+when they are accessed again.  The policy decides which pages to
+move:\tip{To tell a policy from a mechanism, ask whether it could be
+replaced without changing the code that does the work: LRU could give way
+to LFU; moving a page to disk is that code.} with
 LRU, the pages that have not been accessed for the longest time, on the
 assumption that they are the least likely to be needed soon.
 
@@ -199,8 +214,8 @@ works best depends on the setting in which the system is used.
   LRU moves page B, whose last access lies furthest in the past; LFU moves
   page C, which has been accessed least often; random selection moves each
   page with probability $1/4$.  In all three cases the mechanism executed
-  is the same: the chosen page is written to disk and its mapping is
-  invalidated.
+  is the same: the chosen page is written to disk if it has been
+  modified, and its mapping is invalidated.
 \end{example}
 
 The second principle is to \term{optimize for the common case}[頻繁に起こる場合の最適化].
@@ -237,7 +252,10 @@ Computer platforms therefore distinguish at least two modes of execution.
 \end{definition}
 
 The part of the operating system that executes in kernel mode is its
-\term{kernel}[カーネル]; applications execute in user mode.  The
+\term{kernel}[カーネル]; applications execute in user
+mode.\margin{ARM calls its modes exception levels EL0--EL3; RISC-V has
+user, supervisor and machine modes (Arm Architecture Reference Manual;
+RISC-V Privileged Specification).}  The
 distinction between the two modes is supported by the hardware.  The CPU
 contains a \term{mode bit}[モードビット] that records the current mode, and
 an instruction that directly manipulates hardware---a
@@ -254,6 +272,13 @@ does not take effect but causes a trap.
   execution continues at a location in the kernel that the operating
   system has registered in advance.
 \end{definition}
+
+A trap is synchronous: it is caused by the instruction that is
+executing.\caution{A trap is not an error: every system call is a
+deliberate trap; only an illegal instruction or memory access leads to
+termination.}  An interrupt, by contrast, is raised by a device
+independently of the running instruction; both transfer control through a
+table of handler addresses that the operating system registers in advance.
 
 After a trap caused by a privileged instruction or by an access to memory
 that requires privileges, the operating system determines what caused the
@@ -272,9 +297,10 @@ and the operating system interact in three ways (\cref{fig:l01-user-kernel}):
   \item[Signals] travel in the opposite direction.  A
     \term{signal}[シグナル] is a notification that the operating system
     passes to an application, for example that a timer the application
-    has set has expired.\margin{A signal is delivered when the process next
-      returns to user mode, not at an arbitrary instruction.  Signals:
-      Lesson~5.}
+    has set has expired.\margin{The kernel checks for pending signals
+      whenever it returns to user mode; since an interrupt can cause such a
+      return at any point, a handler may run between any two instructions.
+      Signals: Lesson~5.}
 \end{description}
 
 \begin{figure}[htbp]
@@ -316,7 +342,11 @@ relevant data to a well-defined location and invokes the call by its
 \emph{system call number}.  From the number the kernel determines which
 operation is requested, how many arguments it takes and where to find
 them.  Arguments are passed either directly, as values, or indirectly, as
-the address of a memory area that holds them.  In the synchronous mode
+the address of a memory area that holds them.  Because such an address
+may point anywhere, the kernel checks that it lies in the memory of the
+calling process before using it; isolation depends on this check.  The
+result of the call, or an error code, is returned in a register.  In the
+synchronous mode
 described here the process waits until the system call has completed;
 asynchronous system calls are discussed in later lessons.\margin{Not every
 call crosses: Linux maps the vDSO into every process, so
@@ -342,8 +372,8 @@ int main(void) {
   The library function \texttt{write} places the number of the
   \texttt{write} system call and its three arguments where the kernel
   expects them and executes the trap.  The file descriptor~1 (standard
-  output) and the length are passed directly; the text is passed indirectly, through its address
-  \texttt{msg}.\margin{x86-64 Linux: number in \texttt{rax}, arguments in
+  output) and the length are passed directly; the text is passed
+  indirectly, through its address \texttt{msg}.\margin{x86-64 Linux: number in \texttt{rax}, arguments in
   \texttt{rdi}, \texttt{rsi}, \texttt{rdx}; the \texttt{syscall}
   instruction traps.}
 \end{example}
@@ -369,7 +399,12 @@ three properties.
     different data than the application, so its instructions replace
     application data in the processor caches.  When the application
     resumes, part of its data must be fetched from main memory again,
-    which slows it down.
+    which slows it down.  The caches know nothing of the boundary: a mode
+    switch by itself flushes nothing, and the application loses its data
+    only because the kernel's accesses displace them.  A mode switch keeps
+    the same process and address space; a context switch, which changes
+    the process that runs on the CPU (Lesson~2), also replaces the address
+    space and usually loses more of the cached state.
 \end{itemize}
 User/kernel transitions are therefore not cheap.\caution{A system call
 looks like a procedure call in C but costs far more.}
@@ -387,11 +422,20 @@ access to block devices such as disks.  Other services provide higher-level
 abstractions that do not correspond directly to one hardware component,
 such as the files and directories of a file system.  Grouped by purpose,
 operating systems offer process management, file management, device
-management, memory management, storage management and security.
+management, memory management, storage management and
+security.\margin{Process management: Lesson~2; threads: Lesson~3;
+scheduling: Lesson~7; memory: Lesson~8; I/O and file systems: Lesson~11;
+distributed file systems: Lesson~14.}
 
-Applications reach all of these services through system calls.\margin{Linux on
-x86-64 numbers some \num{390} system calls (\texttt{syscall\_64.tbl}); the C
-library wraps them in a much larger API.}  Different
+Applications reach all of these services through system calls.  The
+scheduler is reached through calls such as \texttt{fork}, which creates a
+process, and \texttt{sched\_yield}, which gives up the CPU; the memory
+manager through \texttt{mmap} and \texttt{brk}; the file system through
+\texttt{open} and \texttt{close}; and the block device driver only
+indirectly, through \texttt{read} and \texttt{write} on a
+file.\margin{Linux~7.0 on x86-64 numbers \num{386} system calls
+(\texttt{unistd\_64.h}); the C library wraps them in a much larger API.}
+Different
 operating systems name and structure their calls differently, but they
 provide comparable functionality, as the Windows and Unix calls in
 \cref{tab:l01-syscalls} show.
@@ -480,15 +524,18 @@ left for applications and can therefore degrade their performance.
 
 A \term{modular operating system}[モジュール型OS], of which Linux is the
 standard example, contains a set of basic services and APIs, and
-everything else can be added as a \term{kernel module}[カーネルモジュール].
+everything else can be added as a
+\term{kernel module}[カーネルモジュール].\tip{On Linux \texttt{lsmod} lists
+the loaded modules, \texttt{modprobe} loads one, and \texttt{uname -r}
+prints the version of the running kernel.}
 The operating system specifies interfaces that a module must implement to
 become part of it, for example an interface for file systems.  Modules can
 be installed dynamically, according to the workload: a machine that runs a
 database can load a file system optimized for random access.  Since only
 the modules that are needed are loaded, the system is smaller, easier to
-maintain and upgrade, and leaves more resources to applications.\margin{The
-Linux source passed \num{40} million lines in 2025, some \SI{60}{\percent} of
-it drivers; a kernel loads only a small part.}  The
+maintain and upgrade, and leaves more resources to applications.\margin{The Linux source tree
+passed \num{40} million lines, comments and blank lines included, in
+January 2025 (Phoronix); a running kernel loads only a small part.}  The
 indirection through the module interface can cost some performance,
 although usually not much, and modules may come from entirely different
 code bases, which makes them a source of bugs.\margin{Silberschatz et al.\
@@ -500,7 +547,11 @@ A \term{microkernel}[マイクロカーネル] provides only the most basic
 primitives at the operating-system level: address spaces, which represent
 the memory of executing applications, and threads, which represent their
 execution contexts.  Everything else---file systems, device drivers,
-databases---runs outside the kernel, at user level, as separate processes.
+databases---runs outside the kernel, at user level, as separate
+processes.\sidenote{The idea goes back to Brinch Hansen's RC~4000 nucleus
+(1969); Mach (Carnegie Mellon, from 1985) made it widely known.  QNX,
+MINIX~3 and seL4 are current microkernels, and seL4 has a machine-checked
+proof of functional correctness \cite{klein2009}.}
 Serving a request therefore involves many interactions between processes,
 and inter-process communication (IPC) is one of the core abstractions and
 mechanisms of the microkernel, together with address spaces and threads.
@@ -513,10 +564,12 @@ other hand, microkernels are often specialized to the underlying hardware,
 which limits portability; software development is more complex, because
 common operating-system components are harder to find; and the frequent
 crossings of the user/kernel boundary are costly.\sidenote{How costly is a
-matter of design: Liedtke's L3/L4 \cite{liedtke1993} transferred a short
-message between address spaces in \SI{5}{\micro\second} on a
-\SI{50}{\mega\hertz} i486, where Mach needed about \SI{115}{\micro\second} on
-the same processor; seL4 reports a few hundred cycles per one-way IPC today.}
+matter of design: Liedtke's L3 \cite{liedtke1993} transferred an 8-byte
+message between address spaces in \SI{5.2}{\micro\second} on a
+\SI{50}{\mega\hertz} i486, where Mach needed \SI{115}{\micro\second} on the
+same processor; its successor L4 followed.  Today seL4 reports
+\numrange{350}{800} cycles per IPC call on Arm, x86-64 and RISC-V cores
+(\url{sel4.systems/performance.html}).}
 
 \begin{table}[htbp]
   \centering
@@ -571,13 +624,13 @@ the same processor; seL4 reports a few hundred cycles per one-way IPC today.}
 
 A Linux system is organized in layers (\cref{fig:l01-linux},
 left).\source{P1L2, Linux and Mac OS architectures; Tanenbaum and Bos
-\cite{tanenbaum2015} ch.~10; Silberschatz et al.\ ch.~2.}  The Linux kernel
-runs in kernel mode directly on the hardware.  Above it, in user mode, the
+\cite{tanenbaum2015} ch.~10; Silberschatz et al.\ ch.~2.}  The bottom layer
+is the hardware.  The Linux kernel runs in kernel mode directly on it.  Above it, in user mode, the
 standard library provides the system call interface as functions such as
 \texttt{open}, \texttt{close}, \texttt{read}, \texttt{write} and
 \texttt{fork};\caution{\texttt{printf} and \texttt{malloc} are library
-functions, not system calls: they call \texttt{write} and \texttt{mmap}
-only when they must.} the standard utility programs, such as the shell,
+functions, not system calls: they call \texttt{write} and
+\texttt{brk}/\texttt{mmap} only when they must.} the standard utility programs, such as the shell,
 editors and compilers, use the library; and users interact with the utility
 programs and with their applications.  The boundaries between these layers
 are the system call interface, the library interface and the user
@@ -595,22 +648,23 @@ actually makes; \texttt{ltrace} does the same for library calls.}
 
 The kernel itself (\cref{fig:l01-linux}, right) is entered through the
 system calls at the top, and at the bottom it handles interrupts and
-contains the dispatcher, which switches the CPU between
-processes.\margin{The dispatcher is the subject of Lesson~7, virtual memory
-and the page cache of Lesson~8, and signals of Lesson~5.}  In
+contains the dispatcher (Lesson~7), which switches the CPU between
+processes.\margin{Since Linux~6.6 (2023) the scheduler is EEVDF, which
+replaced the CFS of Lesson~7 (kernel documentation,
+\texttt{sched-eevdf}).}  In
 between lie three components.  The I/O component contains the terminal
 and character device drivers, the sockets, network protocols and network
 device drivers, and the file systems and block device drivers.  The memory
-management component implements virtual memory, paging and page
-replacement, and the page cache.  The process management component handles
-signals, creates and terminates processes and threads, and schedules the
+management component implements virtual memory (Lesson~8), paging and
+page replacement, and the page cache (Lesson~11).  The process management
+component handles signals (Lesson~5), creates and terminates processes and threads, and schedules the
 CPU.  Each component can be modified or replaced independently of the
 others, which is what makes the modular approach possible.
 
 Mac OS X (now macOS) is built around the Mach microkernel
 (\cref{fig:l01-macos}).\margin{Mach, BSD, the I/O Kit and kernel
-extensions share one kernel address space: a hybrid design
-(Silberschatz et al.).}  Mach implements the key
+extensions run in one kernel address space, so the design is hybrid
+rather than a pure microkernel (Silberschatz et al.\ ch.~2).}  Mach implements the key
 primitives: memory management, thread scheduling, and IPC, including
 remote procedure calls (Lesson~13).  A BSD component provides Unix
 interoperability through the BSD command-line interface, support for the
