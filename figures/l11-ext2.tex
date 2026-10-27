@@ -1,5 +1,5 @@
 % Layout of an ext2 partition: boot block and block groups; contents of one
-% block group.
+% block group (superblock and descriptor copies only in sparse_super groups).
 % Usage: \input{figures/l11-ext2}   (width ~116 mm)
 \begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
   lab/.style={font=\scriptsize\sffamily, align=center},
@@ -28,8 +28,9 @@
   \bseg{94}{116}{white}{\iflangja{データ\\ブロック}{data\\blocks}}
   % Japanese notes: explicit breaks between words instead of mid-word breaks
   % at the text width ("ファイルシステム" needs the wider first note).
-  \node[note, text width=\iflangja{18.8}{17}mm] at (11.5,-5) {\iflangja{ファイルシステム\\全体の数とサイズ\\（コピー）}{file-system-wide counts and sizes (copy)}};
-  \node[note] at (30.5,-5) {\iflangja{全ブロック\\グループの\\記述子（コピー）}{descriptors of all groups (copy)}};
+  \node[note, text width=\iflangja{18.8}{17}mm] at (11.5,-5) {\iflangja{ファイルシステム\\全体の数とサイズ\\（コピー，一部の\\グループのみ）}{file-system-wide counts and sizes (copy, in some groups only)}};
+  \node[note] at (30.5,-5) {\iflangja{全ブロック\\グループの\\記述子（コピー，\\一部のグループ\\のみ）}{descriptors of all groups (copy, in some groups only)}};
+
   \node[note] at (49,-5) {\iflangja{空きブロック\\を記録}{tracks free blocks}};
   \node[note] at (67,-5) {\iflangja{空き iノード\\を記録}{tracks free inodes}};
   \node[note] at (85,-5) {\iflangja{iノード番号の\\連続した範囲}{a range of the inode numbers}};

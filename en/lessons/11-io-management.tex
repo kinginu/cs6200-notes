@@ -4,7 +4,7 @@
 \chapter{I/O Management}
 \lessoninfo{
   video={P3L5},
-  textbook={OSTEP \cite{ostep} ch.~36--37, 39--42; Silberschatz et al.\ \cite{silberschatz2018} ch.~12; Kerrisk \cite{kerrisk2010} ch.~13--14},
+  textbook={OSTEP \cite{ostep} ch.~36--37, 39--42; Silberschatz et al.\ \cite{silberschatz2018} ch.~11--15; Kerrisk \cite{kerrisk2010} ch.~13--14},
   keywords={device register, device driver, block device, character device, memory-mapped I/O, polling, programmed I/O, DMA, operating system bypass, virtual file system, inode, ext2, buffer cache, journaling},
 }
 
@@ -22,8 +22,10 @@ in particular---organize data on disk and reduce the cost of accessing it.
 \label{sec:l11-devices}
 
 Input/output (I/O) devices connect a computer to its environment.\source{P3L5,
-lesson preview, I/O devices, basic I/O device features; OSTEP ch.~36;
-Silberschatz et al.\ ch.~12.}  They differ widely in function---some only
+I/O devices, basic I/O device features; OSTEP ch.~36;
+Silberschatz et al.\ ch.~12.}  Examples are keyboards, mice, microphones,
+speakers, displays, network interface cards (NICs) and disks.  They differ
+widely in function---some only
 deliver input to the computer, some only accept output from it, many do
 both---and in speed, from a device that produces a few characters per second
 to a network interface that transfers gigabits per second.  The I/O
@@ -72,7 +74,8 @@ Devices are attached to the CPU and memory through controllers on an
 interconnect.\source{P3L5, CPU device interconnect; OSTEP ch.~36;
 Silberschatz et al.\ ch.~12.}  The interconnect limits how fast data can
 move between a device and the rest of the system and how many devices can
-be attached.  A standard family of such interconnects is the \term{Peripheral Component Interconnect}[PCI]%
+be attached.  A standard family of such interconnects is the
+\term{Peripheral Component Interconnect}[PCI]%
 \index{PCI|see{Peripheral Component Interconnect}} (PCI).  Its original form
 is a shared parallel bus, which PCI-X (PCI eXtended) made faster.  Current
 platforms use PCI Express (PCIe), which remains compatible with the software
@@ -80,7 +83,8 @@ interface of PCI but offers more bandwidth, faster and lower-latency access,
 and connections for more devices.\margin{Although commonly called a bus,
 PCIe connects each device through a point-to-point serial link and
 switches.  A PCIe~4.0 lane carries about \SI{2}{\giga\byte\per\second} each
-way, a $\times 16$ slot about \SI{32}{\giga\byte\per\second} (PCI-SIG).}
+way, a $\times 16$ slot about \SI{32}{\giga\byte\per\second}; PCIe~5.0
+doubles it to about \SI{4}{\giga\byte\per\second} per lane (PCI-SIG).}
 
 Not every device is connected to PCIe directly (\cref{fig:l11-interconnect}).
 A SCSI controller attached to PCIe connects disks on its own SCSI bus, and
@@ -88,7 +92,8 @@ an expansion bus interface connects slower peripherals such as keyboards on
 an expansion (peripheral) bus.  Bridging controllers handle the differences
 between the buses, and the bridge that connects the CPU to memory also
 connects both to PCIe.  An access from the CPU to a device may therefore
-cross several interconnects.
+cross several interconnects.\tip{\texttt{lspci -t} prints the PCI topology
+as a tree of bridges and devices; \texttt{lsusb -t} does the same for USB.}
 
 \begin{figure}[htbp]
   \centering
@@ -159,13 +164,16 @@ Operating systems represent devices in the file system.
 \end{definition}
 
 In UNIX-like systems device files reside in the directory \texttt{/dev},
-which is managed by a special file system such as devfs or, on current
-Linux, a tmpfs-based one (tmpfs was the home of POSIX shared memory in
-Lesson~9).  A long listing with \texttt{ls -l} marks a block device file
+which is managed by a special file system: historically devfs (removed in
+Linux 2.6.18); on current Linux devtmpfs, an instance of tmpfs (the home of
+POSIX shared memory in Lesson~9) that the kernel populates and udev
+manages.  A long listing with \texttt{ls -l} marks a block device file
 with the type \texttt{b} and a character device file with
 \texttt{c}.\margin{On Linux, network devices are the exception: they have no
 device files and are used through sockets.}  Because a device looks like a
-file, programs that know nothing about devices can use it.
+file, programs that know nothing about devices can use it.\margin{Major and
+minor numbers in \texttt{ls -l /dev} identify the driver and the device
+instance (Kerrisk ch.~14).}
 
 \begin{example}
   The command
@@ -188,7 +196,8 @@ Not every device file corresponds to hardware.
 
 For example, reading \texttt{/dev/zero} returns an endless stream of zero
 bytes, which is convenient for creating a file of a given size filled with
-zeros.
+zeros, and \texttt{/dev/null} discards everything written to it and returns
+end-of-file on every read.
 
 \begin{keypoint}
   A device is operated through its command, data and status registers, by a
@@ -213,16 +222,16 @@ are two ways to address the registers.
   and the CPU accesses a register with an ordinary load or store instruction
   on its address, which the platform directs to the device instead of to
   memory.\caution{A memory-mapped register is not ordinary memory: the
-  region is mapped uncached, and drivers use accessors such as
+  region is normally mapped uncached (or write-combining for prefetchable
+  regions such as frame buffers), and drivers use accessors such as
   \texttt{readl} and \texttt{writel}, not plain pointer dereferences.}
 \end{definition}
 
-For a PCI device, the base address registers (BARs) in the device's
-configuration space determine how large its region of the physical address
-space is and where the region lies; they are configured during the boot
-process.  Memory-mapped I/O must not be confused with a memory-mapped file
+Memory-mapped I/O must not be confused with a memory-mapped file
 (Lesson~9), which maps the contents of a file into the virtual address
-space of a process.
+space of a process.\margin{For a PCI device, the base address registers
+(BARs) in its configuration space set the size and location of its region;
+they are configured during boot.}
 
 The second way uses dedicated CPU instructions, such as \texttt{in} and
 \texttt{out} on x86.  An \term{I/O port}[I/Oポート] is an address, separate
@@ -353,8 +362,9 @@ PIO can therefore cost less than one DMA configuration: PIO is cheaper
 whenever the data accesses it needs cost less than the configuration of
 DMA.\tip{DMA pays off when a transfer spans many register widths; for
 transfers of a few bytes PIO is cheaper.}  A further requirement arises
-because the device accesses the buffer by its physical address: the buffer must remain in physical memory until
-the transfer completes.  Its pages are therefore pinned
+because the device accesses the buffer by its physical address: the buffer
+must remain in physical memory until the transfer completes.  Its pages are
+therefore pinned
 (Lesson~8)\index{pinned page}, that is, excluded from swapping; otherwise
 the device could read or overwrite whatever page had replaced the
 buffer.\margin{A raw physical address also gives the device the run of
@@ -410,13 +420,14 @@ Going through the kernel is not strictly necessary.
 \begin{definition}[Operating system bypass]
   A method of device access in which the registers and memory of a device
   are made directly accessible to a user process is called
-  \term{operating system bypass}[OSバイパス].  The operating system configures the access and then stays
-  out of the way, so that the process performs device operations without
-  executing kernel code (\cref{fig:l11-access}b).
+  \term{operating system bypass}[OSバイパス].  The operating system
+  configures the access and then stays out of the way, so that the process
+  performs device operations without executing kernel code
+  (\cref{fig:l11-access}b).
 \end{definition}
 
 The code that would otherwise run in the kernel driver is then provided by a
-\emph{user-level driver}, a library linked into the
+\term{user-level driver}[ユーザレベルドライバ], a library linked into the
 application.\sidenote{Kernel bypass is routine in high-performance
 networking: InfiniBand and RoCE adapters expose queue pairs to a process
 through the verbs API, and DPDK drives Ethernet adapters entirely from user
@@ -431,9 +442,8 @@ Bypass relies on features of the device:
     accessible only to the kernel.
   \item If several processes use the device, the device must be able to
     \emph{demultiplex}, that is, determine to which process data
-    belong.\margin{PCIe devices do this with SR-IOV: one card presents many
-    virtual functions, each with its own registers and queues, mappable into
-    a different process or virtual machine (Lesson~12).}  In a typical
+    belong.\margin{PCIe devices can do this with SR-IOV; see
+    Lesson~12.}  In a typical
     device access the kernel does this: its network stack, for example,
     inspects the headers of an arriving packet to find the receiving
     process.  With bypass the device itself must do so.
@@ -463,8 +473,8 @@ kernel does not support asynchronous access to a device, it can be emulated
 in user space with helper threads or processes that issue the blocking
 calls on behalf of the main thread, as the Flash web server of Lesson~6
 does.\margin{glibc implements POSIX \texttt{aio\_read} with exactly this
-helper-thread emulation; \texttt{io\_uring} (Lesson~6) is the kernel
-interface that makes it unnecessary.}
+helper-thread emulation; \texttt{io\_uring} is the Linux kernel interface
+that makes the emulation unnecessary (\texttt{io\_uring(7)}).}
 
 \begin{figure}[htbp]
   \centering
@@ -532,9 +542,11 @@ Linux and other UNIX-like systems provide the system call
 process accesses and manipulates device-specific information.  It takes a
 file descriptor (\cref{sec:l11-vfs-abs}) of an open device file, a request
 code defined for the device class or driver, and, depending on the request,
-a pointer to request-specific data.
+a pointer to request-specific data.\caution{\texttt{ioctl} request codes and
+argument layouts are driver-specific, so portable programs avoid it
+(\texttt{ioctl(2)}).}
 
-\Needspace{11\baselineskip}
+\Needspace{16\baselineskip}
 \begin{example}
   A program opens the tray of the first optical drive:
   \begin{lstlisting}[language=C, numbers=none]
@@ -543,10 +555,14 @@ a pointer to request-specific data.
 #include <sys/ioctl.h>
 #include <linux/cdrom.h>
 
-int fd = open("/dev/sr0", O_RDONLY | O_NONBLOCK);
-if (fd >= 0) {
-  ioctl(fd, CDROMEJECT);   /* no read/write equivalent */
-  close(fd);
+int main(void)
+{
+  int fd = open("/dev/sr0", O_RDONLY | O_NONBLOCK);
+  if (fd >= 0) {
+    ioctl(fd, CDROMEJECT);  /* no read/write equivalent */
+    close(fd);
+  }
+  return 0;
 }
 \end{lstlisting}
   The flag \texttt{O\_NONBLOCK} allows the device file to be opened even
@@ -557,8 +573,8 @@ if (fd >= 0) {
 \label{sec:l11-vfs}
 
 A single file system on a single local device is not enough for most
-systems.\source{P3L5, virtual file system; OSTEP ch.~39; Kerrisk
-ch.~14.}  The files may reside on more than one device; different devices
+systems.\source{P3L5, virtual file system; OSTEP ch.~39; Silberschatz et
+al.\ ch.~15; Kerrisk ch.~14.}  The files may reside on more than one device; different devices
 may be served best by different file system implementations; and files may
 not reside on a local device at all, but on a remote server that is accessed
 over the network (Lesson~14).
@@ -589,7 +605,8 @@ system such as NFS.
 
 Every concrete file system implements a small set of abstractions defined
 by the VFS.\source{P3L5, virtual file system abstractions, VFS on disk;
-OSTEP ch.~39--40; Kerrisk ch.~14.}  The \emph{file} is the element
+OSTEP ch.~39--40; Silberschatz et al.\ ch.~13, 15; Kerrisk ch.~14.}  The
+\emph{file} is the element
 on which the VFS operates.  A process refers to an open file through a file
 descriptor (\cref{fig:l11-vfs-objects}).
 
@@ -598,8 +615,8 @@ descriptor (\cref{fig:l11-vfs-objects}).
   \input{figures/l11-vfs-objects}
   \caption{VFS abstractions.  File descriptor~3 of process~P refers to an
     open file, whose dentry leads to the inode; the dentries of the path
-    exist only in memory.  On disk, the superblock maps the blocks that hold
-    inodes, data and free space.}
+    exist only in memory.  On disk, the superblock, with the structures it
+    locates, maps the blocks that hold inodes, data and free space.}
   \label{fig:l11-vfs-objects}
 \end{figure}
 
@@ -609,8 +626,9 @@ descriptor (\cref{fig:l11-vfs-objects}).
   process obtains from \texttt{open} and passes to the operations on the
   file, such as \texttt{read}, \texttt{write}, \texttt{sendfile},
   locking and \texttt{close}.\margin{Descriptors 0, 1 and 2 are the standard
-  input, output and error of a process; a process may hold \num{1024} open
-  files by default (\texttt{ulimit -n}).}
+  input, output and error of a process; the usual default soft limit on
+  open files is \num{1024} (\texttt{ulimit -n}; \texttt{RLIMIT\_NOFILE} in
+  \texttt{getrlimit(2)}).}
 \end{definition}
 
 The properties of the file itself, and the locations of its data blocks,
@@ -637,7 +655,8 @@ not in inodes.  The components of a path are represented by further objects.
 
 Looking up the path \texttt{/users/joe} creates a dentry for each of
 \texttt{/}, \texttt{users} and \texttt{joe}.  The VFS keeps dentries in the
-\emph{dentry cache}, so that a later lookup of a path with the same prefix
+\term{dentry cache}[dentry キャッシュ], so that a later lookup of a path with
+the same prefix
 does not have to read the corresponding directories again.  Dentries are
 soft state: they exist only in memory and have no on-disk representation.
 
@@ -661,16 +680,17 @@ soft state: they exist only in memory and have no on-disk representation.
 
 On disk, the abstractions are placed as follows (\cref{fig:l11-vfs-objects}).
 The data of a file are kept in data blocks.  The inode, which tracks the
-blocks of the file, also resides on disk, in some block.  The superblock
-provides the overall map of the disk blocks: which blocks hold inodes, which
-hold data, and which are free.
+blocks of the file, also resides on disk, in some block.  The superblock,
+together with the structures it locates, such as the bitmaps of ext2
+(\cref{sec:l11-ext2}), provides the overall map of the disk blocks: which
+blocks hold inodes, which hold data, and which are free.
 
 \section{The second extended file system}
 \label{sec:l11-ext2}
 
 Linux has long used a family of file systems whose on-disk structures
 correspond closely to the abstractions of the VFS.\source{P3L5, ext2;
-OSTEP ch.~40--41.}  The second extended file system, \term{ext2}[ext2], was
+OSTEP ch.~40--41; Silberschatz et al.\ ch.~14.}  The second extended file system, \term{ext2}[ext2], was
 for many years the default file system of Linux and is the basis of its
 successors ext3 and ext4.  An ext2 partition begins with \SI{1024}{\byte}
 reserved for booting---all of block~0 when blocks are
@@ -678,13 +698,15 @@ reserved for booting---all of block~0 when blocks are
 (\cref{fig:l11-ext2}).
 
 \begin{definition}[Block group]
-  A \term{block group}[ブロックグループ] is one of the equal-sized groups of
-  consecutive blocks into which ext2 divides a disk partition.  Each block
+  A \term{block group}[ブロックグループ] is one of the equal-sized (except
+  possibly the last) groups of consecutive blocks into which ext2 divides a
+  disk partition.  Each block
   group holds its own inodes and data blocks together with the metadata that
   describe them.
 \end{definition}
 
-Each block group contains
+Each block group contains the following structures; the first two are
+present only in some groups, as explained below:
 \begin{description}
   \item[a copy of the superblock] recording file-system-wide information:
     the numbers of inodes and of disk blocks, the numbers of free inodes and
@@ -701,7 +723,10 @@ Each block group contains
 \end{description}
 The superblock and the group descriptor table describe the file system as a
 whole; the copies in block group~0 are the ones normally used, and the
-copies in the other groups serve as backups.  Keeping the inodes and the
+other copies serve as backups.  With the \texttt{sparse\_super} feature,
+which \texttt{mke2fs} enables by default, only groups 0 and~1 and the groups
+whose number is a power of 3, 5 or 7 hold such copies (\texttt{ext4(5)});
+the other groups begin directly with their bitmaps.  Keeping the inodes and the
 data blocks of a file in the same group places related blocks close together
 on the disk and reduces the distance the disk head must travel between
 them.\margin{A group is not a region of the disk geometry: it holds as many
@@ -712,9 +737,10 @@ $8 \times 4096 = \num{32768}$ blocks, that is \SI{128}{\mebi\byte}.}
   \centering
   \input{figures/l11-ext2}
   \caption{Layout of an ext2 partition.  After the space reserved for
-    booting, the partition is divided into block groups, each with a copy of
-    the superblock and of the group descriptor table, its own bitmaps, and
-    its inodes and data blocks.}
+    booting, the partition is divided into block groups, each with its own
+    bitmaps, inodes and data blocks.  Groups 0 and~1 and the groups numbered
+    by a power of 3, 5 or 7 also hold a copy of the superblock and of the
+    group descriptor table (\texttt{sparse\_super}).}
   \label{fig:l11-ext2}
 \end{figure}
 
@@ -723,7 +749,8 @@ $8 \times 4096 = \num{32768}$ blocks, that is \SI{128}{\mebi\byte}.}
 \label{sec:l11-inodes}
 
 A file is identified by its inode,\source{P3L5, inodes, inodes with
-indirect pointers; OSTEP ch.~40; Kerrisk ch.~14.} and the inode is the index
+indirect pointers; OSTEP ch.~40; Silberschatz et al.\ ch.~14; Kerrisk
+ch.~14.} and the inode is the index
 of all disk blocks of the file: it lists the blocks, in order, together with
 the metadata.  In its simplest form the inode contains the block numbers
 of all blocks of the file.  Sequential and random access are then equally
@@ -753,9 +780,10 @@ kinds (\cref{fig:l11-inode}).
 \end{description}
 A \emph{triple indirect pointer} adds a further level.  The inodes of ext2
 and of many UNIX file systems contain 12 direct pointers and one pointer of
-each indirect kind.\margin{Real ext2 numbers: a \SI{128}{\byte} inode, one
-per \SI{16}{\kibi\byte} of partition, and 4-byte block numbers, so
-$P = 1024$ with \SI{4}{\kibi\byte} blocks (\texttt{mke2fs.conf(5)}).}
+each indirect kind.\margin{Real ext2 numbers: a \SI{256}{\byte} inode
+(\SI{128}{\byte} on very small file systems), one per \SI{16}{\kibi\byte}
+of partition, and 4-byte block numbers (\texttt{mke2fs.conf(5)},
+\texttt{mke2fs(8)}).}
 
 \begin{figure}[htbp]
   \centering
@@ -776,14 +804,19 @@ indirect kinds can address files of up to
 
 \begin{example}
   \looseness=-1
-  With \SI{4}{\kibi\byte} blocks and 8~bytes per pointer, a block
-  holds $P = 4096/8 = 512$ pointers.  The 12 direct pointers address
+  With \SI{4}{\kibi\byte} blocks and the 4-byte block numbers of ext2, a
+  block holds $P = 4096/4 = 1024$ pointers.  The 12 direct pointers address
   $12 \times \SI{4}{\kibi\byte} = \SI{48}{\kibi\byte}$; the indirect pointer
-  $512 \times \SI{4}{\kibi\byte} = \SI{2}{\mebi\byte}$; the double indirect
-  pointer $512^2 \times \SI{4}{\kibi\byte} = \SI{1}{\gibi\byte}$; and the
-  triple indirect pointer $512^3 \times \SI{4}{\kibi\byte} =
-  \SI{512}{\gibi\byte}$.  The maximum file size is about
-  \SI{513}{\gibi\byte}.
+  $1024 \times \SI{4}{\kibi\byte} = \SI{4}{\mebi\byte}$; the double indirect
+  pointer $1024^2 \times \SI{4}{\kibi\byte} = \SI{4}{\gibi\byte}$; and the
+  triple indirect pointer $1024^3 \times \SI{4}{\kibi\byte} =
+  \SI{4}{\tebi\byte}$.  \Cref{eq:l11-max-size} gives about
+  \SI{4.004}{\tebi\byte}; with \SI{1}{\kibi\byte} blocks, $P = 256$ and the
+  bound is about \SI{16.06}{\gibi\byte}.  With \SI{4}{\kibi\byte} blocks,
+  real ext2 files stop at \SI{2}{\tebi\byte}, however, because the inode
+  counts a file's blocks in
+
+  a 32-bit field of 512-byte sectors ($2^{32} \times \SI{512}{\byte}$).
 \end{example}
 
 The benefit of indirect pointers is that a small inode supports very large
@@ -799,8 +832,8 @@ falls below names the pointer class.}
   With the parameters of the previous example, a process reads the byte at
   offset \SI{600}{\mebi\byte} of a file.  It lies in block
   $600 \times 1024 / 4 = \num{153600}$ of the file.  Blocks 0--11 are reached
-  directly, blocks 12--523 through the indirect pointer, and blocks
-  \num{524}--\num{262667} through the double indirect pointer, so the read
+  directly, blocks 12--\num{1035} through the indirect pointer, and blocks
+  \num{1036}--\num{1049611} through the double indirect pointer, so the read
   requires the inode, two blocks of pointers and the data block: four disk
   accesses if none of them is cached.
 \end{example}
@@ -817,12 +850,14 @@ falls below names the pointer class.}
 
 Accessing a file costs disk accesses, and on a hard disk every access that
 is not sequential costs time to move the head.\source{P3L5, disk access
-optimizations; OSTEP ch.~37, 40, 42; Kerrisk ch.~13--14.}  File systems use
-four techniques to reduce the overhead of file access
-(\cref{tab:l11-optim}).\margin{The gap these techniques attack: a
-\num{7200}~rpm disk reads over \SI{100}{\mega\byte\per\second} sequentially,
-but random \SI{4}{\kibi\byte} accesses, at roughly 100 per second, amount to
-a few hundred kilobytes per second.}
+optimizations; OSTEP ch.~37, 40, 42; Silberschatz et al.\ ch.~11, 14;
+Kerrisk ch.~13--14.}  File systems use four techniques to reduce the
+overhead of file access (\cref{tab:l11-optim}).\margin{The gap these
+techniques attack: a \num{7200}~rpm disk reads
+\SIrange{150}{280}{\mega\byte\per\second} sequentially (vendor
+datasheets), but random \SI{4}{\kibi\byte} accesses,
+at roughly 100 per second, amount to a few hundred kilobytes per second
+(OSTEP ch.~37).}
 
 \begin{table}[htbp]
   \centering
@@ -850,8 +885,8 @@ a few hundred kilobytes per second.}
   memory.  Reads are served from the cache when possible and writes update
   the cache; modified data are written to disk periodically, or when a
   process requests it with \texttt{fsync}.\margin{The cache has no fixed
-  size: on Linux it is the page cache, which keeps whatever memory the
-  replacement policy of Lesson~8 leaves to it.}
+  size: on Linux it is the page cache\index{page cache}, which keeps
+  whatever memory the replacement policy of Lesson~8 leaves to it.}
 \end{definition}
 
 A process that must make an update durable follows the write with
@@ -880,7 +915,7 @@ access.
   head across $80+78+79+78+37 = 352$ blocks.  Serving them in the order 12,
   13, 50, 90, 91 moves it across only $2+1+37+40+1 = 81$ blocks, and the
   pairs 12, 13 and 90, 91 become sequential writes.\margin{Ordering by block
-  number is the elevator (SCAN) algorithm; Linux ships
+  number is the elevator (SCAN) algorithm\index{elevator algorithm}; Linux ships
   \texttt{mq-deadline}, BFQ and Kyber, and usually runs NVMe with
   \texttt{none}.}
 \end{example}
@@ -895,25 +930,30 @@ is being read sequentially will soon need the following blocks---and
 increases the hit rate of the buffer cache.  If a process reads block 40 of
 a file and the file system also reads blocks 41--43 in the same disk
 operation, the next three reads are served from memory without further
-head movement.\margin{Linux reads \SI{128}{\kibi\byte} ahead by default; the
-window is per block device, in \texttt{/sys/block/*/queue/read\_ahead\_kb}.}
+head movement.\margin{Linux reads \SI{128}{\kibi\byte} ahead by default
+(\texttt{VM\_READAHEAD\_PAGES}); the window is per block device, in
+\texttt{/sys/block/*/queue/read\_ahead\_kb} (sysfs-block documentation).}
 
 \subsection{Journaling}
 
 Writing every update to its proper location immediately causes random
 access, whereas keeping updates only in the buffer cache risks losing them.
 The technique of \term{journaling}[ジャーナリング], or logging, avoids both
-problems.  The file system describes each update---which block, at which
-offset, with which value---in a log, the \emph{journal}, which it writes sequentially to a
-dedicated area of the disk, and it periodically applies the logged updates
-to their proper disk locations (\cref{fig:l11-journal}).  Because the
-journal is on disk, an update recorded in it survives a crash and can be
-applied afterwards.\caution{Journaling saves no writes---every logged block
-is written twice---but replaces scattered writes with one sequential write
+problems.  The file system records each update in a log, the
+\term{journal}[ジャーナル], which it writes sequentially to a dedicated area
+of the disk, and it periodically applies the logged updates to their proper
+disk locations (\cref{fig:l11-journal}).  Because the journal is on disk, an
+update recorded in it survives a crash and can be applied
+afterwards.\caution{Journaling saves no writes---every logged block is
+written twice---but replaces scattered writes with one sequential write
 plus a later, batched update.}  The ext3 and ext4 file systems add such a
-journal to the design of ext2; by default they log only metadata blocks and
-write file data directly to their final locations, and logging the data as
-well is an option.
+journal to the design of ext2.  Their journaling layer (JBD in ext3, JBD2
+in ext4) logs the complete new image of every modified block, not a
+description of the change.  In the default mode, \texttt{data=ordered},
+only metadata blocks are logged, and they are committed only after the
+file data have been written to their final locations; the mode
+\texttt{data=journal} logs the data blocks as well.
+
 
 \begin{figure}[htbp]
   \centering
