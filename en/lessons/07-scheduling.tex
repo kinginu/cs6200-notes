@@ -23,8 +23,8 @@ serve to compare the algorithms.
 \label{sec:l07-overview}
 
 The CPU scheduler decides how and when processes, and the threads within
-them, access the shared CPUs.\source{P3L1, visual metaphor, scheduling
-overview; OSTEP ch.~7; Silberschatz et al.\ ch.~5.}  It schedules tasks that
+them, access the shared CPUs.\source{P3L1, scheduling overview and the CPU
+scheduler; OSTEP ch.~7; Silberschatz et al.\ ch.~5.}  It schedules tasks that
 run user-level processes and threads as well as the kernel's own
 kernel-level threads.  Following the Linux terminology of Lesson~5, this
 lesson calls every such schedulable entity a \emph{task}.
@@ -54,7 +54,8 @@ task:
     it;
   \item the timeslice of the running task expires.\margin{A timer tick
     notices the expiry: Linux kernels are built with \texttt{CONFIG\_HZ} of
-    100, 250 or 1000, a tick every 10, 4 or \SI{1}{\milli\second}.}
+    100, 250, 300 or 1000, a tick every 10, 4, 3.3 or
+    \SI{1}{\milli\second}.}
 \end{itemize}
 The scheduler then selects one of the ready tasks and dispatches it: it
 performs a context switch to the selected task, enters user mode, and sets
@@ -62,7 +63,9 @@ the program counter to the next instruction of the task, which continues to
 execute from there.
 
 Which task is selected is determined by the scheduling policy, or
-algorithm.  How the selection is carried out depends on the data structure
+algorithm.\margin{Linux names its main policies \texttt{SCHED\_OTHER} (the
+fair scheduler), \texttt{SCHED\_FIFO}, \texttt{SCHED\_RR} and
+\texttt{SCHED\_DEADLINE} (sched(7)).}  How the selection is carried out depends on the data structure
 that holds the ready tasks.
 
 \begin{definition}[Runqueue]
@@ -151,7 +154,8 @@ the whole batch does not change.  By running short tasks first, however, SJF
 has more tasks finished at any instant before the end of the batch, and it
 lowers both averages.  In fact, for tasks that
 arrive together and run to completion, no other order yields a smaller
-average wait time.
+average wait time.\caution{SJF can starve long tasks if short ones keep
+arriving; \cref{sec:l07-preemptive} returns to starvation.}
 
 \Needspace{7\baselineskip}
 \section{Preemptive scheduling}
@@ -182,7 +186,7 @@ therefore estimates it from the history of the task, using heuristics such
 as the time the task ran the last time it was on the CPU, or a windowed
 average of the times it ran the last $n$ times.\margin{Silberschatz et al.\
 use an exponential average, $\tau_{n+1} = \alpha t_n + (1-\alpha)\tau_n$:
-with $\alpha = 1/2$ only $\tau_n$ need be kept, and every older burst counts
+only $\tau_n$ need be kept; with $\alpha = 1/2$ every older burst counts
 half as much as the one after it.}
 
 \subsection{Priority scheduling}
@@ -262,15 +266,18 @@ starvation.
 \label{sec:l07-inversion}
 
 Priorities interact with synchronization.\source{P3L1, priority inversion;
-Silberschatz et al.\ ch.~5--6.}  Consider three tasks with priorities
+Silberschatz et al.\ ch.~5--6.}  Take three tasks with priorities
 $\text{T1} > \text{T2} > \text{T3}$, of which T1 and T3 lock the same mutex
-\texttt{m} (\cref{fig:l07-inversion}a).  T3 arrives first and locks
-\texttt{m} at time 1.  At time 2, T2 arrives and preempts T3; at time 3, T1
-arrives and preempts T2.  At time 4, T1 tries to lock \texttt{m}, which is
-held by T3, and blocks.  Of the two remaining tasks, T2 has the higher
+\texttt{m} (\cref{fig:l07-inversion}a).  Each task needs \SI{3}{\second} of
+CPU time.  T3 holds \texttt{m} for the first \SI{2}{\second} of its run, and
+T1 holds it for \SI{1}{\second} after it has run for \SI{1}{\second}.  T3
+arrives at time 0 and locks \texttt{m} at once.  At time 1, T2 arrives and
+preempts T3; at time 2, T1 arrives and preempts T2.  At time 3, T1 tries to
+lock \texttt{m}, which is held by T3, and blocks.  Of the two remaining tasks, T2 has the higher
 priority, so T2 runs, and it runs to completion before T3 can continue.
 Only then does T3 finish its critical section and unlock \texttt{m}, and T1
-can proceed.  T2 completes at time 6, before T1, which completes at 9.
+can proceed.  T2 completes at time 5, before T1, which completes at 8;
+T3 completes last, at 9.
 
 \begin{definition}[Priority inversion]
   In a \term{priority inversion}[優先度逆転] a task of high priority waits
@@ -294,7 +301,8 @@ The solution is to raise the priority of the owner of the mutex temporarily
 (\cref{fig:l07-inversion}b).  When T1 blocks on \texttt{m}, T3 is given the
 priority of T1, so that T3, not T2, runs and finishes its critical section.
 When T3 unlocks \texttt{m}, its priority is lowered back to its own, T1
-acquires the mutex and runs, and T1 completes at time 7, ahead of T2.
+acquires the mutex and runs, and T1 completes at time 6, ahead of T2,
+which completes at 8.
 
 \begin{definition}[Priority inheritance]
   With \term{priority inheritance}[優先度継承] the owner of a lock
@@ -305,8 +313,8 @@ acquires the mutex and runs, and T1 completes at time 7, ahead of T2.
 
 \Needspace{9\baselineskip}
 To boost the owner, the lock operation must know who the owner is; this is
-another reason for recording the owner in the mutex data structure
-(Lesson~5).\sidenote{In July 1997 the Mars Pathfinder lander reset itself
+another reason, besides the adaptive mutexes of Lesson~5, for recording the
+owner in the mutex data structure (Lesson~3).\sidenote{In July 1997 the Mars Pathfinder lander reset itself
 repeatedly: a low-priority meteorological task held the mutex of the shared
 information bus, the high-priority bus task blocked on it, and
 medium-priority communication ran instead until a watchdog timer reset the
@@ -358,7 +366,9 @@ even when they do not yield, by limiting how long each task may run.
 
 The timeslice of Lesson~2\index{timeslice} is the maximum amount of
 uninterrupted time given to a task; it is also called the time
-quantum.\margin{Linux still gives its real-time round-robin class a fixed
+quantum.\margin{Silberschatz et al.\ ch.~5 give a typical quantum of
+10--\SI{100}{\milli\second}, far longer than a context switch of a few
+microseconds (Lesson~2).}\margin{Linux still gives its real-time round-robin class a fixed
 quantum: \SI{100}{\milli\second} by default, set with the sysctl
 \texttt{sched\_rr\_timeslice\_ms}.}  A
 task may run for less than its timeslice.  It may block, waiting for I/O or
@@ -658,7 +668,9 @@ A user process has the default priority 120.  It can be adjusted through
 the process's \term{nice value}[nice値], which ranges from $-20$ to 19 and
 is added to the default, so that the priorities of timesharing tasks range
 from 100 to 139.  A process can lower its own priority, for example with
-the \texttt{nice} system call; raising it requires privileges.
+the \texttt{nice} system call; raising it requires privileges.\tip{\texttt{nice
+-n 5} \emph{cmd} starts a command with nice value 5; \texttt{renice} changes
+the value afterwards; \texttt{chrt} selects a real-time policy.}
 
 The timeslice of a task depends on its priority: tasks of low priority
 receive the shortest timeslices, and tasks of high priority the longest.
@@ -786,7 +798,9 @@ so they soon lose the CPU; for tasks of high priority it advances more
 slowly, so they run longer.  A single tree thus holds the tasks of all
 priorities.  Selecting a task takes constant time, since the scheduler keeps
 a pointer to the leftmost node, and adding a task takes $O(\log N)$ time for
-$N$ tasks.
+$N$ tasks.  Equivalently, CFS divides a scheduling period shared by all
+runnable tasks into timeslices proportional to the tasks' weights (OSTEP
+ch.~9).
 
 \begin{example}
   CFS derives the rate from a weight for each nice value: nice value 0 has
@@ -868,7 +882,9 @@ runs on the same CPU the next time, it finds a hot cache (Lesson~2); if it
 runs on a different CPU, it starts with a cold cache and runs more slowly
 until that cache has been filled.\margin{A task that ran within the last
 \texttt{sched\_migration\_cost\_ns}, \SI{500}{\micro\second} by default,
-counts as cache-hot, and the load balancer leaves it where it is.}
+counts as cache-hot, and the load balancer leaves it where it is.  Since
+Linux~5.13 the tunable is in debugfs:
+\texttt{/sys/kernel/debug/sched/migration\_cost\_ns}.}
 
 \begin{definition}[Cache affinity]
   The benefit that a task gains from running on the CPU whose caches hold
@@ -888,7 +904,10 @@ application can restrict a thread to a set of CPUs with
 
 \subsection{NUMA-aware scheduling}
 
-A multiprocessor may also have several memory nodes (\cref{fig:l07-numa}).
+A multiprocessor may also have several memory nodes
+(\cref{fig:l07-numa}).\margin{\texttt{numactl --hardware} shows the nodes
+and their distances; \texttt{numactl --cpunodebind=0 --membind=0}
+\emph{cmd} pins a program to one node (numactl(8)).}
 
 \begin{definition}[NUMA]
   In a system with \term{non-uniform memory access}[NUMA]%
@@ -896,7 +915,7 @@ A multiprocessor may also have several memory nodes (\cref{fig:l07-numa}).
   of several memory nodes, each of which is close to a socket of one or more
   processors.  Access from a CPU to its local memory node is faster than
   access to a remote node, which passes through an interconnect between the
-  sockets, such as Intel's QuickPath Interconnect.
+  sockets, such as Intel's UPI (formerly QPI) or AMD's Infinity Fabric.
 \end{definition}
 
 \begin{figure}[htbp]
@@ -957,8 +976,9 @@ by Fedorova et al.; in practice the names are often used interchangeably.  Proce
 with up to eight hardware threads per core have been built, but two is the
 most common configuration, and SMT can be enabled or disabled at boot
 time.\margin{Intel's first implementation cost less than \SI{5}{\percent} of
-the die area for about \SI{25}{\percent} more throughput (Marr et al.,
-\emph{Intel Technology Journal}, 2002).}
+the die area and gave up to \SI{30}{\percent} more performance on common
+server application benchmarks (Marr et al., \emph{Intel Technology
+Journal}, 2002).}
 
 Designs differ in how closely the contexts share the pipeline.  The simplest
 interleave them, giving the pipeline to another context as often as every
@@ -982,9 +1002,9 @@ latency of I/O.
 \section{Scheduling for hyperthreaded platforms}
 \label{sec:l07-smt-sched}
 
-Which tasks should share a CPU?  A simple model of a multithreaded CPU, in
-the spirit of the platforms studied by Fedorova et al., answers the
-question.\source{P3L1, scheduling for hyperthreading platforms; Fedorova et
+The question is which tasks should share a CPU; a simple model of a
+multithreaded CPU, in the spirit of the platforms studied by Fedorova et
+al., answers it.\source{P3L1, scheduling for hyperthreading platforms; Fedorova et
 al.\ \cite{fedorova2004}.}  It rests on four assumptions.
 \begin{enumerate}
   \item A thread issues an instruction on every CPU cycle, and the pipeline
@@ -1094,12 +1114,14 @@ architecture, based on well-understood characteristics of workloads.
 \end{example}
 
 \Needspace{7\baselineskip}
-\section{Is cycles per instruction a useful metric?}
+\section{Cycles per instruction as a scheduling metric}
 \label{sec:l07-cpi}
 
 Fedorova et al.\ proposed to distinguish the tasks by a single
 counter-derived metric, the CPI.\source{P3L1, CPI experiment, CPI
-experiment results; Fedorova et al.}  The idea is attractive: a
+experiment results; Fedorova et al.}\caution{A high CPI can also come from
+branch mispredictions or pipeline contention, so a high CPI does not by
+itself prove a memory-bound thread.}  The idea is attractive: a
 memory-bound task spends many cycles waiting for memory and has a high CPI,
 while a CPU-bound task has a low one: 1 in a model that executes one
 instruction per cycle, and below 1 on a superscalar processor.  A scheduler could then mix
@@ -1110,12 +1132,12 @@ cores of four hardware threads each, sixteen hardware threads in total.  The
 workload was synthetic and consisted of threads with widely different CPIs.
 The threads were assigned to the cores in several ways, ranging from
 assignments in which every core ran a mix of CPIs to assignments in which
-every core ran threads of the same CPI.  Performance was measured as the
-aggregate instructions per cycle of the sixteen hardware threads, at most 4
-on four cores.
+every core ran threads of the same CPI.  The lecture compares the
+assignments by aggregate IPC (at most 4 on four single-issue cores); the
+paper reports aggregate throughput in transactions per second.
 
-The assignments with mixed CPIs achieved the highest IPC, and those in
-which the threads on each core had similar CPIs the lowest.  With these
+The assignments with mixed CPIs performed best, and those in
+which the threads on each core had similar CPIs worst.  With these
 workloads, scheduling by CPI is clearly beneficial, and the experiment
 confirms that contention for the processor pipeline matters.  Realistic
 workloads, however, behave differently.  The CPIs measured for real
@@ -1134,9 +1156,9 @@ synthetic workload does not work in practice.
   The study nevertheless leaves three lessons.  Tasks on SMT processors
   contend for the processor pipeline; hardware counters can characterize a
   workload; and schedulers must be aware of resource contention, not merely
-  balance the load.  Later work by the same group found the use of the
-  last-level cache over time to be a better indicator of contention than
-  CPI.
+  balance the load.  Later work by the same group \cite{fedorova2005} found the
+  use of the last-level cache over time to be a better indicator of
+  contention than CPI.
 \end{note}
 
 \begin{keypoint}[Lesson summary]

@@ -1,5 +1,6 @@
-% Priority inversion and priority inheritance.  T1 (high) arrives at 3,
-% T2 (medium) at 2, T3 (low) at 0; T1 and T3 share mutex m.
+% Priority inversion and priority inheritance.  T1 (high) arrives at 2,
+% T2 (medium) at 1, T3 (low) at 0; each needs 3 s; T1 and T3 share mutex m
+% (T3 holds it for its first 2 s, T1 for 1 s after running 1 s).
 % Usage: \input{figures/l07-inversion}   (width ~112 mm)
 \begin{tikzpicture}[x=9mm, y=1mm, font=\footnotesize\sffamily,
   run/.style={draw, fill=ln-box},
@@ -13,18 +14,17 @@
   \node[lab] at (-0.1,50.5) {\iflangja{T1（高）}{T1 (high)}};
   \node[lab] at (-0.1,42.5) {\iflangja{T2（中）}{T2 (medium)}};
   \node[lab] at (-0.1,34.5) {\iflangja{T3（低）}{T3 (low)}};
-  \draw[run] (3,48) rectangle (4,53);
-  \draw[blk] (4,50.5) -- (7,50.5);
-  \draw[cs]  (7,48) rectangle (8,53);
-  \draw[run] (8,48) rectangle (9,53);
-  \draw[run] (2,40) rectangle (3,45);
-  \draw[run] (4,40) rectangle (6,45);
-  \draw[run] (0,32) rectangle (1,37);
-  \draw[cs]  (1,32) rectangle (2,37);
-  \draw[cs]  (6,32) rectangle (7,37);
-  \draw[run] (9,32) rectangle (10,37);
-  \draw (0,29) -- (10.3,29);
-  \foreach \x in {0,...,10} {
+  \draw[run] (2,48) rectangle (3,53);
+  \draw[blk] (3,50.5) -- (6,50.5);
+  \draw[cs]  (6,48) rectangle (7,53);
+  \draw[run] (7,48) rectangle (8,53);
+  \draw[run] (1,40) rectangle (2,45);
+  \draw[run] (3,40) rectangle (5,45);
+  \draw[cs]  (0,32) rectangle (1,37);
+  \draw[cs]  (5,32) rectangle (6,37);
+  \draw[run] (8,32) rectangle (9,37);
+  \draw (0,29) -- (9.3,29);
+  \foreach \x in {0,...,9} {
     \draw (\x,29) -- (\x,28);
     \node[below, font=\scriptsize\sffamily, inner sep=1pt] at (\x,28) {\x};
   }
@@ -33,24 +33,23 @@
   \node[lab] at (-0.1,15.5) {\iflangja{T1（高）}{T1 (high)}};
   \node[lab] at (-0.1,7.5)  {\iflangja{T2（中）}{T2 (medium)}};
   \node[lab] at (-0.1,-0.5) {\iflangja{T3（低）}{T3 (low)}};
-  \draw[run] (3,13) rectangle (4,18);
-  \draw[blk] (4,15.5) -- (5,15.5);
-  \draw[cs]  (5,13) rectangle (6,18);
-  \draw[run] (6,13) rectangle (7,18);
-  \draw[run] (2,5) rectangle (3,10);
-  \draw[run] (7,5) rectangle (9,10);
-  \draw[run] (0,-3) rectangle (1,2);
-  \draw[cs]  (1,-3) rectangle (2,2);
-  \draw[boost] (4,-3) rectangle (5,2);
-  \node[anchor=west, font=\scriptsize\sffamily, text=ln-caution] at (5.1,-0.5)
+  \draw[run] (2,13) rectangle (3,18);
+  \draw[blk] (3,15.5) -- (4,15.5);
+  \draw[cs]  (4,13) rectangle (5,18);
+  \draw[run] (5,13) rectangle (6,18);
+  \draw[run] (1,5) rectangle (2,10);
+  \draw[run] (6,5) rectangle (8,10);
+  \draw[cs]  (0,-3) rectangle (1,2);
+  \draw[boost] (3,-3) rectangle (4,2);
+  \node[anchor=west, font=\scriptsize\sffamily, text=ln-caution] at (4.1,-0.5)
     {\iflangja{優先度を「高」に引き上げ}{priority raised to high}};
-  \draw[run] (9,-3) rectangle (10,2);
-  \draw (0,-6) -- (10.3,-6);
-  \foreach \x in {0,...,10} {
+  \draw[run] (8,-3) rectangle (9,2);
+  \draw (0,-6) -- (9.3,-6);
+  \foreach \x in {0,...,9} {
     \draw (\x,-6) -- (\x,-7);
     \node[below, font=\scriptsize\sffamily, inner sep=1pt] at (\x,-7) {\x};
   }
-  \node[anchor=west, font=\scriptsize\sffamily] at (10.3,-6) {$t$};
+  \node[anchor=west, font=\scriptsize\sffamily] at (9.3,-6) {$t$};
   % ---------- legend
   \begin{scope}[yshift=-17mm, font=\scriptsize\sffamily]
     \draw[run] (0,-1.5) rectangle (0.5,1.5);
