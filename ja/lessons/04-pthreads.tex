@@ -29,7 +29,9 @@ OSTEP ch.~27．}システムコールとライブラリ関数の名前，引数�
 オペレーティングシステムがそれらをどう実装するかは定めない．その目的は
 移植性である．POSIX に従って書かれたプログラムは，最初に書かれた
 オペレーティングシステムだけでなく，この標準に準拠するすべての
-オペレーティングシステムでコンパイルして実行できる．
+オペレーティングシステムでコンパイルして実行できる．\margin{POSIX.1 は
+IEEE と The Open Group が共同で保守しており，Single UNIX Specification の
+中核をなす．本章は 2017 年版 \cite{posix2017} を引用する．}
 
 \begin{definition}[POSIXスレッド]
   POSIX のうち，スレッドを生成・管理するためのインタフェースと，スレッドが
@@ -121,7 +123,10 @@ Birrell の \texttt{Fork} にはなく，これについては後述する．こ
 \texttt{pthread\_create} と同様に，\texttt{pthread\_join} も成功したときは
 0 を，失敗したときはエラー番号を返す．\margin{生成とジョインの往復は，
 現在の x86-64 Linux では \SI{10}{\micro\second} 程度である．スレッド
-プール（第3章）はこれをワーカーごとに一度だけ払う．}
+プール（第3章）はこれをワーカーごとに一度だけ払う．}\caution{同じ
+スレッドを2回ジョインすること，およびデタッチされたスレッドをジョインする
+ことは，POSIX では単なるエラーの戻り値ではなく未定義動作である
+（POSIX.1）．}
 
 \subsection{スレッド属性}
 \label{sec:l04-attr}
@@ -153,16 +158,19 @@ int pthread_attr_getxxx(const pthread_attr_t *attr, ...);
 \texttt{pthread\_attr\_destroy} がそれを解放する．オブジェクトが参照される
 のは \texttt{pthread\_create} の実行中だけなので，スレッドが生成された後は
 すぐに破棄してよく，別のスレッドのために再利用してもよい．%
-\margin{\texttt{SCHED\_OTHER} は第7章の CFS である．
-\texttt{SCHED\_FIFO} と \texttt{SCHED\_RR} はリアルタイムであり，優先度は
-1--99，クォンタムは \SI{100}{\milli\second} である（\texttt{sched(7)}）．}
+\margin{\texttt{SCHED\_OTHER} は第7章の公平スケジューラである（CFS．
+Linux~6.6 で EEVDF に置き換えられた）．\texttt{SCHED\_FIFO} と
+\texttt{SCHED\_RR} はリアルタイムであり，優先度は 1--99 である．クォンタム
+を持つのは \texttt{SCHED\_RR} だけで，既定値は \SI{100}{\milli\second}
+である（\texttt{sched\_rr\_get\_interval(2)}）．}
 \cref{tab:l04-attributes} は，この講義で重要になる属性を挙げたものである．
 スコープ属性は，第3章のシステムスコープとプロセススコープのどちらかを選ぶ．
 \texttt{PTHREAD\_SCOPE\_SYSTEM} ではスレッドはシステム内のすべての
 スレッドと CPU を奪い合い，\texttt{PTHREAD\_SCOPE\_PROCESS} では自分の
 プロセスのスレッドとだけ奪い合う．\margin{Linux はシステムスコープしか
-サポートしておらず，\texttt{PTHREAD\_SCOPE\_PROCESS} を要求すると
-\texttt{ENOTSUP} で失敗する．}%
+サポートしておらず，\texttt{pthread\_attr\_setscope} は
+\texttt{PTHREAD\_SCOPE\_PROCESS} を \texttt{ENOTSUP} で拒否する．したがって
+属性を設定する関数の戻り値もすべて検査しなければならない．}%
 \index{しすてむすこーぷ@システムスコープ}\index{ぷろせすすこーぷ@プロセススコープ}
 
 \begin{table}[htbp]
@@ -318,12 +326,15 @@ gcc -o main main.c -lpthread
     \texttt{-lpthread} は Pthreads ライブラリをリンクするだけだが，
     \mbox{\texttt{-pthread}} はマルチスレッドのコードのためにプラット
     フォームが必要とするプリプロセッサ定義も設定する．より移植性が高いのは
-    後者である．
+    後者である．\margin{後で用いる競合検出器 \texttt{-fsanitize=thread} は
+    リンク時にも指定しなければならず，さもなければリンクが未定義の
+    \texttt{\_\_tsan} シンボルで失敗する．\texttt{-g} を付けると報告に
+    ソースの行が加わる．}
   \item \textbf{戻り値の検査．}Pthreads の関数は，\texttt{errno} ではなく
-    戻り値で失敗を報告する．\caution{Pthreads は POSIX の例外である．
-    システムコールのラッパーは $-1$ を返して \texttt{errno} を設定するので，
-    \texttt{pthread\_create} の失敗後の \texttt{perror} は誤った原因を
-    表示する．}成功なら 0，そうでなければエラー番号である．
+    戻り値で失敗を報告する．\caution{Pthreads は，他の
+    \texttt{posix\_*} 関数と同様に，$-1$ を返して \texttt{errno} を設定する
+    というシステムコールの慣習から外れている．\texttt{errno} が確実に設定
+    されるわけではないので，\texttt{perror} は無関係な値を表示しうる．}成功なら 0，そうでなければエラー番号である．
     処理を続けられない呼び出し元は，例えば \texttt{strerror} でその番号を
     報告して終了する．\texttt{pthread\_create} の結果を無視するプログラム
     は，後になって，生成されなかったスレッドを，設定されなかった識別子を
@@ -375,7 +386,7 @@ int main(void) {
 \Needspace{12\baselineskip}
 \subsection{引数を渡す}
 
-各ワーカーが自分の番号を表示するようにしたいとする．スタートルーチンは
+各ワーカーは自分の番号を表示するものとする．スタートルーチンは
 引数を通じて番号を読む．\margin{番号を値として \texttt{(void~*)(intptr\_t)i}
 の形で渡し，キャストで戻す書き方もある．共有変数はなくなるが，この変換は
 処理系定義である．}
@@ -388,13 +399,13 @@ void *show_index(void *arg) {   /* スレッドのメイン */
 }
 \end{lstlisting}
 \Needspace{4\baselineskip}
-素直に書くと，ループ変数のアドレスを渡すことになる．
+最初の試みでは，ループ変数のアドレスを渡す．
 \begin{lstlisting}[language=C, numbers=none]
 for (i = 0; i < NUM_THREADS; i++)
   pthread_create(&tid[i], NULL, show_index, &i);
 \end{lstlisting}
 このプログラムが $0$，$1$，$2$ を表示する保証はない．\tip{競合検出器を
-使えば運に頼らずに済む．\texttt{-fsanitize=thread} を付けてビルドするか，
+使えばこれを確実に検出できる．\texttt{-fsanitize=thread} を付けてビルドするか，
 \texttt{valgrind --tool=helgrind} の下で実行する．}どの
 スレッドも同じアドレス，すなわち \texttt{main} のスタックフレームにある
 唯一の変数 \texttt{i} のアドレスを受け取り（\cref{fig:l04-args} 左），
@@ -500,7 +511,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex);
 ならないときと，他のスレッドを起こさなければならないときだけである．
 したがって競合のないロックは数十ナノ秒で済み，競合するロックは
 システムコールとコンテキストスイッチの分だけかかる．Drepper，
-「Futexes Are Tricky」，2011．}違いは構文上のものだが，重要である．Birrell の
+「Futexes Are Tricky」\cite{drepper2011}．}違いは構文上のものだが，重要である．Birrell の
 \texttt{Lock(m)~\{\,\ldots\,\}} はブロックの終わりで暗黙にミューテックスを
 解放する．Pthreads ではクリティカルセクションは2つの呼び出しの間のコード
 であり，プログラムはそこから出るすべての経路---早期の return やエラー処理
@@ -550,8 +561,9 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex);
     初期化する．その属性オブジェクトは \texttt{pthread\_mutexattr\_t} 型で
     あり，例えばプロセス間で共有してよいかどうか（第9章）といった
     ミューテックスの振る舞いを指定する．\texttt{NULL} は既定値を選ぶ．%
-    \margin{型も属性である．既定の型は所有者が再びロックするとデッド
-    ロックし（第3章），\texttt{PTHREAD\_MUTEX\_ERRORCHECK} は代わりに
+    \margin{型も属性である．既定の型のミューテックスを再びロックすることは
+    POSIX では未定義である（glibc はこれを \texttt{NORMAL} に対応付けるので
+    デッドロックする．第3章）．\texttt{PTHREAD\_MUTEX\_ERRORCHECK} は
     \texttt{EDEADLK} を返し，\texttt{PTHREAD\_MUTEX\_RECURSIVE} は回数を
     数える．}
     既定の属性を持つミューテックスは，\cref{ex:l04-safe-insert} のように，
@@ -560,7 +572,9 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex);
   \item[\texttt{pthread\_mutex\_trylock}] は，ミューテックスが空いていれば
     それをロックして 0 を返す．ミューテックスがロックされている場合は
     ブロックせず，直ちにエラー \texttt{EBUSY} を返す．呼び出したスレッドは
-    別のことをして，後で再試行できる．
+    別のことをして，後で再試行できる．%
+    \margin{\texttt{pthread\_mutex\_timedlock}（POSIX.1）は絶対時刻で
+    与えた期限まで待つだけで，その後は \texttt{ETIMEDOUT} を返す．}
   \item[\texttt{pthread\_mutex\_destroy}] は，不要になった
     ミューテックスのデータ構造を解放する．ミューテックスはロックされて
     いてはならない．
@@ -624,7 +638,10 @@ int pthread_cond_broadcast(pthread_cond_t *cond);
 待っているスレッドの少なくとも1つを，\texttt{pthread\_cond\_broadcast} は
 そのすべてを起こす．どちらも，待っているスレッドがなければ何も起こらない．%
 \caution{引数の順序は Birrell の \texttt{Wait(m, c)} と逆である．
-\texttt{pthread\_cond\_wait} は条件変数を先に取る．}
+\texttt{pthread\_cond\_wait} は条件変数を先に取る．}%
+\margin{\texttt{pthread\_cond\_timedwait} は相対的なタイムアウトではなく
+絶対時刻の期限を取る．時計は既定で \texttt{CLOCK\_REALTIME} である
+（\texttt{pthread\_condattr\_setclock}）（POSIX.1）．}
 
 POSIX は，どのスレッドも signal していないのに
 \texttt{pthread\_cond\_wait} が戻ることを許しており，これもスプリアス
@@ -699,7 +716,7 @@ int pthread_cond_destroy(pthread_cond_t *cond);
 第3章の生産者・消費者問題は，ここまでの内容によって Pthreads の完全な
 プログラムとして解ける．\source{P2L3，PThreads を用いた生産者と消費者の
 例；OSTEP ch.~30．}\index{せいさんしゃしょうひしゃもんだい@生産者・消費者問題}%
-生産者スレッドが共有の\emph{有界バッファ}---循環キューとして使う
+生産者スレッドが共有の\term[ゆうかいばっふぁ]{有界バッファ}[bounded buffer]---循環キューとして使う
 \texttt{BUF\_SIZE} 個のスロットの配列---に値を挿入し，消費者スレッドが
 挿入された順にそれらを取り出す．バッファは4つの変数で記述される．配列
 \texttt{buffer}，次に埋めるスロットの添字 \texttt{add}，次に空けるスロットの
@@ -745,7 +762,9 @@ void *consumer(void *param);
 \end{figure}
 
 \Needspace{14\baselineskip}
-メインスレッドは2つのスレッドを生成してジョインする．
+メインスレッドは2つのスレッドを生成してジョインする．\margin{これは
+OSTEP ch.~30 の有界バッファである．OSTEP ch.~31 は同じプログラムをセマフォで
+構成する．}
 \begin{lstlisting}[language=C, numbers=none]
 int main(void) {
   pthread_t tid1, tid2;
@@ -763,8 +782,9 @@ int main(void) {
 \end{lstlisting}
 
 生産者は値 $1,\dots,\texttt{NUM\_ITEMS}$ を挿入する．\tip{\texttt{BUF\_SIZE}
-が2のべきなら，\texttt{(add + 1) \% BUF\_SIZE} は
-\texttt{(add + 1) \& (BUF\_SIZE - 1)} と書ける．除算1つが命令1つになる．}
+が定数の2のべきなら，コンパイラはすでに除算を避ける．\texttt{add} と
+\texttt{rem} を \texttt{unsigned} で宣言するか，
+\texttt{\& (BUF\_SIZE - 1)} と書けば，折り返しは AND 命令1つになる．}
 \begin{lstlisting}[language=C, numbers=none]
 void *producer(void *param) {
   int i;
@@ -817,7 +837,7 @@ void *consumer(void *param) {
     変化を待つことは決してないからである．
   \item 生産者は \texttt{c\_prod} だけで，消費者は \texttt{c\_cons} だけで
     待つので，通知は必ず，それを利用できる種類のスレッドに届く．%
-    \caution{両方に1つの条件変数を使うと，消費者しか進めないときに
+    \caution{複数の生産者または消費者が1つの条件変数を共有すると，消費者しか進めないときに
     \texttt{signal} が生産者を起こしうる．そのような設計には broadcast が
     必要である．}
   \item 消費者は \texttt{NUM\_ITEMS} 個の値を取り出したら停止する．無限に

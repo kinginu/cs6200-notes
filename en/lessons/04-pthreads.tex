@@ -29,7 +29,9 @@ OSTEP ch.~27.}  It defines the names, arguments and semantics of system
 calls and library functions, but not how an operating system implements
 them.  Its purpose is portability: a program written against POSIX can be
 compiled and run on every operating system that complies with the standard,
-not only on the one for which it was first written.
+not only on the one for which it was first written.\margin{POSIX.1 is
+maintained jointly by IEEE and The Open Group and forms the core of the Single
+UNIX Specification; this lesson cites the 2017 edition \cite{posix2017}.}
 
 \begin{definition}[POSIX threads]
   The part of POSIX that specifies the interface for creating and managing
@@ -124,7 +126,9 @@ it returned, or passed to \texttt{pthread\_exit}, is stored in
 \texttt{NULL}.  Like \texttt{pthread\_create}, \texttt{pthread\_join}
 returns 0 on success and an error number on failure.\margin{A create-and-join
 round trip costs on the order of \SI{10}{\micro\second} on current x86-64
-Linux; a thread pool (Lesson~3) pays it once per worker.}
+Linux; a thread pool (Lesson~3) pays it once per worker.}\caution{Joining the same
+thread twice, or joining a detached thread, is undefined behaviour in POSIX,
+not merely an error return (POSIX.1).}
 
 \subsection{Thread attributes}
 \label{sec:l04-attr}
@@ -156,16 +160,19 @@ must be called before any other function is applied to the object, and
 \texttt{pthread\_attr\_destroy} releases it.  The object is consulted only
 while \texttt{pthread\_create} runs, so it can be destroyed, or reused for
 further threads, as soon as the thread
-exists.\margin{\texttt{SCHED\_OTHER} is the CFS of Lesson~7;
-\texttt{SCHED\_FIFO} and \texttt{SCHED\_RR} are real time, priorities
-1--99, quantum \SI{100}{\milli\second} (\texttt{sched(7)}).}
+exists.\margin{\texttt{SCHED\_OTHER} is the fair scheduler of Lesson~7
+(CFS, replaced by EEVDF in Linux~6.6); \texttt{SCHED\_FIFO} and
+\texttt{SCHED\_RR} are real time, priorities 1--99; only \texttt{SCHED\_RR}
+has a quantum, \SI{100}{\milli\second} by default
+(\texttt{sched\_rr\_get\_interval(2)}).}
 \Cref{tab:l04-attributes} lists the attributes that matter in this course.  The scope attribute
 selects between the system scope and the process scope of Lesson~3: with
 \texttt{PTHREAD\_SCOPE\_SYSTEM} the thread competes for the CPU with all
 threads in the system, with \texttt{PTHREAD\_SCOPE\_PROCESS} only with the
-threads of its own process.\margin{Linux supports only system scope; a
-request for \texttt{PTHREAD\_SCOPE\_PROCESS} fails with
-\texttt{ENOTSUP}.}\index{system scope}\index{process scope}
+threads of its own process.\margin{Linux supports only system scope:
+\texttt{pthread\_attr\_setscope} rejects \texttt{PTHREAD\_SCOPE\_PROCESS}
+with \texttt{ENOTSUP}, so the return value of every attribute setter must be
+checked too.}\index{system scope}\index{process scope}
 
 \begin{table}[htbp]
   \centering
@@ -316,13 +323,15 @@ gcc -o main main.c -lpthread
     \texttt{-lpthread} only links the Pthreads library, whereas
     \texttt{-pthread} also sets the preprocessor definitions that the
     platform requires for multithreaded code; it is the more portable
-    choice.
+    choice.\margin{The race detector \texttt{-fsanitize=thread} used below
+    must be given at link time too, or the link fails on undefined
+    \texttt{\_\_tsan} symbols; \texttt{-g} adds source lines to its reports.}
   \item \textbf{Checked return values.}  Pthreads functions report failure
     through their return value, 0 on success and an error number
-    otherwise, rather than through \texttt{errno}.\caution{Pthreads is the
-    exception in POSIX: system-call wrappers return $-1$ and set
-    \texttt{errno}, so \texttt{perror} after a failed
-    \texttt{pthread\_create} reports the wrong error.}  A caller that cannot
+    otherwise, rather than through \texttt{errno}.\caution{Pthreads, like
+    the other \texttt{posix\_*} functions, departs from the system-call
+    convention of returning $-1$ and setting \texttt{errno}; \texttt{errno}
+    is not set reliably, so \texttt{perror} may report an unrelated value.}  A caller that cannot
     continue reports the number, e.g.\ with \texttt{strerror}, and exits.
     A program that ignores the result of \texttt{pthread\_create} may later
     join a thread that was never created, using an identifier that was
@@ -374,7 +383,7 @@ process, before every worker has printed its line.
 \Needspace{12\baselineskip}
 \subsection{Passing an argument}
 
-Suppose each worker should print its own index.  The start routine reads
+Each worker is to print its own index.  The start routine reads
 the index through its argument:\margin{An alternative passes the index by
 value, as
 \texttt{(void~*)(intptr\_t)i}, and casts it back: no shared variable, but
@@ -388,13 +397,13 @@ void *show_index(void *arg) {       /* thread main */
 }
 \end{lstlisting}
 \Needspace{4\baselineskip}
-An obvious attempt passes it the address of the loop variable:
+A first attempt passes it the address of the loop variable:
 \begin{lstlisting}[language=C, numbers=none]
 for (i = 0; i < NUM_THREADS; i++)
   pthread_create(&tid[i], NULL, show_index, &i);
 \end{lstlisting}
 The program does not reliably print $0$, $1$ and $2$.\tip{Race detectors find
-this without luck: build with \texttt{-fsanitize=thread}, or run under
+this reliably: build with \texttt{-fsanitize=thread}, or run under
 \texttt{valgrind --tool=helgrind}.}  Every thread receives
 the same address, that of the single variable \texttt{i} in the stack frame
 of \texttt{main} (\cref{fig:l04-args}, left), and a thread reads the value
@@ -496,7 +505,7 @@ one atomic read-modify-write instruction in user space: glibc enters the
 kernel, through \texttt{futex(2)}, only when a thread must block or must wake
 another.  An uncontended lock therefore costs tens of nanoseconds and a
 contended one a system call and a context switch.  Drepper,
-\enquote{Futexes Are Tricky}, 2011.}  The difference is syntactic, but
+\enquote{Futexes Are Tricky} \cite{drepper2011}.}  The difference is syntactic, but
 it matters.  Birrell's \texttt{Lock(m)~\{\,\ldots\,\}} releases the mutex
 implicitly at the end of the block; in Pthreads the critical section is the
 code between the two calls, and the program must call
@@ -547,16 +556,18 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex);
     use.  Its attribute object, of type \texttt{pthread\_mutexattr\_t},
     specifies the behaviour of the mutex, for instance whether it may be
     shared among processes (Lesson~9); \texttt{NULL} selects the
-    defaults.\margin{The type is an attribute too: the default deadlocks when
-    its owner locks it again (Lesson~3), \texttt{PTHREAD\_MUTEX\_ERRORCHECK}
-    returns \texttt{EDEADLK} instead, \texttt{PTHREAD\_MUTEX\_RECURSIVE}
-    counts.}
+    defaults.\margin{The type is an attribute too: relocking a default mutex is
+    undefined in POSIX (glibc, which maps it to \texttt{NORMAL}, deadlocks;
+    Lesson~3), \texttt{PTHREAD\_MUTEX\_ERRORCHECK} returns
+    \texttt{EDEADLK}, \texttt{PTHREAD\_MUTEX\_RECURSIVE} counts.}
     A mutex with default attributes can also be initialized statically, as
     in \cref{ex:l04-safe-insert}, with \texttt{PTHREAD\_MUTEX\_INITIALIZER}.
   \item[\texttt{pthread\_mutex\_trylock}] locks the mutex if it is free and
     returns 0.  If the mutex is locked, it does not block but returns
     immediately with the error \texttt{EBUSY}.  The calling thread can then
-    do something else and try again later.
+    do something else and try again later.\margin{\texttt{pthread\_mutex\_timedlock}
+    (POSIX.1) blocks only up to an absolute deadline and then returns
+    \texttt{ETIMEDOUT}.}
   \item[\texttt{pthread\_mutex\_destroy}] frees the data structures of a
     mutex that is no longer needed.  The mutex must not be locked.
 \end{description}
@@ -619,7 +630,9 @@ woken up, it re-acquires the mutex before it returns.
 threads, \texttt{pthread\_cond\_broadcast} all of them; both have no effect when no
 thread is waiting.\caution{The argument order is the reverse of Birrell's
 \texttt{Wait(m, c)}: \texttt{pthread\_cond\_wait} takes the condition
-variable first.}
+variable first.}\margin{\texttt{pthread\_cond\_timedwait} takes an absolute
+deadline, on \texttt{CLOCK\_REALTIME} by default
+(\texttt{pthread\_condattr\_setclock}), not a relative timeout (POSIX.1).}
 
 POSIX allows \texttt{pthread\_cond\_wait} to return even though no thread
 has signalled, and calls such a return a spurious wake-up
@@ -696,7 +709,7 @@ variable and its mutex, and both must lie in shared memory (Lesson~9).}
 The producer-consumer problem of Lesson~3 can now be solved with a complete
 Pthreads program.\source{P2L3, producer and consumer example using
 PThreads; OSTEP ch.~30.}\index{producer-consumer problem}  A producer thread
-inserts values into a shared \emph{bounded buffer}, an array of
+inserts values into a shared \term{bounded buffer}[有界バッファ], an array of
 \texttt{BUF\_SIZE} slots used as a circular queue, and a consumer thread
 removes them in the order in which they were inserted.  Four variables
 describe the buffer: the array \texttt{buffer}, the index \texttt{add} of the
@@ -743,7 +756,9 @@ void *consumer(void *param);
 \end{figure}
 
 \Needspace{14\baselineskip}
-The main thread creates and joins the two threads:
+The main thread creates and joins the two threads:\margin{This is the
+bounded buffer of OSTEP ch.~30; OSTEP ch.~31 builds the same program with
+semaphores.}
 \begin{lstlisting}[language=C, numbers=none]
 int main(void) {
   pthread_t tid1, tid2;
@@ -761,9 +776,10 @@ int main(void) {
 \end{lstlisting}
 
 The producer inserts the values
-$1,\dots,\texttt{NUM\_ITEMS}$:\tip{With \texttt{BUF\_SIZE} a power of two,
-\texttt{(add + 1) \% BUF\_SIZE} is \texttt{(add + 1) \& (BUF\_SIZE - 1)}---one
-instruction instead of a division.}
+$1,\dots,\texttt{NUM\_ITEMS}$:\tip{With \texttt{BUF\_SIZE} a constant power of
+two the compiler already avoids the division; declaring \texttt{add} and
+\texttt{rem} \texttt{unsigned}, or writing \texttt{\& (BUF\_SIZE - 1)},
+reduces the wrap to a single AND.}
 \begin{lstlisting}[language=C, numbers=none]
 void *producer(void *param) {
   int i;
@@ -817,8 +833,8 @@ The program applies the rules of this lesson and of Lesson~3.
     and therefore never waits for a change that has already happened.
   \item Because producers wait only on \texttt{c\_prod} and consumers only
     on \texttt{c\_cons}, a notification always reaches a thread of the kind
-    that can use it.\caution{With a single condition variable for both, a
-    \texttt{signal} could wake a producer when only a consumer can proceed;
+    that can use it.\caution{With several producers or consumers sharing a
+    single condition variable, a \texttt{signal} could wake a producer when only a consumer can proceed;
     such a design needs \texttt{broadcast}.}
   \item The consumer stops after \texttt{NUM\_ITEMS} values.  A consumer
     that loops forever would never terminate, and the second
