@@ -17,7 +17,9 @@
   \draw[->] (mq) -- node[lab, above] {\iflangja{m を獲得}{acquire m}} (cs);
   \draw[->] (cs) -- node[lab, above] {\texttt{Wait(m,c)}}
                     node[lab, below] {\iflangja{m を解放}{releases m}} (cq);
-  \draw[->] ([xshift=8mm]cs.north) |- node[lab, pos=0.75, above] {\texttt{Unlock(m)}} (94,16);
+  % leaving the critical section: an exit upwards, mirroring Lock(m)
+  \draw[->] ([xshift=8mm]cs.north) -- (66,21)
+    node[font=\footnotesize\ttfamily, anchor=south] {Unlock(m)};
   % signalled: re-acquire m directly if it is free, otherwise queue on m
   \draw (cq.south) -- node[lab, left, pos=0.55] {\texttt{Signal(c)} / \texttt{Broadcast(c)}} (103,-15);
   \draw[->] (103,-15) -| node[lab, pos=0.75, left] {\iflangja{m は空き}{m free}} ([xshift=8mm]cs.south);
