@@ -175,3 +175,38 @@ undefined citations, 0 multiply-defined labels, 0 missing glyphs, 0 overfull
 boxes > 3 pt.  Then open the rendered pages `.png/<lang>-<slug>-NN.png` and
 check that figures fit, tables do not overflow, and margin notes do not
 collide.  Do not commit; the maintainer commits.
+
+## 8. Page layout
+
+Layout is judged on the rendered pages of the **whole book**
+(`tools/book-check.sh`), because page breaks in a chapter-only build differ.
+Fix layout only in the chapter sources; never edit `format/lnotes.cls` in a
+book repository (see `workflow.md`, *Class changes*).
+
+- **Margin notes below the text block.**  A note anchored on one of the last
+  lines of a page runs past the bottom of the text block.  Re-anchor it
+  earlier in the same passage (the sentence it refers to usually allows
+  that); do not delete information to make it fit.  A one-line gloss that
+  ends ~2 mm low is acceptable.
+- **Pages holding only the summary box.**  `keypoint` boxes do not break
+  across pages, and `\needspace` directly before one has no effect.  Keep the
+  last paragraph, item or figure together with the summary instead
+  (`\Needspace{<lines>\baselineskip}` before that paragraph, or move a
+  float), or tighten the chapter's last page.
+- **Headings at the bottom of a page.**  `\Needspace{5\baselineskip}` (capital
+  N: it also works right after a paragraph) before the heading.  Use the
+  smallest value that works; a large value leaves a visibly empty page end.
+- **Floats.**  Prefer `[tb]` or `[htbp]`; a float that lands in the middle of
+  a listing or splits an example is moved before the paragraph it
+  illustrates.  Float pages are top-aligned by the class.
+- **Listings.**  Do not let a short listing (< 6 lines) split across pages;
+  `\Needspace` before it.  A listing that opens an `example` starts on its
+  own line automatically.
+- **Tables.**  Balance `p{}` column widths so short entries do not break
+  mid-word; Japanese cells need more width than English ones.
+  `widetable` spans body + margin, but try a narrower `\tabcolsep` first.
+- **Japanese figures.**  Boxes sized for English labels overflow with
+  Japanese ones: widen the box or break the label inside the `\iflangja`
+  branch only — the English output must not change.
+- **Figure text size.**  Nothing smaller than `\scriptsize` in a figure; if a
+  figure only fits with `\tiny`, redesign it.
