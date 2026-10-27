@@ -29,7 +29,10 @@ al.\ \cite{silberschatz2018} ch.~9.}  Processes do not use physical
 addresses: each has a virtual address space whose range can be far larger
 than physical memory.  With 32-bit virtual addresses every process can
 address \SI{4}{\gibi\byte}, and the address spaces of all processes
-together easily exceed the memory that is installed.
+together easily exceed the memory that is installed.\margin{On Linux
+x86-64 user space gets the lower half of the 48-bit space,
+\SI{128}{\tebi\byte}; the kernel uses the upper half
+(Documentation/arch/x86/x86\_64/mm.rst).}
 
 \begin{definition}[Virtual memory]
   The abstraction with which the operating system decouples the virtual
@@ -226,7 +229,9 @@ finds the page table of the running process through the
 \term{page table base register}[ページテーブルベースレジスタ], a CPU
 register that holds the address of that page table; on x86 it is the
 register CR3.  On a context switch, the operating system loads the address
-of the page table of the next process into this register.
+of the page table of the next process into this register.\margin{Writing
+CR3 flushes all non-global TLB entries unless process-context identifiers
+(PCID) are in use (Intel SDM vol.~3A, \S\,4.10).}
 
 \section{Page table entries}
 \label{sec:l08-pte}
@@ -251,16 +256,22 @@ most important flags are the following.
     which operations are permitted on the page: read, write, execute.
 \end{description}
 The operating system reads the dirty and access bits and clears them when
-it has acted on them.
+it has acted on them.\caution{The lecture, like x86, merges two notions in
+one bit.  OSTEP (ch.~18, 21) keeps them apart: the valid bit says whether a
+translation is allocated, the present bit whether the page is in physical
+memory.}
 
-On 32-bit x86 processors a PTE has 32 bits (\cref{fig:l08-pte}).  The upper
+Without PAE, a 32-bit x86 PTE has 32 bits (\cref{fig:l08-pte}).  The upper
 20 bits hold the PFN; among the lower bits are the present bit P, the dirty
 bit D and the accessed bit A.  R/W is a protection bit: with 0 the page is
 read-only, with 1 it may also be written.  U/S restricts the privilege
 level: with 0 the page is accessible only in supervisor (kernel) mode, with
-1 also in user mode.  PWT and PCD carry caching-related information
+1 also in user mode.  This format has no execute permission: the
+no-execute bit exists only in the 64-bit entries of PAE and x86-64.  PWT and PCD carry caching-related information
 (write-through, cache disabled), and bits 9--11 are unused by the hardware
-and available to the operating system.
+and available to the operating system.\margin{On x86-64 a PTE is 8 bytes:
+bit 63 is NX (no execute), bits 12--51 hold the PFN (Intel SDM vol.~3A,
+\S\,4.5).}
 
 \begin{figure}[htbp]
   \centering
@@ -313,7 +324,10 @@ address space, the handler determines the action (\cref{tab:l08-faults}).
 A process that makes an illegal access receives the signal
 \texttt{SIGSEGV} (Lesson~5), whose default action terminates it.  All other
 faults are resolved by the operating system, after which the faulting
-instruction is executed again.
+instruction is executed again.\margin{A fault that needs no I/O is a
+\emph{minor} fault, one that reads from disk a \emph{major} fault; Linux
+counts both per process (\texttt{minflt}, \texttt{majflt} in
+\texttt{/proc/<pid>/stat}).}
 
 \section{Page table size}
 \label{sec:l08-pt-size}
@@ -438,7 +452,8 @@ usually lie in the same page, are likely to be accessed next (spatial
 locality).  An Intel Core i7 processor of the Sandy Bridge generation, for
 example, has per core a data TLB of 64 entries, an instruction TLB of 128
 entries, and a second-level TLB of 512 entries shared by both kinds of
-translations (all for \SI{4}{\kibi\byte} pages).\margin{A context switch
+translations (all for \SI{4}{\kibi\byte} pages; Intel 64 and IA-32
+Architectures Optimization Reference Manual).\margin{A context switch
 makes TLB entries stale; they are flushed unless tagged with their address
 space (Lesson~12).}
 
@@ -516,8 +531,8 @@ selects a bucket, which heads a linked list of the entries whose keys hash
 to that bucket (\cref{fig:l08-inverted}\,(b)).  Each element holds the
 process identifier, the page number, the frame number and a pointer to the
 next element, so a translation searches only one short list.\margin{Hashed
-inverted tables were used by the IBM AS/400, by 64-bit PowerPC and by
-Itanium; x86 has always used multi-level tables.}
+inverted tables: 64-bit UltraSPARC and PowerPC (Silberschatz et al.\
+ch.~9); Itanium's hashed VHPT.  x86 has always used multi-level tables.}
 
 \begin{example}
   A machine with \SI{16}{\gibi\byte} of physical memory and
@@ -594,12 +609,15 @@ ch.~9.}  An offset of 10 bits gives pages of \SI{1}{\kibi\byte}, an offset
 of 12 bits pages of \SI{4}{\kibi\byte}, which is the default on x86.  Many
 architectures support several page sizes at the same time.
 
-On x86, two larger page sizes are available besides the default.  A
+On x86-64, two larger page sizes are available besides the default.  A
 \term{large page}[ラージページ] has a size of \SI{2}{\mebi\byte}, and its
 offset has 21 bits.  A page of \SI{1}{\gibi\byte}, whose offset has 30
 bits, is called a \term{huge page}[ヒュージページ].
-\Cref{tab:l08-page-sizes} compares the three sizes.  (Linux calls pages of
-both larger sizes huge pages.)
+\Cref{tab:l08-page-sizes} compares the three sizes.\caution{Terminology:
+the lecture calls the \SI{2}{\mebi\byte} page \emph{large} and the
+\SI{1}{\gibi\byte} page \emph{huge}; Linux calls both huge pages
+(Transparent Huge Pages,
+\texttt{/sys/kernel/mm/transparent\_hugepage/}).}
 
 \begin{table}[htbp]
   \centering
@@ -671,8 +689,11 @@ Allocators exist at two levels.
     allocator divides it among the allocations without involving the kernel
     again.  Examples are dlmalloc, jemalloc, Hoard and
     tcmalloc.\margin{glibc's \texttt{malloc} grows the heap with
-    \texttt{brk}, but serves each request above the mmap threshold,
-    \SI{128}{\kibi\byte} by default, with an \texttt{mmap} of its own.}
+    \texttt{brk}, but serves each request above the mmap threshold
+    with an \texttt{mmap} of its own.  The threshold is initially
+    \SI{128}{\kibi\byte}; glibc raises it dynamically (up to
+    \SI{32}{\mebi\byte} on 64-bit) unless \texttt{M\_MMAP\_THRESHOLD}
+    is set.}
 \end{description}
 
 The main challenge of an allocator is fragmentation of the free memory.
@@ -785,7 +806,11 @@ therefore allocates its objects with a slab allocator
 \cite{bonwick1994}.\sidenote{Bonwick wrote the first slab allocator for
 Solaris~2.4.  Linux has had three implementations of the idea---SLAB, SLUB
 and the compact SLOB---of which SLUB has been the default since~2.6.23;
-\texttt{/proc/slabinfo} lists the caches and their object sizes.}
+\texttt{/proc/slabinfo} lists the caches and their object sizes.  SLOB was
+removed in Linux~6.4 and SLAB in~6.8; SLUB is now the only
+implementation.}\margin{A kernel structure gets its cache with
+\texttt{kmem\_cache\_create}; \texttt{task\_struct} (the PCB of Lesson~2)
+has its own (\texttt{/proc/slabinfo}).}
 
 \begin{definition}[Slab allocator]
   A \term{slab allocator}[スラブアロケータ] keeps a cache for every common
@@ -845,7 +870,9 @@ saved to and restored from secondary storage.
 \end{definition}
 
 When a process accesses a page that is not in memory, the following steps
-take place (\cref{fig:l08-page-fault}):
+take place\caution{Silberschatz et al.\ (\S\,9.5) use \emph{swapping} for
+whole processes and \emph{paging} for single pages; the lecture and Linux
+say swap for pages.} (\cref{fig:l08-page-fault}):
 \begin{enumerate}
   \item The process references a memory address, and the MMU finds the
     valid bit of its PTE cleared.
@@ -855,7 +882,7 @@ take place (\cref{fig:l08-page-fault}):
   \item It reads the page from the swap partition into a free page frame,
     using an I/O operation.\margin{The \SI{8}{\milli\second} of the example
     below is a rotating disk.  An NVMe SSD reads a page in tens of
-    microseconds, which makes a fault rate two orders of magnitude higher
+    microseconds (typical vendor specifications), which makes a fault rate two orders of magnitude higher
     tolerable.}
   \item It updates the PTE with the new PFN and sets the valid bit.
   \item It resets the program counter to the faulting instruction and lets
@@ -904,7 +931,9 @@ swapped out, and which ones.
 
 Pages are swapped out by a \term{page-out daemon}[ページアウトデーモン], a
 kernel thread that runs when memory usage exceeds a threshold, the
-\emph{high watermark}.  It preferably runs while CPU usage is below a
+\emph{high watermark}.\margin{Linux's page-out daemon is the kernel thread
+\texttt{kswapd}; the watermarks are in \texttt{/proc/zoneinfo}, swap
+devices in \texttt{/proc/swaps}.}  It preferably runs while CPU usage is below a
 threshold, the \emph{low watermark}, so that it disturbs the applications
 as little as possible.
 
@@ -924,8 +953,10 @@ accesses.
     pages of the kernel, are never chosen.
 \end{itemize}
 Linux provides parameters that tune when reclaim starts and
-stops,\caution{In Linux both watermarks are thresholds on free memory:
-reclaim starts below the low and stops above the high one.} categorizes
+stops,\caution{Terminology differs: in the lecture the high watermark is
+a memory-usage threshold and the low watermark a CPU-usage threshold;
+Linux's min/low/high watermarks are all thresholds on free memory (reclaim
+starts below low, stops above high).} categorizes
 pages into types, for instance reclaimable and swappable pages, and uses a
 variation of LRU that gives pages a second chance.
 
@@ -987,8 +1018,8 @@ al.\ ch.~10.}  One of them avoids unnecessary copies when a process is
 created.
 
 A process created with \texttt{fork}\index{fork@\texttt{fork}} receives a copy of the
-entire address space of its parent (Lesson~2).\margin{The page tables are
-copied in any case: \SI{1}{\gibi\byte} of \SI{4}{\kibi\byte} pages needs
+entire address space of its parent (Lesson~2).\margin{The page tables of the private, written
+regions are still copied: \SI{1}{\gibi\byte} of \SI{4}{\kibi\byte} pages needs
 $2^{18}$ entries of 8 bytes, \SI{2}{\mebi\byte}.}  Many of its pages, such as
 the code, are static and never change, and a child often calls
 \texttt{exec} soon after its creation, so most of the copying would be
@@ -998,8 +1029,8 @@ wasted.
   With \term{copy-on-write}[コピーオンライト]\index{COW|see{copy-on-write}}
   (COW) the operating system does not copy the address space when it
   creates a process.  It maps the virtual pages of the new process to the
-  page frames of the original and write-protects these frames in both
-  processes.  A write to such a page causes a page fault, and only then does
+  page frames of the original and marks these pages read-only in the page
+  tables of both processes.  A write to such a page causes a page fault, and only then does
   the operating system copy the page.
 \end{definition}
 
@@ -1010,7 +1041,8 @@ copies this one page to a new page frame, maps the writing process's page
 to the copy with write permission, and restarts the write
 (\cref{fig:l08-cow}).  The cost of a copy is paid only for pages that are
 actually modified.\caution{The saving is not unconditional.  Every first
-write traps into the kernel, on the order of a microsecond, so a child that
+write traps into the kernel, on the order of a microsecond on current
+hardware (a typical figure), so a child that
 writes almost all of its pages is slower than one whose address space was
 copied eagerly.}
 
@@ -1035,7 +1067,8 @@ copied eagerly.}
 \label{sec:l08-checkpointing}
 
 The same hardware support helps with failure
-management.\source{P3L2, failure management: checkpointing.}
+management.\source{P3L2, failure management: checkpointing; not treated in OSTEP;
+Clark et al.\ \cite{clark2005} for live migration.}
 
 \begin{definition}[Checkpointing]
   A failure and recovery management technique that periodically saves the
@@ -1044,10 +1077,13 @@ management.\source{P3L2, failure management: checkpointing.}
   rather than from the beginning.
 \end{definition}
 
-Failures may be unavoidable, but with checkpoints recovery is much faster.
+Failures cannot be excluded, but a checkpoint bounds the work lost and so
+shortens recovery.
 The simplest approach pauses the process and copies its entire state.  The
 pause is long for a large address space, and the approach is expensive if
-it is repeated.  The MMU enables a better approach.
+it is repeated.  The MMU enables a better approach.\margin{The same
+write-protect-and-fault trick detects writes in distributed shared memory
+(Lesson~15).}
 \begin{itemize}
   \item The operating system write-protects all pages of the process and
     copies the entire state once, while the process continues to run.

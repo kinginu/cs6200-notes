@@ -1,7 +1,7 @@
 % Layout of a 32-bit x86 page table entry (4 KiB page, no PAE).
 % Usage: \input{figures/l08-pte}   (width ~116 mm)
 \begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
-  num/.style={font=\tiny\sffamily, text=ln-muted, anchor=south},
+  num/.style={font=\scriptsize\sffamily, text=ln-muted, anchor=south},
   grp/.style={font=\scriptsize\sffamily, anchor=north, align=center}]
   % field boundaries: PFN 0..34, unused 34..46, then 9 single bits of 7.8 mm
   \draw[fill=ln-accent!22] (0,0) rectangle (34,7) node[midway] {\iflangja{物理フレーム番号}{physical frame number}};
@@ -13,10 +13,10 @@
     \node at (49.9+7.8*\k,3.5) {\n};
   }
   % bit numbers
-  \node[num] at (1.5,7.2) {31};
-  \node[num] at (32.5,7.2) {12};
-  \node[num] at (35.5,7.2) {11};
-  \node[num] at (44.5,7.2) {9};
+  \node[num, anchor=south west] at (0.3,7.2) {31};
+  \node[num, anchor=south east] at (33.7,7.2) {12};
+  \node[num, anchor=south west] at (34.3,7.2) {11};
+  \node[num, anchor=south east] at (45.7,7.2) {9};
   \foreach \k/\b in {0/8, 1/7, 2/6, 3/5, 4/4, 5/3, 6/2, 7/1, 8/0} {
     \node[num] at (49.9+7.8*\k,7.2) {\b};
   }
