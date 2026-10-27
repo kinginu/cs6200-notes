@@ -154,7 +154,7 @@ it.
   averaging \SI{8}{\percent} CPU utilization.\margin{Low utilization is
   the norm: Barroso and H\"olzle report that datacenter servers spend most of
   their time between \SI{10}{\percent} and \SI{50}{\percent} CPU
-  utilization (\emph{The Datacenter as a Computer}).}  Their combined load
+  utilization \cite{barroso2009}.}  Their combined load
   corresponds to $24 \times 0.08 = 1.92$ fully used servers.  If each
   physical machine is loaded to at most \SI{70}{\percent}, leaving headroom
   for load peaks and for the overhead of virtualization, and memory and
@@ -184,7 +184,8 @@ Silberschatz et al.\ ch.~18.}
 Such a hypervisor must also control the devices.  Devices are diverse, and
 supporting all of them would put a large body of device drivers into the
 hypervisor.  Bare-metal designs therefore often run a privileged
-\emph{service VM} next to the guest VMs (\cref{fig:l12-models}a).  The
+\term{service VM}[サービスVM] next to the guest VMs
+(\cref{fig:l12-models}a).  The
 service VM runs a standard operating system with the device drivers, has
 direct access to the devices, and performs configuration and management
 tasks, so that the hypervisor itself stays small.\caution{The type~1 and
@@ -203,14 +204,15 @@ host OS remains around it.}
 \end{figure}
 
 The hypervisor \term{Xen}[Xen] \cite{barham2003}, available as open source
-and as the commercial Citrix XenServer, follows this design.  Its VMs are
+and as the commercial XenServer (named Citrix Hypervisor from 2019 to
+2023), follows this design.  Its VMs are
 called \emph{domains}.  The privileged service VM is \term{dom0}[dom0],
 which runs Linux with the device drivers and the management tools; the
 guest VMs are unprivileged domains, \emph{domU}, and the Xen hypervisor
 itself contains no drivers for I/O devices such as disks and network
 cards.\margin{In the first Xen version, the one described by Barham et
 al.\ \cite{barham2003}, these drivers still resided in the hypervisor.}
-VMware ESX takes the other route and places the drivers
+VMware ESX, today ESXi, takes the other route and places the drivers
 in the hypervisor.  This is practical because ESX targets servers from a
 limited number of vendors, who supply drivers for it.  ESX is administered
 through remote management APIs, which replaced an earlier Linux-based
@@ -232,12 +234,14 @@ re-implemented, and ordinary applications continue to run natively on the
 host next to the VMs (\cref{fig:l12-models}b).
 
 \Needspace{6\baselineskip}
-The \term{Kernel-based Virtual Machine}[KVM] (KVM)
-\cite{kivity2007}\index{KVM|see{Kernel-based Virtual Machine}} is the
+KVM, the \term{Kernel-based Virtual Machine}[KVM]
+\cite{kivity2007}\index{KVM|see{Kernel-based Virtual Machine}}, is the
 hosted hypervisor of Linux.  A loadable kernel module turns Linux into a
 hypervisor.  Each VM is an ordinary Linux process, whose virtual CPUs are
 threads of that process, so the Linux scheduler and memory manager serve
-VMs as they serve other processes.  The devices of a VM are emulated within
+VMs as they serve other processes.\tip{On a Linux host \texttt{ps} lists
+each KVM guest as one \texttt{qemu-system-*} process; its vCPUs are
+threads of that process.}  The devices of a VM are emulated within
 its process by \term{QEMU}[QEMU], a hardware emulator running at user
 level, while the instructions of the guest execute directly on the CPU with
 the hardware support described in \cref{sec:l12-hw}.  Because KVM is part
@@ -298,14 +302,16 @@ own four rings (\cref{fig:l12-rings}c).
   ring~0, with full control of the hardware.  In
   \term{non-root mode}[非ルートモード] it runs the VMs, with the guest OS
   in ring~0 and applications in ring~3, and privileged operations are
-  restricted.
+  restricted.  For a hosted hypervisor, the host OS and its processes also
+  run in root mode.
 \end{definition}
 
-The guest OS thus runs at the privilege level for which it was written.  An
-attempt by the guest OS to perform a privileged operation causes a trap
-called a \term{VM exit}[VM exit], which switches the processor to root mode
-and passes control to the hypervisor.  When the hypervisor has handled the
-operation, a \emph{VM entry}\index{VM entry} switches the processor back to
+The guest OS thus runs at the privilege level for which it was written.
+Operations that the hypervisor has chosen to intercept, selected per VM in
+the control structure (\cref{sec:l12-hw}), cause a trap called a
+\term{VM exit}[VM exit], which switches the processor to root mode and
+passes control to the hypervisor.  When the hypervisor has handled the
+operation, a \term{VM entry}[VM entry] switches the processor back to
 non-root mode and resumes the VM.
 
 \section{Processor virtualization}
@@ -334,10 +340,7 @@ are disabled for this VM and holds back the interrupts destined for it,
 while physical interrupts remain enabled so that the hypervisor and the
 other VMs continue to receive theirs.  Every trap costs a transition into
 the hypervisor, so the overhead of trap-and-emulate grows with the number
-of privileged operations that the guest performs.\margin{The hardware
-transition alone is below 500 cycles on Haswell; a \texttt{VMCALL} into KVM
-and back measures about \num{1500} cycles (kvm-unit-tests
-\texttt{vmexit}).}
+of privileged operations that the guest performs.
 
 \begin{figure}[htbp]
   \centering
@@ -363,13 +366,14 @@ and back measures about \num{1500} cycles (kvm-unit-tests
 Before 2005, x86 processors had four rings but no root and non-root modes,
 so a hypervisor ran in ring~0 and deprivileged the guest OS to
 ring~1.\source{P3L6, x86 virtualization in the past; Robin and Irvine
-\cite{robin2000}.}
+\cite{robin2000}.}\caution{32-bit software VMMs guard their own memory with
+segment limits.  AMD64 long mode drops those checks, and paging does not
+distinguish ring~1 from ring~0, so 64-bit paravirtualized Xen guests run
+their kernel in ring~3, and VMware's binary translation needed either the
+segment limits that later AMD processors restored or VT-x.}
 The architecture did not satisfy the condition of trap-and-emulate: Robin
 and Irvine \cite{robin2000} identified 17 sensitive instructions that do not
-trap when executed in a less privileged ring.\caution{The trick fails for
-64-bit guests: AMD64 long mode dropped segment limit checks, so a software
-VMM can no longer fence the guest off by segmentation.  They need the
-support of \cref{sec:l12-hw}.}  Executed in ring~1, they fail
+trap when executed in a less privileged ring.  Executed in ring~1, they fail
 silently or reveal machine state that the hypervisor intends to hide, and
 trap-and-emulate alone cannot virtualize the processor correctly.
 
@@ -450,7 +454,11 @@ The translation proceeds block by block (\cref{fig:l12-bt}).
     stays under the control of the translator.
 \end{enumerate}
 The resulting blocks are kept in a \emph{translation cache}, so the cost of
-translating a block is paid once and amortized over its later executions.
+translating a block is paid once and amortized over its later
+executions.\sidenote{Binary translation did not become obsolete when
+hardware support arrived: on the first VT-x processors the software VMM
+still won on most workloads, where exits were expensive and page tables had
+to be shadowed either way \cite{adams2006}.}
 The translation must be dynamic because which code executes, and where
 indirect branches lead, is known only at run time.%
 \margin{In VMware's design only guest kernel code is translated;
@@ -467,11 +475,8 @@ applications in ring~3 run directly \cite{bugnion2012}.}
 \Needspace{8\baselineskip}
 \begin{example}
   A block of guest kernel code executes natively in
-  \SI{5}{\micro\second}.\sidenote{Binary translation did not become obsolete
-  when hardware support arrived: on the first VT-x processors the software
-  VMM still won on most workloads, where exits were expensive and page
-  tables had to be shadowed either way \cite{adams2006}.}
-  Translating it takes \SI{2}{\milli\second}, and because one instruction
+  \SI{5}{\micro\second}.  Translating it takes \SI{2}{\milli\second}, and
+  because one instruction
   is replaced by a call into the hypervisor, the translated block takes
   \SI{6}{\micro\second}.  If the block runs \num{20000} times, translating
   it once and caching the result costs
@@ -549,10 +554,9 @@ Page numbers make the same distinction between virtual page numbers,
 physical frame numbers and machine frame numbers.  The guest OS maintains
 page tables that map virtual to physical addresses, and the hypervisor
 maintains a mapping from physical to machine addresses
-(\cref{fig:l12-memory}).\tip{Read the two arrows in order: virtual
-$\to$ physical belongs to the guest, physical $\to$ machine to the
-hypervisor.  The shadow page table is their composition, virtual $\to$
-machine.}
+(\cref{fig:l12-memory}).\tip{Virtual $\to$ physical belongs to the guest,
+physical $\to$ machine to the hypervisor; the shadow page table is their
+composition.}
 
 \begin{figure}[htbp]
   \centering
@@ -590,7 +594,9 @@ tables consistent with them.
     Lesson~8, used here to observe the guest rather than to copy a page.}
   \item When the guest OS switches between its processes, it loads another
     page table into the page table base register, a privileged operation
-    that traps.  The hypervisor then installs the shadow page table of the
+    that traps.\margin{The page table base register of Lesson~8 is CR3 on
+    x86, so under shadow paging every guest write to CR3 traps.}  The
+    hypervisor then installs the shadow page table of the
     new process, or invalidates the current shadow entries and rebuilds
     them as they are used.
 \end{itemize}
@@ -717,15 +723,18 @@ Lesson~11,\index{operating system bypass} gives the best performance.  The
 model has three drawbacks.
 \begin{itemize}
   \item Sharing the device is difficult: it must be reassigned from one VM
-    to another.\margin{SR-IOV (PCI-SIG, 2007) softens this: one card
-    presents a physical function and a number of virtual functions---up to
-    256 by the specification, in practice tens---each of which can be
-    assigned to a VM.}
+    to another.\margin{SR-IOV (PCI-SIG, 2007 \cite{pcisig2007}) softens
+    this: one card presents a physical function and a number of virtual
+    functions---up to \num{65535} by the specification, in practice up to
+    a few hundred (256 on Intel's E810)---each of which can be assigned to
+    a VM.}
   \item The machine must have exactly the type of device that the driver in
     the VM expects, since that driver operates the hardware directly.
   \item Migration is tricky, because part of the state of the VM resides
     in the device, and the destination machine must provide an identical
-    device into which that state can be transferred.
+    device into which that state can be transferred.\margin{As with the
+    operating system bypass of Lesson~11, a directly assigned network card
+    runs at line rate, but the VM that uses it is hard to live-migrate.}
 \end{itemize}
 
 \subsection{Hypervisor-direct model}
@@ -764,9 +773,10 @@ contain, and remain robust with, drivers for all supported devices.
 The front-end driver does not manipulate device registers that would have
 to be trapped and emulated.  It passes complete requests, such as a packet
 to send, to the back-end driver, in Xen through descriptor rings in memory
-shared between the two VMs.\margin{Linux's virtio (Russell, 2008; an OASIS
-standard since 2016) is the common front-end/back-end interface; its
-\emph{virtqueues} are the shared memory of Lesson~9.}  This eliminates the
+shared between the two VMs.\margin{Linux's virtio (Russell, 2008
+\cite{russell2008}; an OASIS specification since 2016, virtio~1.0) is the
+common front-end/back-end interface; its \emph{virtqueues} are the shared
+memory of Lesson~9.}  This eliminates the
 emulation overhead of the hypervisor-direct model, and because all requests
 for a device pass through the back-end driver, the service VM can manage how
 the device is shared among the VMs.  The price is a modified guest: its
@@ -832,9 +842,13 @@ The extensions address the problems of the preceding sections.
     becomes virtualizable by trap-and-emulate.
   \item[Root and non-root modes] The modes of \cref{sec:l12-rings}, called
     host and guest mode by AMD, let the guest OS run in ring~0 while the
-    hypervisor keeps control.
+    hypervisor keeps control.\caution{``Root/non-root'' is Intel's name and
+    host/guest mode AMD's; ARM (exception level EL2) and RISC-V (the H
+    extension) provide a comparable split.}
   \item[VM control structure] A data structure per VM, more precisely per
-    virtual CPU, that the hardware reads and updates.  It holds the state
+    virtual CPU, that the hardware reads and updates.  This
+    \term{VM control structure}[VM制御構造] (the VMCS of Intel, the VMCB
+    of AMD)\index{VMCS|see{VM control structure}} holds the state
     of the virtual CPU, saved on a VM exit and restored on a VM entry, and
     it specifies which instructions and events cause VM exits, so the
     hypervisor decides for each VM what to trap.
@@ -847,13 +861,14 @@ The extensions address the problems of the preceding sections.
     walks both tables, and the TLB caches the resulting translation from
     virtual to machine address.\tip{A walk through $g$ guest levels under
     $n$ extended levels costs $(g+1)(n+1)-1$ references: 24 for $g=n=4$,
-    against 4 natively (AMD-V nested paging white paper).}  The guest OS
+    against 4 natively \cite{amd2008}.}  The guest OS
     changes and switches its page tables without VM exits, and shadow page
     tables become unnecessary.  AMD's equivalent is called nested page tables.
   \item[Tagged TLB] A \term{tagged TLB}[タグ付きTLB] marks each entry with
-    an identifier of the VM to which it belongs.  Entries of different VMs
-    coexist in the TLB, so a switch between VMs does not require flushing
-    it.
+    an identifier of the address space (AMD's ASID) or of the virtual
+    processor (Intel's VPID).  Entries of different VMs and of the
+    hypervisor coexist in the TLB, so neither a VM exit or entry nor a
+    switch between VMs requires flushing it.
   \item[Multiqueue devices and interrupt routing] Devices such as network
     cards provide several logical interfaces, or queues, each of which can
     be assigned to a different VM, and interrupts are routed to the core on
@@ -871,9 +886,10 @@ Intel extended its support in stages, from the processor outwards.
 \emph{VT-x} covers the processor: root and non-root modes, VM exits and
 entries, the VM control structure, and, in later processors, extended page
 tables and tagged TLB entries.\margin{VT-x shipped in November 2005 with
-the Pentium~4 662 and 672, AMD-V in May 2006.  The page table and TLB
-support came later: nested page tables and ASID tags with Barcelona (2007),
-extended page tables and the 16-bit VPID tag with Nehalem (2008).}
+the Pentium~4 662 and 672, AMD-V in May 2006, already with ASID-tagged
+TLBs.  Nested page tables came with Barcelona (2007), extended page tables
+and the 16-bit VPID tag with Nehalem (2008).}
+
 \emph{VT-d} (directed I/O) adds to the chipset an I/O memory management unit
 that translates the addresses used in DMA (Lesson~11) and remaps interrupts,
 so that a device assigned to a VM in the passthrough model cannot access the
