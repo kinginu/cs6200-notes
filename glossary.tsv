@@ -453,3 +453,13 @@ delegation	デリゲーション	でりげーしょん	14	NFSv4
 close-to-open consistency	close-to-open 一貫性	くろーずとぅおーぷんいっかんせい	14	NFS
 stale file handle	失効したファイルハンドル	しっこうしたふぁいるはんどる	14	NFS error ESTALE
 generation number	世代番号	せだいばんごう	14	NFS file handle
+System V IPC	System V IPC	System V IPC	9	message queues, semaphore sets, shared memory
+named pipe	名前付きパイプ	なまえつきぱいぷ	9	FIFO; mkfifo
+stream socket	ストリームソケット	すとりーむそけっと	9	TCP
+datagram socket	データグラムソケット	でーたぐらむそけっと	9	UDP
+Unix-domain socket	Unixドメインソケット	Unixどめいんそけっと	9	AF_UNIX
+attach	アタッチ	あたっち	9	shared memory segment
+detach	デタッチ	でたっち	9	shared memory segment
+POSIX shared memory	POSIX共有メモリ	POSIXきょうゆうめもり	9	shm_open
+shared memory object	共有メモリオブジェクト	きょうゆうめもりおぶじぇくと	9	POSIX shared memory
+process-shared attribute	プロセス共有属性	ぷろせすきょうゆうぞくせい	9	PTHREAD_PROCESS_SHARED

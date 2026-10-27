@@ -4,7 +4,7 @@
 \chapter{プロセス間通信}
 \lessoninfo{
   video={P3L3},
-  textbook={OSTEP \cite{ostep} ch.~5；Silberschatz ら \cite{silberschatz2018} ch.~3；Kerrisk \cite{kerrisk2010} ch.~43--54，56},
+  textbook={Silberschatz ら \cite{silberschatz2018} ch.~3（\S\S3.4--3.8）；Kerrisk \cite{kerrisk2010} ch.~43--54，56--57},
   keywords={プロセス間通信，メッセージパッシング，ポート，パイプ，メッセージキュー，ソケット，共有メモリ，コピーとマップ，ローカル手続き呼び出し，共有メモリセグメント，System V IPC，POSIX 共有メモリ，メモリマップドファイル，プロセス共有ミューテックス},
 }
 
@@ -23,7 +23,10 @@ IPC とは，プロセスどうしの相互作用のためにオペレーティ�
 サポートする機構の総称であり，あるアドレス空間から別のアドレス空間へデータを
 移す\emph{通信}と，プロセスの動作の\emph{協調}からなる．\source{P3L3，プロセス
 間通信；Silberschatz ら ch.~3．}\index{ぷろせすかんつうしん@プロセス間通信}%
-これらの機構は次の4つに大別される．
+IPC が必要になるのは，オペレーティングシステムがプロセスのアドレス空間を互いに
+隔離しているからである（第2章）．どのプロセスも他のプロセスのメモリを読み書き
+できないので，データのやり取りはすべて，オペレーティングシステムが提供する機構
+を通る．これらの機構は次の4つに大別される．
 \begin{description}
   \item[メッセージパッシング] プロセスは，カーネルが維持するチャネルを通じて
     メッセージをやり取りする．ソケット，パイプ，メッセージキューなどである．
@@ -81,8 +84,8 @@ IPC とは，プロセスどうしの相互作用のためにオペレーティ�
 \label{sec:l09-forms}
 
 Unix 系システムは3つの代表的なメッセージパッシングの形態を提供する．
-\source{P3L3，メッセージパッシングの形態；OSTEP ch.~5；Kerrisk ch.~44，46，
-56．}
+\source{P3L3，メッセージパッシングの形態；OSTEP ch.~5；Silberschatz ら
+ch.~3；Kerrisk ch.~44，46，52，56--57．}
 それらは何を転送するかと，カーネルがどれだけの処理を行うかが異なる．
 
 \begin{definition}[パイプ]
@@ -92,11 +95,23 @@ Unix 系システムは3つの代表的なメッセージパッシングの形�
 \end{definition}
 
 POSIX の \texttt{pipe(fd)} 呼び出しはパイプを作り，各端のファイルディスクリプタ
-を2要素の配列 \texttt{fd} に格納する．\margin{Linux のパイプは
-\SI{64}{\kilo\byte} を保持し，\texttt{PIPE\_BUF} $=\SI{4}{\kilo\byte}$
-以下の書き込みはアトミックである（\texttt{pipe(7)}）．}典型的な用途は，シェルが
+を2要素の配列 \texttt{fd} に格納する．\margin{Linux のパイプは既定で
+16ページ，\SI{64}{\kibi\byte} を保持し，\texttt{fcntl} の
+\texttt{F\_SETPIPE\_SZ} で \texttt{pipe-max-size}（\SI{1}{\mebi\byte}）まで
+増やせる．\texttt{PIPE\_BUF} $=\SI{4}{\kilo\byte}$ 以下の書き込みは
+アトミックである（\texttt{pipe(7)}）．}典型的な用途は，シェルが
 \texttt{ls | wc -l} に対して行うように，あるプロセスの出力を別のプロセスの
 入力につなぐことである．
+
+このようなパイプには名前がない．使えるのは，そのディスクリプタを持つプロセス，
+すなわち作成したプロセスと，\texttt{fork} によってディスクリプタを継承した子
+だけである．\texttt{mkfifo(path, mode)} で作る
+\term[なまえつきぱいぷ]{名前付きパイプ}[named pipe]（FIFO）はファイルシステム
+内に名前を持ち，無関係なプロセスもその名前を通じて，ファイルと同様に
+\texttt{open} で開ける．データはやはりカーネルのバッファを通り，ディスクには
+書かれない．\tip{\texttt{ls -l /proc/self/fd | cat} を実行すると，2つの
+コマンドをつなぐパイプが \texttt{ls} のファイルディスクリプタ~1 として
+\texttt{1 -> pipe:[\ldots]} のように表示される．}
 
 \begin{definition}[メッセージキュー]
   \term[めっせーじきゅー]{メッセージキュー}[message queue]とは，プロセスの
@@ -107,10 +122,38 @@ POSIX の \texttt{pipe(fd)} 呼び出しはパイプを作り，各端のファ�
 カーネルはメッセージの始まりと終わりを知っているので，メッセージを管理できる．
 例えば，送信側が付けた優先度の順に配送したり（POSIX），受信側が型で
 メッセージを選べるようにしたり（System~V）できる．Unix 系システムは
-メッセージキューに System~V と POSIX の2つのインタフェースを提供する．%
+メッセージキューに System~V と POSIX の2つのインタフェースを提供する
+（\cref{tab:l09-mq-api}）．%
 \margin{Linux の既定値は，System~V のメッセージ1つが \SI{8}{\kilo\byte}，
 1つのキューが \SI{16}{\kilo\byte}，POSIX のキューが10メッセージである
-（\texttt{msgsnd(2)}，\texttt{mq\_overview(7)}）．}
+（\texttt{msgsnd(2)}，\texttt{mq\_overview(7)}）．}System~V では，
+\texttt{msgget} がキーに結び付いたキューを作成または開き，その識別子を返す．
+どのメッセージも \texttt{long} 型の型フィールドで始まり，\texttt{msgrcv} は
+型~0 ではキューの先頭のメッセージを，正の型ではその型の最初のメッセージを
+取り出す．POSIX では，\texttt{mq\_open} が名前でキューを開いてディスクリプタを
+返し，\texttt{mq\_receive} は常に最も優先度の高いメッセージのうち最も古いもの
+を返す．共有メモリと同様に，キューは \texttt{IPC\_RMID} を指定した
+\texttt{msgctl} か \texttt{mq\_unlink} で明示的に取り除かれるまで存続する．
+\texttt{mq\_close} はディスクリプタを解放するだけである．
+
+\begin{table}[htbp]
+  \centering
+  \caption{2つのインタフェースのメッセージキュー呼び出し．\texttt{m} は
+    メッセージのバッファ，\texttt{n} はその長さ，\texttt{flg} はフラグである．}
+  \label{tab:l09-mq-api}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    操作 & System~V & POSIX \\
+    \midrule
+    作成・オープン & \texttt{msgget(key, flg)} & \texttt{mq\_open(name, flg, \ldots)} \\
+    送信 & \texttt{msgsnd(id, m, n, flg)} & \texttt{mq\_send(q, m, n, prio)} \\
+    受信 & \texttt{msgrcv(id, m, n, type, flg)} & \texttt{mq\_receive(q, m, n, \&prio)} \\
+    クローズ & --- & \texttt{mq\_close(q)} \\
+    破棄 & \texttt{msgctl(id, IPC\_RMID, NULL)} & \texttt{mq\_unlink(name)} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \begin{definition}[ソケット]
   \term[そけっと]{ソケット}[socket]とは，\texttt{socket()} システムコールで
@@ -120,11 +163,26 @@ POSIX の \texttt{pipe(fd)} 呼び出しはパイプを作り，各端のファ�
 \end{definition}
 
 \texttt{send()} と \texttt{recv()} は，ユーザバッファからソケットバッファへ，
-またソケットバッファから外へデータを渡す．ストリームソケット（TCP）は
-バイトストリームを，データグラムソケット（UDP）は離散的なメッセージを配送
-する．プロセスが異なるマシン上で動く場合，チャネルはプロトコルスタックを介して
-プロセスをネットワークデバイスに接続する．同じマシン上で動く場合，カーネルは
-完全なプロトコルスタックを迂回できる．\cref{tab:l09-forms} に3つの形態を
+またソケットバッファから外へデータを渡す．
+\term[すとりーむそけっと]{ストリームソケット}[stream socket]（TCP）は
+バイトストリームを，\term[でーたぐらむそけっと]{データグラムソケット}[datagram
+socket]（UDP）は離散的なメッセージを配送する．2つのストリームソケットの間の
+接続は非対称に確立される．サーバは \texttt{socket()} でソケットを作り，
+\texttt{bind()} でアドレスを割り当て，\texttt{listen()} で接続を受け付ける
+状態にし，到着する接続を1つずつ \texttt{accept()} で受け取る．
+\texttt{accept()} はそのクライアント用の新しいソケットを返す．クライアントは
+ソケットを作り，\texttt{connect()} でサーバのアドレスに接続する．
+データグラムソケットには接続が要らない．\texttt{sendto()} と
+\texttt{recvfrom()} がメッセージごとに相手を指定する．
+
+\texttt{socket()} で選ぶアドレスファミリがデータの経路を決める．
+\texttt{AF\_INET} では，チャネルは TCP/IP プロトコルスタックを介して
+プロセスをネットワークデバイスに接続する．同じマシン上のプロセスの間でも，
+ループバックアドレス \texttt{127.0.0.1} を通るデータはスタック全体を通過し，
+省かれるのはネットワークデバイスだけである．ファイルシステム内のパスで
+名前付けされる \term[Unixどめいんそけっと]{Unixドメインソケット}[Unix-domain
+socket]（\texttt{AF\_UNIX}）は，同じマシン上のプロセスを接続し，ネットワーク
+プロトコルスタックを完全に迂回する．\cref{tab:l09-forms} に3つの形態を
 比較する．
 
 \begin{table}[htbp]
@@ -137,7 +195,7 @@ POSIX の \texttt{pipe(fd)} 呼び出しはパイプを作り，各端のファ�
     & パイプ & メッセージキュー & ソケット \\
     \midrule
     転送の単位 & バイトストリーム & メッセージ & ストリーム/データグラム \\
-    カーネルの処理 & バッファリング & 境界，優先度 & プロトコルスタック \\
+    カーネルの処理 & バッファリング & 境界，優先度 & TCP/IP または Unix ドメイン \\
     マシン & 同一 & 同一 & 同一または別 \\
     インタフェース & \texttt{pipe()} & System~V，POSIX & \texttt{socket()} \\
     \bottomrule
@@ -186,8 +244,8 @@ ch.~3．}\index{きょうゆうめもり@共有メモリ}%
 （\cref{sec:l09-sysv}），POSIX 共有メモリ（\cref{sec:l09-posix}），および
 メモリマップドファイルによって共有メモリをサポートする．Android は独自の機構
 ashmem を加えている．\sidenote{ashmem の領域は\emph{アンピン}できる．内容は捨てて
-よいものとなり，メモリ逼迫時にカーネルはプロセスを終了させる代わりに領域を
-回収する．再びピンすると破棄されたかが分かる．Android はこの用途を
+よいものとなり，メモリ逼迫時にカーネルは領域を回収することがある．再びピン
+すると破棄されたかが分かる．Android はこの用途を
 \texttt{memfd\_create} へ移しつつある．}
 
 \section{コピーとマップ}
@@ -232,9 +290,9 @@ t_{\mathrm{sync}})$ のとき安く，そうでなければ決して追いつか
 コールを追加する．設定コストは，固定部分と，対応付けるページ数に比例する
 部分からなる．1ページを対応付けるコストがその内容をコピーするコストより
 小さい限り，$n^{*}$ は $S$ が大きくなるにつれて下がり，大きなデータでは1を
-下回る．\tip{例の定数で $n^{*} \le 1$ を解くと $S \approx
-\SI{600}{\kilo\byte}$ となる．これを超えれば1回の転送だけで対応付けの元が
-取れる．}
+下回る．\tip{\cref{ex:l09-copy-map} の定数で $n^{*} \le 1$ を解くと
+$S \ge \SI{640}{\kilo\byte}$ となる．これを超えれば1回の転送だけで対応付けの
+元が取れる．}
 
 \begin{example}
   \label{ex:l09-copy-map}
@@ -257,7 +315,8 @@ t_{\mathrm{sync}})$ のとき安く，そうでなければ決して追いつか
 Windows は，同じマシン上のプロセスの間の通信のための機構である
 \term[ろーかるてつづきよびだし]{ローカル手続き呼び出し}[local procedure call]
 （LPC）\index{LPC|see{ローカル手続き呼び出し}}でこのトレードオフを利用して
-いる．小さなメッセージはポートを介してコピーし，より大きなデータに対しては
+いる．\margin{現在の Windows はこれを ALPC として実装している（Silberschatz ら
+ch.~3）．}小さなメッセージはポートを介してコピーし，より大きなデータに対しては
 共有メモリ領域を両方のプロセスに対応付け，それを通じてデータをやり取りする．
 
 \begin{keypoint}
@@ -265,16 +324,18 @@ Windows は，同じマシン上のプロセスの間の通信のための機構
   同期する---が，メッセージごとにシステムコールと2回のコピーの代価を払う．
   共有メモリは1回限りの対応付けのコストを払った後はカーネルを介さずに済み，
   その代わりに明示的な同期とプログラマが定めるプロトコルを要する．小さな
-  メッセージはコピーし，大きなデータや多数の転送に再利用される領域は対応
-  付けるとよい．
+  メッセージはコピーするほうがよく，大きなデータや再利用されるデータは対応
+  付けるほうがよい．
 \end{keypoint}
 
 \section{System V 共有メモリ}
 \label{sec:l09-sysv}
 
-最も古い Unix の IPC インタフェースの1つである System~V の
-インタフェース\source{P3L3，SysV 共有メモリ，SysV 共有メモリ API；Kerrisk
-ch.~45，48．}は，共有メモリをセグメントとして構成する．
+最も古い Unix の IPC インタフェースの1つである
+\term[System V IPC]{System~V IPC}[System V IPC]\source{P3L3，SysV 共有メモリ，
+SysV 共有メモリ API；Kerrisk ch.~45，48．}は，メッセージキュー，セマフォ集合，
+共有メモリからなり，各オブジェクトをキーで識別する．共有メモリはセグメントと
+して構成する．
 
 \begin{definition}[共有メモリセグメント]
   \term[きょうゆうめもりせぐめんと]{共有メモリセグメント}[shared memory
@@ -284,23 +345,27 @@ ch.~45，48．}は，共有メモリをセグメントとして構成する．
 \end{definition}
 
 セグメントはシステム全体のオブジェクトなので，オペレーティングシステムはその
-個数と合計サイズの両方を制限する．\margin{Linux ではカーネルパラメータ
-\texttt{shmmni}，\texttt{shmmax}，\texttt{shmall} が上限を定め，既定では最大
-4096 個のセグメントが存在できる．}セグメントは\emph{キー}で識別され，同じ
+個数と合計サイズの両方を制限する．\margin{\texttt{/proc/sys/kernel} にある
+Linux の既定値は，\texttt{shmmni} が 4096 セグメントであり，\texttt{shmmax}
+と \texttt{shmall} は Linux 3.16 以降事実上無制限である（それ以前のカーネル
+では \texttt{shmmax} が \SI{32}{\mebi\byte}）（\texttt{shmget(2)}，
+\texttt{sysvipc(7)}）．}セグメントは\emph{キー}で識別され，同じ
 キーを使うプロセスはすべて同じセグメントにアクセスする．そのライフサイクルは
 4つの操作からなる（\cref{fig:l09-sysv-lifecycle}）．
 \begin{description}
   \item[作成] オペレーティングシステムがセグメントのメモリを確保し，それを
     キーに結び付ける．
-  \item[接続] オペレーティングシステムがセグメントを呼び出し元プロセスの
-    アドレス空間に対応付ける．すなわち，プロセスの仮想アドレスからセグメントの
+  \item[アタッチ] セグメントを\term[あたっち]{アタッチ}[attach]するとき，
+    オペレーティングシステムはそれを呼び出し元プロセスのアドレス空間に対応
+    付ける．すなわち，プロセスの仮想アドレスからセグメントの
     物理メモリへの有効な対応付けを確立する．複数のプロセスが同じセグメントを，
-    それぞれ自分の仮想アドレスで接続できる．
-  \item[切り離し] オペレーティングシステムがこれらの対応付けを無効にする．
+    それぞれ自分の仮想アドレスでアタッチできる．
+  \item[デタッチ] セグメントを\term[でたっち]{デタッチ}[detach]するとき，
+    オペレーティングシステムはこれらの対応付けを無効にする．
     セグメントの仮想アドレス範囲に対するページテーブルエントリはもはや有効で
     ない．セグメント自体は残る．
   \item[破棄] セグメントを取り除くのは明示的な要求だけである．それまでは，
-    どのプロセスも接続していなくても存続し，何度でも接続と切り離しができる．
+    どのプロセスもアタッチしていなくても存続し，何度でもアタッチとデタッチができる．
 \end{description}
 
 \begin{figure}[htbp]
@@ -308,15 +373,17 @@ ch.~45，48．}は，共有メモリをセグメントとして構成する．
   \input{figures/l09-sysv-lifecycle}
   \caption{System~V 共有メモリセグメントのライフサイクル．セグメントはそれを
     使うプロセスより長く残り，取り除かれるのは \texttt{IPC\_RMID} によってのみ
-    である．接続されたまま取り除かれたセグメントは，最後のプロセスが切り離した
+    である．アタッチされたまま取り除かれたセグメントは，最後のプロセスがデタッチした
     時点で破棄される．}
   \label{fig:l09-sysv-lifecycle}
 \end{figure}
 
 したがってセグメントは，プロセス固有のメモリというよりファイルのように振る舞う．
-終了したプロセスはセグメントから切り離されるが，セグメントは破棄されるか
+終了したプロセスはセグメントからデタッチされるが，セグメントは破棄されるか
 システムが再起動するまで残る．\caution{どのプロセスも破棄しなかったセグメント
-は，再起動までメモリを占有し続ける（\cref{sec:l09-tools}）．}
+は，再起動までメモリを占有し続ける（\cref{sec:l09-tools}）．}\caution{アタッチ
+されたまま取り除かれたセグメントを，\texttt{ipcs -m} は状態 \texttt{dest} で
+示す．\texttt{nattch} が 0 になった時点で消える．}
 
 \subsection{System V の API}
 
@@ -327,8 +394,10 @@ ch.~45，48．}は，共有メモリをセグメントとして構成する．
     含まれていれば，指定された大きさのセグメントを作成する
     （\texttt{IPC\_CREAT | IPC\_EXCL} では，セグメントがすでに存在すると
     呼び出しは失敗する）．セグメントの識別子を返す．\margin{\texttt{size} は
-    ページ単位に切り上げられるので，最小のセグメントは \SI{4}{\kilo\byte} の
-    1ページである（\texttt{shmget(2)}）．}
+    ページ単位に切り上げられるので，最小のセグメントは1ページ（x86-64 では
+    \SI{4}{\kilo\byte}）である（\texttt{shmget(2)}）．}\texttt{flags} の下位
+    9ビットは，ファイルと同様にアクセスモードであり，\texttt{0600} は所有者だけ
+    に読み書きを許す．既存のセグメントを開くプロセスは大きさに 0 を渡す．
   \item[\texttt{ftok(pathname, proj\_id)}] は，既存のファイルの同一性
     （デバイスと i ノード番号）と，0 でない整数の下位 8 ビットからキーを
     生成する．ファイルが作り直されない限り，同じファイルと同じ番号は同じキーを
@@ -336,12 +405,12 @@ ch.~45，48．}は，共有メモリをセグメントとして構成する．
     セグメントを見つけられる．\caution{キーが保持するのは \texttt{proj\_id}
     の1バイト，i ノード番号の下位 16 ビット，デバイス番号の下位 8 ビットだけ
     なので，別のファイルどうしが同じキーになりうる（\texttt{ftok(3)}）．}
-  \item[\texttt{shmat(id, addr, flags)}] はセグメントを接続し，それが対応付け
+  \item[\texttt{shmat(id, addr, flags)}] はセグメントをアタッチし，それが対応付け
     られた仮想アドレスを返す．\texttt{addr} を \texttt{NULL} にすると
     オペレーティングシステムがアドレスを選ぶ．返される型のないポインタは，
     セグメントに置く任意のデータ構造にキャストできる．
   \item[\texttt{shmdt(addr)}] は \texttt{addr} に対応付けられたセグメントを
-    切り離す．
+    デタッチする．
   \item[\texttt{shmctl(id, cmd, buf)}] はセグメントに対する制御コマンドを
     オペレーティングシステムに渡す．\texttt{IPC\_RMID} はセグメントを破棄する．
 \end{description}
@@ -350,7 +419,8 @@ ch.~45，48．}は，共有メモリをセグメントとして構成する．
   \label{ex:l09-sysv}
   プロセス A がセグメントを作成して文字列を書き込み，後から実行されるプロセス
   B が同じキーでそのセグメントを見つけ，文字列を表示してセグメントを破棄する
-  （エラー処理は省略）．
+  （エラー処理は省略．\texttt{ftok} はファイルがないと $-1$ を返すので，
+  \texttt{/tmp/app} が存在していなければならない）．
   \begin{lstlisting}[language=C, numbers=none]
 /* プロセス A */
 key_t key = ftok("/tmp/app", 'A');
@@ -361,27 +431,29 @@ shmdt(p);                          /* セグメントは残る */
 
 /* プロセス B */
 key_t key = ftok("/tmp/app", 'A'); /* 同じキー */
-int id = shmget(key, 4096, 0);     /* 開く */
+int id = shmget(key, 0, 0);        /* 開く */
 char *q = shmat(id, NULL, 0);
 printf("%s\n", q);
 shmdt(q);
 shmctl(id, IPC_RMID, NULL);        /* 破棄する */
 \end{lstlisting}
   A の \texttt{shmdt} と B の \texttt{shmat} の間，どのプロセスもセグメントを
-  接続していないが，その内容は保たれている．
+  アタッチしていないが，その内容は保たれている．
 \end{example}
 
 \section{POSIX 共有メモリ}
 \label{sec:l09-posix}
 
-POSIX は第2の共有メモリインタフェースを標準化しているが，これは System~V ほど
-広くサポートされてはいない．例えば Linux では，カーネル 2.4 以降で
-サポートされている．\source{P3L3，POSIX 共有メモリ API；Kerrisk ch.~49，54．}
-キーで識別されるセグメントの代わりに，名前で識別されファイルのようにアクセス
-される共有メモリオブジェクトを用いる．Linux では，これらはメモリ上の一時
-ファイルシステム（tmpfs）内のファイルである．\margin{Linux ではこの tmpfs は
-\texttt{/dev/shm} にマウントされる．}プロセスは，ファイルをメモリに対応付ける
-一般的な機構を通じてそれらにアクセスする．
+POSIX は第2の共有メモリインタフェースである
+\term[POSIXきょうゆうめもり]{POSIX共有メモリ}[POSIX shared memory]を標準化
+しているが，これは System~V ほど広くサポートされてはいない．例えば Linux では，
+カーネル 2.4 以降でサポートされている．\source{P3L3，POSIX 共有メモリ API；
+Kerrisk ch.~49，54．}キーで識別されるセグメントの代わりに，名前で識別され
+ファイルのようにアクセスされる
+\term[きょうゆうめもりおぶじぇくと]{共有メモリオブジェクト}[shared memory
+object]を用いる．Linux では，これらはメモリ上の一時ファイルシステム（tmpfs）
+内のファイルである．プロセスは，ファイルをメモリに対応付ける一般的な機構を
+通じてそれらにアクセスする．
 
 \begin{definition}[メモリマップドファイル]
   \term[めもりまっぷどふぁいる]{メモリマップドファイル}[memory-mapped
@@ -393,12 +465,17 @@ POSIX は第2の共有メモリインタフェースを標準化しているが�
 
 通常のファイルシステム上のメモリマップドファイルは，それ自体が IPC 機構で
 あり，そのデータはファイルにも永続する．POSIX 共有メモリは，メモリ上にのみ
-存在するオブジェクトに同じ機構を適用したものである．その操作は System~V の
+存在するオブジェクトに同じ機構を適用したものである．\margin{オブジェクトは，
+Linux がこの tmpfs をマウントする \texttt{/dev/shm} の下に現れる．
+\texttt{df /dev/shm} でその大きさの上限が分かり，既定では RAM の半分である
+（\texttt{shm\_overview(7)}，\texttt{tmpfs(5)}）．}その操作は System~V の
 操作に対応する（\cref{tab:l09-shm-api}）．\texttt{shm\_open(name, flags,
 mode)} は共有メモリオブジェクトを作成または開き，そのファイルディスクリプタを
-返す．\texttt{ftruncate} がその大きさを設定する．\texttt{MAP\_SHARED} フラグ
-付きの \texttt{mmap} はオブジェクトを接続してその仮想アドレスを返し，
-\texttt{munmap} はそれを切り離す．\caution{\texttt{MAP\_PRIVATE} で対応付ける
+返す．\texttt{ftruncate} がその大きさを設定する．\tip{\texttt{shm\_open}
+の名前は1つのスラッシュで始まり，それ以外にスラッシュを含まない．glibc 2.34
+より前では \texttt{-lrt} をリンクする（\texttt{shm\_open(3)}）．}\texttt{MAP\_SHARED} フラグ
+付きの \texttt{mmap} はオブジェクトをアタッチしてその仮想アドレスを返し，
+\texttt{munmap} はそれをデタッチする．\caution{\texttt{MAP\_PRIVATE} で対応付ける
 と，代わりにコピーオンライトになる．最初の書き込みでそのプロセス専用のページ
 ができ，何も共有されない（\texttt{mmap(2)}）．}\texttt{close} は，確立済みの対応付けに
 影響を与えずにファイルディスクリプタを解放し，\texttt{shm\_unlink(name)} は
@@ -416,8 +493,8 @@ mode)} は共有メモリオブジェクトを作成または開き，そのフ�
     \midrule
     領域の名前付け & \texttt{ftok()} によるキー & オブジェクト名（\texttt{/name}） \\
     作成・オープン & \texttt{shmget()} & \texttt{shm\_open()}，\texttt{ftruncate()} \\
-    接続 & \texttt{shmat()} & \texttt{mmap()} \\
-    切り離し & \texttt{shmdt()} & \texttt{munmap()} \\
+    アタッチ & \texttt{shmat()} & \texttt{mmap()} \\
+    デタッチ & \texttt{shmdt()} & \texttt{munmap()} \\
     破棄 & \texttt{shmctl(IPC\_RMID)} & \texttt{shm\_unlink()} \\
     \bottomrule
   \end{tabular}
@@ -429,7 +506,7 @@ mode)} は共有メモリオブジェクトを作成または開き，そのフ�
 共有領域に並行してアクセスするプロセスは，1つのアドレス空間の中で状態を共有
 する第3章のスレッドと同じ状況にある．同期がなければ，そのアクセスは競合状態を
 なす．\source{P3L3，共有メモリと同期，IPC のための PThreads 同期，他の IPC の
-ための同期；Kerrisk ch.~45--47．}利用できる機構は2種類ある．1つは，プロセスを
+ための同期；Kerrisk ch.~30，46--47，52--53．}利用できる機構は2種類ある．1つは，プロセスを
 またいで使えるように構成された Pthreads のミューテックスや条件変数のような，
 スレッドライブラリの機構である．もう1つは，メッセージキューやセマフォのような，
 オペレーティングシステムが提供する IPC 機構に基づく同期である．どちらの種類
@@ -442,9 +519,9 @@ mode)} は共有メモリオブジェクトを作成または開き，そのフ�
 
 第4章の Pthreads のミューテックスと条件変数は，2つの条件の下でプロセスを同期
 できる．第1に，それらの初期化に用いる属性オブジェクト
-\texttt{pthread\_mutexattr\_t} と \texttt{pthread\_condattr\_t} の
-プロセス共有属性を，\texttt{PTHREAD\_PROCESS\_SHARED} に設定しなければ
-ならない．既定では，作成したプロセスのスレッドだけがそれらを使える．第2に，
+\texttt{pthread\_mutexattr\_t} と \texttt{pthread\_condattr\_t} の両方で，
+\term[ぷろせすきょうゆうぞくせい]{プロセス共有属性}[process-shared attribute]
+を \texttt{PTHREAD\_PROCESS\_SHARED} に設定しなければならない．既定では，作成したプロセスのスレッドだけがそれらを使える．第2に，
 ミューテックスと条件変数自体が共有領域に置かれていなければならない．そう
 することで，すべてのプロセスが同じデータ構造を操作する．
 
@@ -460,33 +537,47 @@ typedef struct {
 } shm_data_t;
 \end{lstlisting}
   \Needspace{6\baselineskip}
-  そしてセグメントを作成して接続する:
+  そしてセグメントを作成してアタッチする:
   \begin{lstlisting}[language=C, numbers=none]
 key_t key = ftok("/tmp/app", 120);
 int id = shmget(key, sizeof(shm_data_t),
                 IPC_CREAT | IPC_EXCL | 0600);
 shm_data_t *shm = shmat(id, NULL, 0);
 \end{lstlisting}
-  \Needspace{7\baselineskip}
-  さらに領域の中でプロセス共有のミューテックスを初期化する:
+  \Needspace{13\baselineskip}
+  さらに領域の中でプロセス共有のミューテックスと条件変数を初期化する:
   \begin{lstlisting}[language=C, numbers=none]
-pthread_mutexattr_t attr;
-pthread_mutexattr_init(&attr);
-pthread_mutexattr_setpshared(&attr,
+pthread_mutexattr_t ma;
+pthread_condattr_t  ca;
+pthread_mutexattr_init(&ma);
+pthread_mutexattr_setpshared(&ma,
                              PTHREAD_PROCESS_SHARED);
-pthread_mutex_init(&shm->mutex, &attr);
+pthread_mutex_init(&shm->mutex, &ma);
+pthread_condattr_init(&ca);
+pthread_condattr_setpshared(&ca,
+                            PTHREAD_PROCESS_SHARED);
+pthread_cond_init(&shm->cond, &ca);
+pthread_mutexattr_destroy(&ma);
+pthread_condattr_destroy(&ca);
 \end{lstlisting}
-  条件変数も同様に，これらの呼び出しの \texttt{pthread\_condattr} 版で初期化
-  する．\sidenote{プロセスはクリティカルセクションの中で死ぬことがあり，その
+  2つの属性オブジェクトはどちらも \texttt{PTHREAD\_PROCESS\_SHARED} を持つ．
+  構成要素を初期化した後は属性オブジェクトは不要なので，破棄する．%
+  \sidenote{プロセスはクリティカルセクションの中で死ぬことがあり，その
   ときミューテックスは永久にロックされたままになる．属性オブジェクトに
   \texttt{PTHREAD\_MUTEX\_ROBUST} を設定したミューテックスは，代わりに次に
   ロックするプロセスへ \texttt{EOWNERDEAD} を返す．そのプロセスは共有状態を
   修復して \texttt{pthread\_mutex\_consistent} を呼ぶ．さもなければミュー
   テックスは使えなくなる（\texttt{ENOTRECOVERABLE}）．}\allowbreak
   \texttt{IPC\_EXCL} フラグは，セグメントがすでに存在する場合に
-  \texttt{shmget} を失敗させるので，同期構成要素は一度だけ初期化される．
-  その後，セグメントを接続する各プロセスは，スレッドとまったく同じように
-  \texttt{shm->mutex} をロックし \texttt{shm->cond} で待つ．
+  \texttt{shmget} を失敗させるので，同期構成要素を初期化するのはただ1つの
+  プロセス，すなわち作成者である．他のプロセスは \texttt{IPC\_EXCL} を付けずに
+  セグメントを開くが，作成者が初期化の完了を知らせるまで構成要素を使っては
+  ならない．知らせるには，例えばメッセージ，セマフォ，あるいは作成者が上の
+  呼び出しの後に設定するアトミックな「初期化済み」フラグを用いる．さもないと，
+  \texttt{pthread\_mutex\_init} が実行される前にあるプロセスが
+  \texttt{shm->mutex} をロックしうる．それ以降，セグメントをアタッチする各
+  プロセスは，スレッドとまったく同じように \texttt{shm->mutex} をロックし
+  \texttt{shm->cond} で待つ．
 \end{example}
 
 \subsection{他の IPC 機構による同期}
@@ -515,7 +606,15 @@ pthread_mutex_init(&shm->mutex, &attr);
 置かなければならない（\texttt{sem\_overview(7)}）．}値 0 と 1 で使えば
 ミューテックスのように振る舞う．値が 0 であるのを
 見たプロセスはブロックし，値が 1 であるのを見たプロセスはそれを 0 に減らして
-先へ進み，クリティカルセクションを出るときに再び値を増やす．
+先へ進み，クリティカルセクションを出るときに再び値を増やす．System~V の
+セマフォは集合として扱われる．\texttt{semget(key, nsems, flg)} は，セグメント
+と同様にキーで識別される \texttt{nsems} 個のセマフォの集合を作成または開く．
+\texttt{semop(id, ops, nops)} は，集合の要素に対する増分と減分の配列を
+アトミックに適用し，減分によって値が負になる間はブロックする．\texttt{semctl}
+は値を設定し（\texttt{SETVAL}），集合を破棄する（\texttt{IPC\_RMID}）．POSIX
+のインタフェースはより単純である．\texttt{sem\_open} は名前付きセマフォを
+作成または開き，\texttt{sem\_wait} はその値を減らし（値が 0 の間はブロック
+する），\texttt{sem\_post} は値を増やす（第10章）．
 
 \begin{keypoint}
   共有メモリには，マルチスレッドプロセスの共有状態と同じ同期が必要である．
@@ -532,11 +631,13 @@ Unix 系システムはそれらを調べて取り除くコマンドを提供す
 コマンドラインツール；Kerrisk ch.~45．}\texttt{ipcs} コマンドは，システム内の
 すべての IPC 機構---メッセージキュー，共有メモリセグメント，セマフォ集合---を，
 そのキー，識別子，所有者，アクセス権とともに一覧する．\texttt{ipcs -m} は一覧を
-共有メモリに限定する．\tip{\texttt{nattch} の欄は，そのセグメントに現在接続
+共有メモリに限定する．\tip{\texttt{nattch} の欄は，そのセグメントに現在アタッチ
 しているプロセスの数である．どのプログラムも開き直さないのに \texttt{nattch}
 が 0 のセグメントはリークである．}\texttt{ipcrm} コマンドは機構を取り除く．
 \texttt{ipcrm -m} にセグメント識別子を続けるとそのセグメントを破棄でき，
-これはプログラムが破棄し損ねたセグメントを回収する通常の方法である．
+これはプログラムが破棄し損ねたセグメントを回収する通常の方法である．%
+\margin{\texttt{ipcs -l} はカーネルの上限を表示し，\texttt{ipcrm -M} にキーを
+続けるとキーでセグメントを取り除ける（\texttt{ipcs(1)}，\texttt{ipcrm(1)}）．}
 
 \section{共有メモリ上の通信の設計}
 \label{sec:l09-design}
@@ -561,7 +662,10 @@ Unix 系システムはそれらを調べて取り除くコマンドを提供す
     あらかじめ確保してその要素を配るのは，第3章のボス・ワーカー型のスレッド
     プールと同じ論法をセグメントに適用したものである．}プロセスはプール
     からセグメントを取り，その識別子をメッセージキューなど別の機構で相手に
-    伝える．やり取りが終わるとセグメントはプールに戻る．
+    伝える．やり取りが終わるとセグメントはプールに戻る．\caution{セグメントの
+    プールは \texttt{shmmni} で上限が決まる．使い果たすと \texttt{shmget} が
+    \texttt{ENOSPC} を返し，ディスクが満杯であるかのように誤解しやすい
+    （\texttt{shmget(2)}）．}
 \end{description}
 
 \begin{figure}[htbp]
@@ -623,6 +727,17 @@ typedef struct {
     \end{tabular}
   \end{center}
 \end{example}
+
+\subsection{メッセージパッシングか共有メモリか}
+
+データの量は，この章の2つの機構のどちらを選ぶかも決める．小さなデータを低い
+頻度でやり取りするならメッセージパッシングが有利である．カーネルがチャネルと
+同期を提供し，わずかなコピーのコストは小さい．大きなデータや，多数のやり取りに
+再利用される領域には共有メモリが有利であり，1回限りの設定のコストが償却される．
+損益分岐点がどこにあるかは，やり取り1回当たりの同期のコスト，すなわち
+\cref{eq:l09-copy-map} の $t_{\mathrm{sync}}$ による．やり取りのたびに
+ブロックして相手を起こすプロトコルは，小さなデータでは共有メモリの利点を
+打ち消しうる．
 
 \begin{keypoint}[章のまとめ]
   IPC 機構はアドレス空間をまたいでデータを移す．メッセージパッシング---パイプ，
