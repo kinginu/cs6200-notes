@@ -1,6 +1,6 @@
 % Operations for the consistency-model example: P1 and P2 write m_a and m_b,
-% P3 and P4 read both locations in opposite orders, a synchronization point
-% follows at t5, and P4 reads m_a again at t6.  P2's read of m_a (grey) is
+% P3 and P4 read both locations in opposite orders, all processes execute
+% sync at t5, and P4 reads m_a again at t6.  P2's read of m_a (grey) is
 % present only in the variant with a causal dependency.
 % Usage: \input{figures/l15-models}   (width ~112 mm)
 \begin{tikzpicture}[x=1mm, y=1mm, font=\scriptsize\sffamily,
@@ -12,9 +12,13 @@
     \node[row] at (14,\py) {P\pn};
     \draw[ln-rule] (16,\py) -- (112,\py);
   }
-  % synchronization point
+  % synchronization point: every process executes sync at t5
   \draw[densely dashed, ln-accent, thick] (88,-3) -- (88,31);
-  \node[lab, anchor=south, text=ln-accent, font=\scriptsize\sffamily] at (88,31) {\iflangja{同期点}{sync}};
+  \foreach \py in {27,18,9,0} {
+    \node[rectangle, fill=ln-accent, inner sep=0pt, minimum width=1.3mm,
+      minimum height=2.6mm] at (88,\py) {};
+  }
+  \node[lab, anchor=south, text=ln-accent, font=\scriptsize\sffamily] at (88,31) {\iflangja{全プロセスが同期}{sync (all)}};
   % P1, P2 writes
   \node[ev] at (24,27) {};  \node[lab, anchor=south] at (24,28) {$W_{m_a}(7)$};
   \node[ev] at (40,18) {};  \node[lab, anchor=south] at (40,19) {$W_{m_b}(9)$};

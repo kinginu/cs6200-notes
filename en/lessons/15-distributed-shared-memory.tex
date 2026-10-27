@@ -4,7 +4,7 @@
 \chapter{Distributed Shared Memory}
 \lessoninfo{
   video={P4L3},
-  textbook={Nitzberg and Lo \cite{nitzberg1991}; Tanenbaum and Bos \cite{tanenbaum2015} ch.~8; Tanenbaum and van Steen \cite{tanenbaum2007} ch.~7},
+  textbook={OSTEP \cite{ostep} ch.~48; Proti\'c et al.\ \cite{protic1996}; Nitzberg and Lo \cite{nitzberg1991}; Tanenbaum and Bos \cite{tanenbaum2015} ch.~8; Tanenbaum and van Steen \cite{tanenbaum2007} ch.~7},
   keywords={distributed shared memory, RDMA, sharing granularity, false sharing, access algorithm, migration, replication, consistency management, page fault, consistency model, strict consistency, sequential consistency, causal consistency, weak consistency},
 }
 
@@ -25,8 +25,8 @@ observe when they share memory.
 
 In the distributed file systems of Lesson~14 the roles of the machines are
 clearly divided.\source{P4L3, lesson preview, reviewing distributed file
-systems, peer distributed applications; Tanenbaum and van Steen
-\cite{tanenbaum2007} ch.~2.}  Servers own and manage the state, the files,
+systems, peer distributed applications; OSTEP \cite{ostep} ch.~48; Tanenbaum and
+van Steen \cite{tanenbaum2007} ch.~2.}  Servers own and manage the state, the files,
 and provide the service, file access; clients
 send requests to the servers.  Clients cache parts of the state, which
 lowers the latency of their accesses and lets a server support more
@@ -73,8 +73,9 @@ memory, is the example on which the lesson studies these issues.
 A shared memory multiprocessor (Lesson~7)\index{shared memory
 multiprocessor} lets threads on different CPUs cooperate through memory
 that all of them access, but its memory is limited to what one machine can
-hold.\source{P4L3, distributed shared memory; Nitzberg and Lo
-\cite{nitzberg1991}; Tanenbaum and Bos ch.~8.}  Distributed
+hold.\source{P4L3, distributed shared memory; Proti\'c et al.\
+\cite{protic1996}; Nitzberg and Lo \cite{nitzberg1991}; OSTEP ch.~48;
+Tanenbaum and Bos ch.~8.}  Distributed
 shared memory extends the model to many machines.
 
 \begin{definition}[Distributed shared memory]
@@ -119,9 +120,10 @@ cost, because a single machine with a very large memory is
 disproportionately more expensive than several commodity machines with
 moderate memories.  The price is latency.\margin{An access to local memory
 takes some \SI{100}{\nano\second} and a round trip over datacenter Ethernet
-tens of microseconds, whereas a one-sided RDMA read over a
-\SI{200}{\giga\bit\per\second} InfiniBand port takes about
-\SI{1}{\micro\second} (NVIDIA ConnectX adapter specifications).}  An access
+tens of microseconds, whereas a one-sided RDMA read (a round trip) on a
+\SI{400}{\giga\bit\per\second} NDR InfiniBand link takes about
+\SI{2}{\micro\second} (perftest \texttt{ib\_read\_lat}); vendors quote
+sub-microsecond one-way latency.}  An access
 to memory that resides on another node crosses the network, which is orders
 of magnitude slower than an access to local memory.  Commodity
 interconnects reduce this cost by supporting remote direct memory access.
@@ -144,8 +146,8 @@ natively; RoCE and iWARP are RDMA protocols carried over Ethernet.}
 \label{sec:l15-hwsw}
 
 DSM can be provided by hardware, by software, or by a combination of
-both.\source{P4L3, hardware vs.\ software DSM; Nitzberg and Lo
-\cite{nitzberg1991}.}
+both.\source{P4L3, hardware vs.\ software DSM; Proti\'c et al.; Nitzberg and
+Lo \cite{nitzberg1991}.}
 \begin{description}
   \item[Hardware-supported DSM] relies on a special-purpose interconnect.
     The operating system of each node is given the impression that it
@@ -157,7 +159,7 @@ both.\source{P4L3, hardware vs.\ software DSM; Nitzberg and Lo
     the CPU of the remote node.  Such hardware is expensive; it is used in
     high-end systems where performance is paramount, as in high-performance
     computing.\margin{The Scalable Coherent Interface (IEEE 1596-1992),
-    used by Dolphin's adapters and by the Sequent NUMA-Q, is such an
+    implemented by the IQ-Link of the Sequent NUMA-Q, is such an
     interconnect: it keeps the memories of the nodes coherent in hardware.}
   \item[Software-supported DSM] performs everything in software: locating
     the node that holds the memory, fetching it, detecting accesses and
@@ -179,7 +181,7 @@ both.\source{P4L3, hardware vs.\ software DSM; Nitzberg and Lo
 The first design decision of a DSM is the unit of sharing: the unit of
 memory that the DSM transfers between nodes, replicates and keeps
 consistent as a whole.\source{P4L3, DSM design: sharing granularity;
-Nitzberg and Lo; Tanenbaum and Bos ch.~8.}  On a shared memory
+Proti\'c et al.; Nitzberg and Lo; Tanenbaum and Bos ch.~8.}  On a shared memory
 multiprocessor the hardware keeps the CPU caches coherent at the
 granularity of cache lines (Lesson~10),\index{cache coherence} units of a
 few tens of bytes; this is affordable because the hardware coordinates the
@@ -253,7 +255,8 @@ can do when the access pattern is known.
 \label{sec:l15-access}
 
 What a DSM must provide depends on the access algorithm of the applications
-that run on it.\source{P4L3, DSM design: access algorithm; Nitzberg and Lo.}
+that run on it.\source{P4L3, DSM design: access algorithm; Proti\'c et al.;
+Nitzberg and Lo.}
 The access algorithm describes how many nodes read and write the same unit
 of memory at the same time; three algorithms are distinguished.
 \begin{description}
@@ -286,7 +289,7 @@ of memory at the same time; three algorithms are distinguished.
 
 The key performance metric of a DSM is access latency, the time that a
 read or write of shared memory takes.\source{P4L3, DSM design: migration
-vs.\ replication; Nitzberg and Lo.}  Since a remote access is orders of
+vs.\ replication; Proti\'c et al.; Nitzberg and Lo.}  Since a remote access is orders of
 magnitude slower than a local one, even a small fraction of remote accesses
 raises the average sharply: one remote access in ten thousand already adds
 half as much again, and one in a hundred multiplies the average by about
@@ -415,8 +418,8 @@ cost more than the locality of the replicas saves.
 \label{sec:l15-management}
 
 Once memory is replicated, the DSM must keep the replicas
-consistent.\source{P4L3, DSM design: consistency management; Nitzberg and
-Lo.}  On a shared memory multiprocessor, software orders its accesses with
+consistent.\source{P4L3, DSM design: consistency management; Proti\'c
+et al.; Nitzberg and Lo.}  On a shared memory multiprocessor, software orders its accesses with
 locks, and the hardware keeps the copies of memory in the CPU caches
 coherent (Lesson~10).  A DSM has no such hardware; its mechanisms resemble
 those with which a distributed file system keeps client caches consistent
@@ -430,6 +433,9 @@ those with which a distributed file system keeps client caches consistent
     arise.\caution{Consistency management in a DSM is not cache coherence:
     it is carried out by software, at the granularity of a page or an
     object, and only at the points the consistency model requires.}
+    Instead of invalidations, the DSM may also push the new contents to the
+    replicas: write-invalidate versus write-update, as for the caches of
+    Lesson~10.
   \item[Pull] Nodes pull information about modifications from the owner of
     a unit, periodically or when they need it.  This approach is
     \emph{reactive} (on demand) and \emph{lazy}; it is also
@@ -464,7 +470,7 @@ of Lesson~14.}
   modification, and the read at \SI{3}{\second} returns the new contents.
   A replica may thus remain stale for up to one polling period.  In
   exchange, pulling costs messages at a fixed rate: 10 replicas that poll
-  every \SI{2}{\second} send 5 messages per second, whether $p$ is written
+  every \SI{2}{\second} make 5 polls (10 messages) per second, whether $p$ is written
   a hundred times per second or not at all.  Pushing sends no message while
   $p$ is not written, and at most one invalidation per replica for each
   write.\tip{Push costs messages in proportion to the writes, pull in
@@ -529,8 +535,8 @@ follows (\cref{fig:l15-indexing}).
     page locally, without exchanging messages.
   \item The metadata of the pages themselves are partitioned: each manager
     keeps the metadata of the pages it manages.\margin{Replicating the map
-    is affordable because it is small: with the 8-bit node ID of the
-    example below it has 256 entries.  The per-page metadata, far more
+    is affordable because it is small: the mapping table indexed by the
+    8-bit node-ID field of the example below has 256 entries.  The per-page metadata, far more
     numerous, stay partitioned.}
 \end{itemize}
 Rather than deriving the manager directly from bits of the page ID, the
@@ -609,19 +615,21 @@ intercept fault.
     process.\sidenote{IVY \cite{li1989}, the first page-based DSM, works in
     this way and provides sequential consistency under MRSW access;
     TreadMarks \cite{keleher1994} later implemented a DSM entirely in user
-    space, on unmodified UNIX systems, with a weaker model.}
+    space, on unmodified UNIX systems, with a weaker model.  These MMU
+    operations are not free: Appel and Li \cite{appel1991} measured about
+    \SI{1200}{\micro\second} of fault and re-protection overhead per page
+    on the machines of 1991.}
 \end{itemize}
 Other information recorded by the MMU is useful as well.  The dirty
 bit\index{dirty bit} of a page shows whether the page has been modified, and
 hence whether modifications must be propagated; the access
 bit\index{access bit} shows whether a local replica has been used recently,
 which helps to decide which replicas to evict when memory runs short, as
-in page replacement (Lesson~8).  An object-based DSM intercepts accesses in
-the language runtime instead, which mediates the program's operations on
-shared objects.\sidenote{These MMU operations are not free.  On the systems
-of 1991 Appel and Li \cite{appel1991} measured some
-\SI{1200}{\micro\second} of fault and re-protection overhead on an average
-one, plus a TLB shootdown on the other CPUs that hold the mapping.}
+in page replacement (Lesson~8).  To propagate only what changed, the DSM may
+keep a copy (twin) of a write-protected page and send the difference (diff)
+at the consistency operation (as in TreadMarks \cite{keleher1994}).  An
+object-based DSM intercepts accesses in the language runtime instead, which
+mediates the program's operations on shared objects.
 
 \begin{figure}[htbp]
   \centering
@@ -638,7 +646,7 @@ one, plus a TLB shootdown on the other CPUs that hold the mapping.}
   read-write.  \Cref{tab:l15-mmu} traces accesses by three nodes under MRSW
   access with invalidation on write.\tip{Per node the mapping of a page is
   a three-state machine---none, RO, RW---and only the transitions fault: a
-  read takes none to RO, a write RO to RW; another node's access
+  read takes none to RO, a write none or RO to RW; another node's access
   downgrades it to RO or to none.}  When node~2 obtains a replica in
   step~1, node~1's mapping is downgraded to read-only, so that a later write
   by node~1 would fault and invalidate the replica.  Of the seven accesses,
@@ -686,8 +694,8 @@ one, plus a TLB shootdown on the other CPUs that hold the mapping.}
 
 The mechanisms of \cref{sec:l15-management} can be triggered at different
 times, and the resulting guarantees differ.\source{P4L3, consistency
-model; strict, sequential, causal and weak consistency; Tanenbaum and van
-Steen \cite{tanenbaum2007} ch.~7.}  For a
+model; strict, sequential, causal and weak consistency; Proti\'c et al.;
+Tanenbaum and van Steen \cite{tanenbaum2007} ch.~7.}  For a
 distributed file system these guarantees are the file sharing semantics of
 Lesson~14; for memory, and for shared state in general, they are stated by
 a consistency model.
@@ -734,7 +742,7 @@ guaranteed.
   execution is the same as if the operations of all processes were executed
   in some sequential order, in which the operations of each process appear
   in the order in which the process issued them, every read returns the
-  most recent write to its location, and all processes observe this same
+  value of the most recent write to its location in that order, and all processes observe this same
   order \cite{lamport1979}.
 \end{definition}
 
@@ -747,9 +755,10 @@ process observes the same order.}
 
 \subsection{Causal consistency}
 
-A write \emph{causally depends} on an earlier write if the process that
-issued it had observed the earlier write before---for instance by reading
-the value it wrote---directly or through a chain of such dependencies.
+A write \emph{causally depends} on an earlier write if the same process
+issued the earlier write, or if the process that issued it had observed the
+earlier write before---for instance by reading the value it wrote---directly
+or through a chain of such dependencies.
 Writes of which neither depends on the other are \emph{concurrent}.
 
 \begin{definition}[Causal consistency]
@@ -771,10 +780,11 @@ Weak consistency introduces \emph{synchronization points}: operations, such
 as \texttt{sync}, that the DSM makes available to the software above it.
 
 \begin{definition}[Weak consistency]
-  Under \term{weak consistency}[弱一貫性] every update made before a
-  synchronization point is visible to all nodes after it; between
-  synchronization points no guarantee is given about which updates a node
-  observes.
+  Under \term{weak consistency}[弱一貫性] a node is guaranteed to observe
+  the updates that another node made before that node's synchronization
+  point only after the observing node itself performs a later
+  synchronization operation; between synchronization points no guarantee is
+  given about which updates a node observes.
 \end{definition}
 
 A DSM may offer a single synchronization operation for the entire shared
@@ -808,7 +818,7 @@ synchronization points (Intel SDM vol.~3A, memory ordering).}
   \input{figures/l15-models}
   \caption{Operations of \cref{ex:l15-models}.  P2's read of $m_a$ (grey)
     occurs only in the variant in which P2's write depends on P1's.  The
-    dashed line is a synchronization point.}
+    dashed line marks a synchronization operation by every process.}
   \label{fig:l15-models}
 \end{figure}
 
@@ -836,9 +846,9 @@ synchronization points (Intel SDM vol.~3A, memory ordering).}
       $W_{m_a}(7)$, and P4, which reads 9 from $m_b$ and afterwards 0 from
       $m_a$, observes the effect before its cause.
   \end{itemize}
-  With a synchronization point at $t_5$, all three outcomes are weakly
-  consistent, because no guarantee applies before $t_5$; the read of $m_a$
-  by P4 at $t_6$, however, must return 7.\caution{A model constrains the
+  If all four processes execute \texttt{sync} at $t_5$, all three outcomes
+  are weakly consistent, because no guarantee applies before $t_5$; the read
+  of $m_a$ by P4 at $t_6$, however, must return 7.\caution{A model constrains the
   outcomes; it does not determine them.  A DSM that provides sequential
   consistency may produce (a) on one run and (b) on the next, and a weakly
   consistent one may produce any of the three.}

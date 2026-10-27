@@ -23,7 +23,7 @@
   \draw[->] (fetch.east) -- node[lab, above, inner sep=0.6pt] {\iflangja{書き}{write}} (coord.west);
   \node[lab, anchor=west, text=ln-muted] at (50.6,4.2) {\iflangja{読み}{read}};
   \node[lab, anchor=west, text=ln-muted, align=left] at (93.8,20) {\iflangja{読み出し専用\\への書き込み}{write to a\\read-only copy}};
-  \draw[->] (fetch.south) -- ++(0,-5) -| (ok.south);
-  \draw (coord.south) |- ++(-40,-5);
+  \draw[->] (fetch.south) -- ++(0,-5) coordinate (join) -| (ok.south);
+  \draw (coord.south) |- (join);
   \node[lab, anchor=north, text=ln-muted] at (73,-0.4) {\iflangja{プロセスを再開：アクセスを再実行}{resume the process: the access is repeated}};
 \end{tikzpicture}
