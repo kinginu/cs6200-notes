@@ -534,6 +534,7 @@ the other to announce, as with a condition variable.
 
 \subsection{Pthreads synchronization across processes}
 
+\begin{sloppypar}
 The Pthreads mutexes and condition variables of Lesson~4 can synchronize
 processes under two conditions.  First, both attribute objects with which
 they are initialized, \texttt{pthread\_\allowbreak mutexattr\_t} and
@@ -542,6 +543,7 @@ attribute}[プロセス共有属性] set to \texttt{PTHREAD\_\allowbreak PROCESS
 default only the threads of the creating process may use them.  Second, the
 mutex and the condition variable themselves must reside in the shared
 region, so that all processes operate on the same data structures.
+\end{sloppypar}
 
 \Needspace{9\baselineskip}
 \begin{example}

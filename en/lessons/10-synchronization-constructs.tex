@@ -505,6 +505,7 @@ documentation.}
     \texttt{mutex\_unlock}: a blocking lock with an owner.
   \item RCU, as described above.
 \end{itemize}
+\begin{sloppypar}\noindent
 Beneath them, the type \texttt{atomic\_t} provides atomic integer
 operations such as \texttt{atomic\_\allowbreak inc} and \texttt{atomic\_\allowbreak cmpxchg}, built
 on the atomic instructions of \cref{sec:l10-hw}.  A spinning lock may be
@@ -515,6 +516,7 @@ sections in the kernel are a few instructions long, far shorter than a
 context switch, so the kernel mostly spins (\cref{sec:l10-spinlock});
 because \texttt{spin\_lock} disables preemption, a holder runs until it
 releases the lock, and the spinning stays short.
+\end{sloppypar}
 
 \begin{keypoint}
   Spinlocks trade CPU time for context switches; semaphores admit a bounded

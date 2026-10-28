@@ -493,6 +493,7 @@ Linux カーネルは，この章の機構の大半を独自の名前で提供�
     \texttt{mutex\_unlock}: 所有者を持つ，ブロックするロック．
   \item RCU: 上で説明したもの．
 \end{itemize}
+\begin{sloppypar}\noindent
 その下では，型 \texttt{atomic\_t} が \texttt{atomic\_\allowbreak inc} や
 \texttt{atomic\_\allowbreak cmpxchg} のようなアトミックな整数操作を提供する．これらは
 \cref{sec:l10-hw}のアトミック命令の上に組み立てられている．スピンする
@@ -504,6 +505,7 @@ Linux カーネルは，この章の機構の大半を独自の名前で提供�
 （\cref{sec:l10-spinlock}）．\texttt{spin\_lock} はプリエンプションを
 無効にするので，保持者はロックを解放するまで実行を続け，スピンは短い
 ままで済む．
+\end{sloppypar}
 
 \begin{keypoint}
   スピンロックはコンテキストスイッチと引き換えに CPU 時間を費やし，セマフォは

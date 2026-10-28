@@ -517,6 +517,7 @@ mode)} は共有メモリオブジェクトを作成または開き，そのフ�
 
 \subsection{Pthreads によるプロセス間の同期}
 
+\begin{sloppypar}
 第4章の Pthreads のミューテックスと条件変数は，2つの条件の下でプロセスを同期
 できる．第1に，それらの初期化に用いる属性オブジェクト
 \texttt{pthread\_\allowbreak mutexattr\_t} と \texttt{pthread\_\allowbreak condattr\_t} の両方で，
@@ -524,6 +525,7 @@ mode)} は共有メモリオブジェクトを作成または開き，そのフ�
 を \texttt{PTHREAD\_\allowbreak PROCESS\_\allowbreak SHARED} に設定しなければならない．既定では，作成したプロセスのスレッドだけがそれらを使える．第2に，
 ミューテックスと条件変数自体が共有領域に置かれていなければならない．そう
 することで，すべてのプロセスが同じデータ構造を操作する．
+\end{sloppypar}
 
 \Needspace{9\baselineskip}
 \begin{example}
