@@ -18,6 +18,12 @@ when in doubt, imitate them.
   ("we now compute …") is fine, as in H&P.  A named
   law or principle the lecture introduces (e.g. "Lhadma's law") is content
   and stays, stated precisely.
+- **Lecture vs paper.**  Where the lecture simplifies a result of the paper
+  or documentation it cites (a rounded number, a dropped condition, an
+  older version of the design), the body keeps the lecture's statement and
+  a `\caution` beside it says what the paper states ("lecture vs paper:
+  the paper measures … under …").  Do not silently replace the lecture's
+  statement, and do not keep it without the caution.
 - **No quiz or exam content.**  Do not reproduce quiz questions, their numbers
   or their answers.  Worked examples use our own numbers; the concept a quiz
   tests may of course be explained.
@@ -87,6 +93,18 @@ and how it connects to the previous lesson.>
   proper nouns and acronyms; canonical Japanese form and reading).  If a
   needed term is missing from the glossary, choose the standard term and
   report it so the glossary can be updated.
+- No line break inside the braces of a Japanese `\term` argument (the
+  word, its reading, or the Japanese gloss in the English edition): the
+  break becomes a space in the gloss and in the index key.  Break the
+  source line before or after the `\term`.
+- No `\term` inside `\margin`, `\sidenote`, `\tip`, `\caution` or
+  `\source`: a margin note cannot carry its own gloss.  Define the term in
+  the body; the note may use `\term*` or plain text.
+- `\source` names the part of the source and the reference only; words
+  about the delivery format ("visual metaphor", "in this video", 比喩,
+  この動画) never appear in it.
+- These rules, the label and listing rules and the `\term` ownership are
+  checked by `tools/chapter-lint.py <slug>`.
 - Margin density: at most ~3 margin items within a short paragraph run; the
   checker reports "margin notes moved down" — keep it at 0–2.
 
@@ -131,7 +149,8 @@ single line of argument; everything that supports it goes to the margin.
 - Plain `\label{…}` inside `example`/`note` is enough — `\cref` prints
   "Example"/"Note" (no `\label[example]{…}` needed).
 - Cross-references: `\cref{…}`; to another chapter in prose: "Lesson 7"
-  (EN) / "第7章" (JA), numbers from the chapter list.
+  (EN) / "第7章" (JA), numbers from the chapter list, and only to a chapter
+  that actually treats the topic.
 - Figures shared by both editions: `figures/lNN-<name>.tex`, pure TikZ,
   language-dependent text via `\iflangja{日本語}{English}`, must fit the
   body width (120 mm) — or the margin (50 mm) when used in `marginfigure`
