@@ -92,8 +92,7 @@ Silberschatz ら ch.~5．}これらを単純化した仮定の下で解析する
 到着から実行が始まるまでで測る．
 
 \begin{definition}[実行完了型スケジューリング]
-  \term[じっこうかんりょうがたすけじゅーりんぐ]{実行完了型スケジュー%
-  リング}[run-to-completion scheduling]では，いったんディスパッチされた
+  \term[じっこうかんりょうがたすけじゅーりんぐ]{実行完了型スケジューリング}[run-to-completion scheduling]では，いったんディスパッチされた
   タスクは完了するまで CPU 上で実行され，プリエンプトされることはない．
 \end{definition}
 
@@ -163,8 +162,7 @@ Silberschatz ら ch.~5．}より短いかもしれず，より重要かもしれ
 かかろうとも待たせる．
 
 \begin{definition}[プリエンプティブスケジューリング]
-  \term[ぷりえんぷてぃぶすけじゅーりんぐ]{プリエンプティブスケジュー%
-  リング}[preemptive scheduling]では，スケジューラは実行中のタスクを完了
+  \term[ぷりえんぷてぃぶすけじゅーりんぐ]{プリエンプティブスケジューリング}[preemptive scheduling]では，スケジューラは実行中のタスクを完了
   前に中断し，CPU を別のタスクに与えることができる．
 \end{definition}
 
@@ -857,8 +855,7 @@ ch.~5．}2つのアーキテクチャを区別しなければならない
 （\cref{fig:l07-multicpu}）．
 
 \begin{definition}[共有メモリ型マルチプロセッサ]
-  \term[きょうゆうめもりがたまるちぷろせっさ]{共有メモリ型マルチ%
-  プロセッサ}[shared memory multiprocessor]は複数の CPU を持ち，各 CPU は
+  \term[きょうゆうめもりがたまるちぷろせっさ]{共有メモリ型マルチプロセッサ}[shared memory multiprocessor]は複数の CPU を持ち，各 CPU は
   自分専用のキャッシュを持ち，それらすべてが主記憶を共有する．
 \end{definition}
 
@@ -894,8 +891,7 @@ debugfs の \texttt{/sys/\allowbreak kernel/\allowbreak debug/\allowbreak sched/
 
 \begin{definition}[キャッシュアフィニティ]
   タスクが，自分のデータを保持するキャッシュを持つ CPU 上で実行されること
-  から得る利益を，その\term[きゃっしゅあふぃにてぃ]{キャッシュ%
-  アフィニティ}[cache affinity]という．スケジューラは，各タスクをできる
+  から得る利益を，その\term[きゃっしゅあふぃにてぃ]{キャッシュアフィニティ}[cache affinity]という．スケジューラは，各タスクをできる
   限り同じ CPU 上に保つことでこれを維持する．
 \end{definition}
 

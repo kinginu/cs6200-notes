@@ -322,8 +322,7 @@ ch.~63．}
 ウェブサーバの場合，イベントには接続要求の到着，接続上での要求データの
 到着，送信の完了（その接続がさらにデータを受け取れることを意味する），
 そしてディスク読み込みの完了が含まれる．Pai らは，このように構築された
-サーバを\term[たんいつぷろせすいべんとくどうもでる]{単一プロセス%
-イベント駆動モデル}[single-process event-driven model]%
+サーバを\term[たんいつぷろせすいべんとくどうもでる]{単一プロセスイベント駆動モデル}[single-process event-driven model]%
 \index{SPED|see{単一プロセスイベント駆動モデル}}（SPED）の一例と呼ぶ．
 
 \begin{figure}[htbp]
@@ -519,16 +518,14 @@ Linux でバッファ付きのファイル I/O まで扱えるのは \texttt{io\
 や \texttt{poll} で待つ．ブロックするのはヘルパであって，ディスパッチャは
 ブロックせず，したがって他のすべての要求も止まらない．イベント駆動の
 プロセスとヘルパプロセスを組み合わせたものが，
-\term[ひたいしょうまるちぷろせすいべんとくどうもでる]{非対称マルチプロセス%
-イベント駆動モデル}[asymmetric multi-process event-driven model]%
+\term[ひたいしょうまるちぷろせすいべんとくどうもでる]{非対称マルチプロセスイベント駆動モデル}[asymmetric multi-process event-driven model]%
 \index{AMPED|see{非対称マルチプロセスイベント駆動モデル}}（AMPED）である．
 このモデルが\emph{非対称}であるのは，MP モデルや MT モデルの同等なプロセス
 やスレッドとは違い，ヘルパが特定の操作だけを行うからである．Pai らが
 ヘルパにプロセスを用いたのは，当時はすべてのオペレーティングシステムが
 カーネルレベルスレッドに対応していたわけではなかったからである．プロセスの
 代わりにヘルパスレッドを用いれば，サーバは
-\term[ひたいしょうまるちすれっどいべんとくどうもでる]{非対称マルチスレッド%
-イベント駆動モデル}[asymmetric multithreaded event-driven model]%
+\term[ひたいしょうまるちすれっどいべんとくどうもでる]{非対称マルチスレッドイベント駆動モデル}[asymmetric multithreaded event-driven model]%
 \index{AMTED|see{非対称マルチスレッドイベント駆動モデル}}（AMTED）に従う．
 
 ヘルパは，基本のイベント駆動モデルの移植性の問題を解消する．サーバが
@@ -640,7 +637,7 @@ static bool in_memory(void *addr, size_t len)
 
 /* ディスパッチャ，ファイルデータを送る前 */
 if (in_memory(c->map, c->len))
-    send_data(c);                    /* まずブロックしない */
+    send_data(c);                    /* ブロックしない */
 else
     ask_helper(c);                   /* パイプ経由 */
 \end{lstlisting}
