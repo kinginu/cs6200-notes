@@ -29,10 +29,7 @@ al.\ \cite{silberschatz2018} ch.~9.}  Processes do not use physical
 addresses: each has a virtual address space whose range can be far larger
 than physical memory.  With 32-bit virtual addresses every process can
 address \SI{4}{\gibi\byte}, and the address spaces of all processes
-together easily exceed the memory that is installed.\margin{On Linux
-x86-64 user space gets the lower half of the 48-bit space,
-\SI{128}{\tebi\byte}; the kernel uses the upper half
-(Documentation/arch/x86/x86\_64/mm.rst).}
+together easily exceed the memory that is installed.
 
 \begin{definition}[Virtual memory]
   The abstraction with which the operating system decouples the virtual
@@ -44,7 +41,10 @@ x86-64 user space gets the lower half of the 48-bit space,
 \end{definition}
 
 A process does not need all of its state at once; at any time it uses only
-part of its address space.  The operating system can therefore keep only
+part of its address space.\margin{On Linux
+x86-64 user space gets the lower half of the 48-bit space,
+\SI{128}{\tebi\byte}; the kernel uses the upper half
+(Documentation/arch/x86/x86\_64/mm.rst).}  The operating system can therefore keep only
 that part in physical memory, as long as the state that the process needs
 next can be made available quickly.  Two tasks follow.
 \begin{description}
@@ -613,11 +613,7 @@ On x86-64, two larger page sizes are available besides the default.  A
 \term{large page}[ラージページ] has a size of \SI{2}{\mebi\byte}, and its
 offset has 21 bits.  A page of \SI{1}{\gibi\byte}, whose offset has 30
 bits, is called a \term{huge page}[ヒュージページ].
-\Cref{tab:l08-page-sizes} compares the three sizes.\caution{Terminology:
-the lecture calls the \SI{2}{\mebi\byte} page \emph{large} and the
-\SI{1}{\gibi\byte} page \emph{huge}; Linux calls both huge pages
-(Transparent Huge Pages,
-\texttt{/sys/kernel/mm/transparent\_hugepage/}).}
+\Cref{tab:l08-page-sizes} compares the three sizes.
 
 \begin{table}[htbp]
   \centering
@@ -636,7 +632,11 @@ the lecture calls the \SI{2}{\mebi\byte} page \emph{large} and the
   \end{tabular}
 \end{table}
 
-Larger pages have two benefits.  They need fewer page table entries, so the
+Larger pages have two benefits.\caution{Terminology: the lecture's
+\emph{large} (\SI{2}{\mebi\byte}) and \emph{huge} (\SI{1}{\gibi\byte})
+pages are both huge pages in Linux (Transparent Huge Pages,
+\texttt{/sys/\allowbreak kernel/\allowbreak mm/\allowbreak
+transparent\_\allowbreak hugepage/}).}  They need fewer page table entries, so the
 page tables are smaller; and each TLB entry covers more memory, so more
 accesses are TLB hits.  Their drawback is wasted memory.
 
@@ -684,16 +684,16 @@ Allocators exist at two levels.
     static state of processes: their code, stack and initialized data.  They
     also keep track of the free memory in the system.
   \item[User-level allocators] manage the dynamic state of a process, its
-    heap, through calls such as \texttt{malloc} and \texttt{free}.  The
-    kernel provides the process with a region of memory, and the user-level
-    allocator divides it among the allocations without involving the kernel
-    again.  Examples are dlmalloc, jemalloc, Hoard and
-    tcmalloc.\margin{glibc's \texttt{malloc} grows the heap with
+    heap, through calls such as \texttt{malloc} and \texttt{free}.\margin{glibc's \texttt{malloc} grows the heap with
     \texttt{brk}, but serves each request above the mmap threshold
     with an \texttt{mmap} of its own.  The threshold is initially
     \SI{128}{\kibi\byte}; glibc raises it dynamically (up to
     \SI{32}{\mebi\byte} on 64-bit) unless \texttt{M\_MMAP\_THRESHOLD}
-    is set.}
+    is set.}  The
+    kernel provides the process with a region of memory, and the user-level
+    allocator divides it among the allocations without involving the kernel
+    again.  Examples are dlmalloc, jemalloc, Hoard and
+    tcmalloc.
 \end{description}
 
 The main challenge of an allocator is fragmentation of the free memory.
@@ -805,12 +805,8 @@ allocator would waste much of the memory it gives them.  The Linux kernel
 therefore allocates its objects with a slab allocator
 \cite{bonwick1994}.\sidenote{Bonwick wrote the first slab allocator for
 Solaris~2.4.  Linux has had three implementations of the idea---SLAB, SLUB
-and the compact SLOB---of which SLUB has been the default since~2.6.23;
-\texttt{/proc/slabinfo} lists the caches and their object sizes.  SLOB was
-removed in Linux~6.4 and SLAB in~6.8; SLUB is now the only
-implementation.}\margin{A kernel structure gets its cache with
-\texttt{kmem\_cache\_create}; \texttt{task\_struct} (the PCB of Lesson~2)
-has its own (\texttt{/proc/slabinfo}).}
+and the compact SLOB; SLUB, the default since~2.6.23, is the only one left
+since SLOB was removed in Linux~6.4 and SLAB in~6.8.}
 
 \begin{definition}[Slab allocator]
   A \term{slab allocator}[スラブアロケータ] keeps a cache for every common
@@ -837,7 +833,10 @@ allocation touches no shared state and takes no lock (Lesson~10).}
 \end{figure}
 
 \begin{example}
-  A kernel object occupies 1200 bytes.  Allocated separately from a buddy
+  A kernel object occupies 1200 bytes.\margin{A kernel structure gets its
+  cache with \texttt{kmem\_cache\_create}; \texttt{task\_struct} (the PCB
+  of Lesson~2) has its own.  \texttt{/proc/slabinfo} lists the caches and
+  their object sizes.}  Allocated separately from a buddy
   allocator, each object would receive at least one page of
   \SI{4}{\kibi\byte} and waste 2896 bytes.  A slab of one page holds
   $\lfloor 4096/1200 \rfloor = 3$ such objects and leaves $4096 - 3600 =
@@ -931,9 +930,10 @@ swapped out, and which ones.
 
 Pages are swapped out by a \term{page-out daemon}[ページアウトデーモン], a
 kernel thread that runs when memory usage exceeds a threshold, the
-\emph{high watermark}.\margin{Linux's page-out daemon is the kernel thread
-\texttt{kswapd}; the watermarks are in \texttt{/proc/zoneinfo}, swap
-devices in \texttt{/proc/swaps}.}  It preferably runs while CPU usage is below a
+\emph{high watermark}.\caution{Terminology differs: the lecture's high watermark is a
+memory-usage threshold, its low watermark a CPU-usage one; Linux's
+min/low/high watermarks all bound free memory (reclaim starts below low,
+stops above high).}  It preferably runs while CPU usage is below a
 threshold, the \emph{low watermark}, so that it disturbs the applications
 as little as possible.
 
@@ -953,10 +953,9 @@ accesses.
     pages of the kernel, are never chosen.
 \end{itemize}
 Linux provides parameters that tune when reclaim starts and
-stops,\caution{Terminology differs: in the lecture the high watermark is
-a memory-usage threshold and the low watermark a CPU-usage threshold;
-Linux's min/low/high watermarks are all thresholds on free memory (reclaim
-starts below low, stops above high).} categorizes
+stops,\margin{Linux's page-out daemon is the kernel thread
+\texttt{kswapd}; the watermarks are in \texttt{/proc/zoneinfo}, swap
+devices in \texttt{/proc/swaps}.} categorizes
 pages into types, for instance reclaimable and swappable pages, and uses a
 variation of LRU that gives pages a second chance.
 
@@ -1018,9 +1017,7 @@ al.\ ch.~10.}  One of them avoids unnecessary copies when a process is
 created.
 
 A process created with \texttt{fork}\index{fork@\texttt{fork}} receives a copy of the
-entire address space of its parent (Lesson~2).\margin{The page tables of the private, written
-regions are still copied: \SI{1}{\gibi\byte} of \SI{4}{\kibi\byte} pages needs
-$2^{18}$ entries of 8 bytes, \SI{2}{\mebi\byte}.}  Many of its pages, such as
+entire address space of its parent (Lesson~2).  Many of its pages, such as
 the code, are static and never change, and a child often calls
 \texttt{exec} soon after its creation, so most of the copying would be
 wasted.
@@ -1035,7 +1032,9 @@ wasted.
 \end{definition}
 
 As long as both processes only read the shared pages, no memory is spent
-and no time is spent on copying.  When one of them writes a page, the
+and no time is spent on copying.\margin{The page tables of the private, written
+regions are still copied: \SI{1}{\gibi\byte} of \SI{4}{\kibi\byte} pages needs
+$2^{18}$ entries of 8 bytes, \SI{2}{\mebi\byte}.}  When one of them writes a page, the
 protection fault lets the operating system recognize the COW page; it
 copies this one page to a new page frame, maps the writing process's page
 to the copy with write permission, and restarts the write

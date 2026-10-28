@@ -167,10 +167,10 @@ In UNIX-like systems device files reside in the directory \texttt{/dev},
 which is managed by a special file system: historically devfs (removed in
 Linux 2.6.18); on current Linux devtmpfs, an instance of tmpfs (the home of
 POSIX shared memory in Lesson~9) that the kernel populates and udev
-manages.  A long listing with \texttt{ls -l} marks a block device file
-with the type \texttt{b} and a character device file with
-\texttt{c}.\margin{On Linux, network devices are the exception: they have no
-device files and are used through sockets.}  Because a device looks like a
+manages.\margin{On Linux, network devices are the exception: they have no
+device files and are used through sockets.}  A long listing with
+\texttt{ls -l} marks a block device file with the type \texttt{b} and a
+character device file with \texttt{c}.  Because a device looks like a
 file, programs that know nothing about devices can use it.\margin{Major and
 minor numbers in \texttt{ls -l /dev} identify the driver and the device
 instance (Kerrisk ch.~14).}
@@ -221,25 +221,25 @@ are two ways to address the registers.
   part of the physical address space is dedicated to device interactions,
   and the CPU accesses a register with an ordinary load or store instruction
   on its address, which the platform directs to the device instead of to
-  memory.\caution{A memory-mapped register is not ordinary memory: the
-  region is normally mapped uncached (or write-combining for prefetchable
-  regions such as frame buffers), and drivers use accessors such as
-  \texttt{readl} and \texttt{writel}, not plain pointer dereferences.}
+  memory.\caution{A memory-mapped register is not ordinary memory: it is
+  normally mapped uncached (write-combining for prefetchable regions such
+  as frame buffers), and drivers access it with \texttt{readl} and
+  \texttt{writel}, not plain pointer dereferences.}
 \end{definition}
 
 Memory-mapped I/O must not be confused with a memory-mapped file
 (Lesson~9), which maps the contents of a file into the virtual address
-space of a process.\margin{For a PCI device, the base address registers
-(BARs) in its configuration space set the size and location of its region;
-they are configured during boot.}
+space of a process.  For a PCI device, the base address registers (BARs)
+in its configuration space set the size and location of its region; they
+are configured during boot.
 
 The second way uses dedicated CPU instructions, such as \texttt{in} and
 \texttt{out} on x86.  An \term{I/O port}[I/Oポート] is an address, separate
 from the memory addresses, that designates a device register; the
 instruction specifies the target port and the value to be written to the
 register, or receives the value read from it.\margin{The x86 port space is
-only \SI{64}{\kibi\byte} wide---port numbers are 16 bits---which is one
-reason why memory-mapped I/O carries most of today's device traffic.}
+only \SI{64}{\kibi\byte} (16-bit port numbers), one reason why
+memory-mapped I/O carries most of today's device traffic.}
 
 \subsection{Interrupts and polling}
 
@@ -442,11 +442,11 @@ Bypass relies on features of the device:
     accessible only to the kernel.
   \item If several processes use the device, the device must be able to
     \emph{demultiplex}, that is, determine to which process data
-    belong.\margin{PCIe devices can do this with SR-IOV; see
-    Lesson~12.}  In a typical
+    belong.  In a typical
     device access the kernel does this: its network stack, for example,
     inspects the headers of an arriving packet to find the receiving
-    process.  With bypass the device itself must do so.
+    process.  With bypass the device itself must do so.\margin{PCIe devices
+    can do this with SR-IOV; see Lesson~12.}
 \end{itemize}
 
 \section{Synchronous and asynchronous access}
@@ -689,10 +689,10 @@ blocks hold inodes, which hold data, and which are free.
 \label{sec:l11-ext2}
 
 Linux has long used a family of file systems whose on-disk structures
-correspond closely to the abstractions of the VFS.\source{P3L5, ext2;
-OSTEP ch.~40--41; Silberschatz et al.\ ch.~14.}  The second extended file system, \term{ext2}[ext2], was
+correspond closely to the abstractions of the VFS.  The second extended file system, \term{ext2}[ext2], was
 for many years the default file system of Linux and is the basis of its
-successors ext3 and ext4.  An ext2 partition begins with \SI{1024}{\byte}
+successors ext3 and ext4.\source{P3L5, ext2; OSTEP ch.~40--41;
+Silberschatz et al.\ ch.~14.}  An ext2 partition begins with \SI{1024}{\byte}
 reserved for booting---all of block~0 when blocks are
 \SI{1}{\kibi\byte}---and the rest is divided into groups of blocks
 (\cref{fig:l11-ext2}).
@@ -706,7 +706,10 @@ reserved for booting---all of block~0 when blocks are
 \end{definition}
 
 Each block group contains the following structures; the first two are
-present only in some groups, as explained below:
+present only in some groups, as explained below:\margin{A group is not a
+region of the disk geometry: it holds as many blocks as one block of bitmap
+can track---with \SI{4}{\kibi\byte} blocks, $8 \times 4096 = \num{32768}$
+blocks, that is \SI{128}{\mebi\byte}.}
 \begin{description}
   \item[a copy of the superblock] recording file-system-wide information:
     the numbers of inodes and of disk blocks, the numbers of free inodes and
@@ -729,9 +732,7 @@ whose number is a power of 3, 5 or 7 hold such copies (\texttt{ext4(5)});
 the other groups begin directly with their bitmaps.  Keeping the inodes and the
 data blocks of a file in the same group places related blocks close together
 on the disk and reduces the distance the disk head must travel between
-them.\margin{A group is not a region of the disk geometry: it holds as many
-blocks as one block of bitmap can track---with \SI{4}{\kibi\byte} blocks,
-$8 \times 4096 = \num{32768}$ blocks, that is \SI{128}{\mebi\byte}.}
+them.
 
 \begin{figure}[htbp]
   \centering

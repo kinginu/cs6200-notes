@@ -367,8 +367,7 @@ pthread_mutex_init(&m, &attr);
 与えられる，中断されない時間の最大値であり，タイムクォンタムとも呼ばれる．%
 \margin{Silberschatz らの ch.~5 は典型的なタイムクォンタムを
 10--\SI{100}{\milli\second} としており，これは数マイクロ秒のコンテキスト
-スイッチ（第2章）よりはるかに長い．}%
-\margin{Linux は今もリアルタイムのラウンドロビンクラスには固定のタイム
+スイッチ（第2章）よりはるかに長い．Linux は今もリアルタイムのラウンドロビンクラスには固定のタイム
 クォンタムを用いる．既定は \SI{100}{\milli\second} であり，sysctl の
 \texttt{sched\_rr\_timeslice\_ms} で設定する．}%
 タスクはタイムスライスより短い時間しか実行しないこともある．I/O や同期
@@ -885,13 +884,13 @@ CPU であり，システムは複数のマルチコアプロセッサを持つ�
 \subsection{キャッシュアフィニティと負荷分散}
 
 タスクの性能はキャッシュの状態に依存する．タスクがある CPU 上で実行される
-間，その CPU のキャッシュはそのタスクのデータで満たされる．次回も同じ CPU
-上で実行されればホットキャッシュを見出すが（第2章），別の CPU 上で実行
-されればコールドキャッシュから始まり，そのキャッシュが満たされるまで実行
-は遅くなる．\margin{直近 \texttt{sched\_migration\_cost\_ns}（既定は
+間，その CPU のキャッシュはそのタスクのデータで満たされる．\margin{直近 \texttt{sched\_\allowbreak migration\_\allowbreak cost\_\allowbreak ns}（既定は
 \SI{500}{\micro\second}）以内に実行されたタスクはキャッシュがホットと
 みなされ，負荷分散はそれを動かさない．Linux~5.13 以降，この調整値は
-debugfs の \texttt{/sys/kernel/debug/sched/migration\_cost\_ns} にある．}
+debugfs の \texttt{/sys/\allowbreak kernel/\allowbreak debug/\allowbreak sched/\allowbreak migration\_\allowbreak cost\_\allowbreak ns} にある．}次回も同じ CPU
+上で実行されればホットキャッシュを見出すが（第2章），別の CPU 上で実行
+されればコールドキャッシュから始まり，そのキャッシュが満たされるまで実行
+は遅くなる．
 
 \begin{definition}[キャッシュアフィニティ]
   タスクが，自分のデータを保持するキャッシュを持つ CPU 上で実行されること
@@ -914,9 +913,7 @@ debugfs の \texttt{/sys/kernel/debug/sched/migration\_cost\_ns} にある．}
 \subsection{NUMA 対応スケジューリング}
 
 マルチプロセッサは複数のメモリノードを持つこともある
-（\cref{fig:l07-numa}）．\margin{\texttt{numactl --hardware} はノードと
-その間の距離を表示し，\texttt{numactl --cpunodebind=0 --membind=0}
-\emph{cmd} はプログラムを1つのノードに固定する（numactl(8)）．}
+（\cref{fig:l07-numa}）．
 
 \begin{definition}[NUMA]
   \term{NUMA}[non-uniform memory access]%
@@ -925,7 +922,9 @@ debugfs の \texttt{/sys/kernel/debug/sched/migration\_cost\_ns} にある．}
   以上のプロセッサのソケットの近くに置かれる．CPU から自分のローカルな
   メモリノードへのアクセスは，ソケット間のインターコネクト，例えば Intel
   の UPI（旧 QPI）や AMD の Infinity Fabric を経由するリモートのノードへのアクセスより
-  速い．
+  速い．\margin{\texttt{numactl --hardware} はノードと
+その間の距離を表示し，\texttt{numactl --cpunodebind=0 --membind=0}
+\emph{cmd} はプログラムを1つのノードに固定する（numactl(8)）．}
 \end{definition}
 
 \begin{figure}[htbp]
@@ -995,8 +994,7 @@ CPU を複数のタスクで多重化しなければならないのは，タス�
 最も単純なものはコンテキストを交互に実行し，短ければ1サイクルごとに
 パイプラインを別のコンテキストへ渡す．狭義の同時マルチスレッディング，
 例えば Intel の Hyper-Threading では，複数のハードウェアスレッドの命令が同じ
-サイクルにパイプラインの各段を占める．\margin{Fedorova らがシミュレート
-したコアは，4つのハードウェアスレッドを1サイクルごとに交互に実行する．}
+サイクルにパイプラインの各段を占める．
 
 各ハードウェアスレッドは，オペレーティングシステムには個別の仮想 CPU と
 して見え，スケジューラはその上にタスクを配置できる．したがって
@@ -1026,7 +1024,8 @@ CPU を複数のタスクで多重化しなければならないのは，タス�
     保つためのものであり，メモリまで到達するアクセスの 100 サイクル程度
     ではなく，L1 キャッシュで処理されるロードの遅延に当たる．
   \item ハードウェアスレッド間の切り替えは瞬時に行われる．
-  \item CPU は2つのハードウェアスレッドを持つ．
+  \item CPU は2つのハードウェアスレッドを持つ．\margin{Fedorova らがシミュレート
+したコアは，4つのハードウェアスレッドを1サイクルごとに交互に実行する．}
 \end{enumerate}
 このモデルでは，CPU バウンドのタスクは毎サイクルにパイプラインを必要と
 する．\term[めもりばうんどたすく]{メモリバウンドタスク}[memory-bound task]
@@ -1134,12 +1133,12 @@ CPU バウンドである可能性が高く，LLC ミスの多いタスクはメ
 
 Fedorova らは，カウンタから導かれる単一の指標である CPI によってタスクを
 区別することを提案した．\source{P3L1，CPI の実験，CPI の実験結果；
-Fedorova ら．}\caution{CPI が高いのは分岐予測ミスやパイプラインの奪い合い
-のためでもありうるので，CPI が高いことだけではスレッドがメモリバウンドで
-あることの証明にはならない．}この着想は魅力的である．メモリバウンドのタスクは多くの
+Fedorova ら．}この着想は魅力的である．メモリバウンドのタスクは多くの
 サイクルをメモリ待ちに費やすので CPI が高く，CPU バウンドのタスクは CPI
 が低い．1サイクルに1命令を実行するモデルでは 1 であり，スーパースカラの
-プロセッサでは 1 を下回る．そうであれば，スケジューラは各コアの
+プロセッサでは 1 を下回る．\caution{CPI が高いのは分岐予測ミスやパイプラインの奪い合い
+のためでもありうるので，CPI が高いことだけではスレッドがメモリバウンドで
+あることの証明にはならない．}そうであれば，スケジューラは各コアの
 ハードウェアスレッド上に CPI の異なるタスクを混ぜればよいことになる．
 
 この着想を検証するために，彼らは4つのコアがそれぞれ4つのハードウェア

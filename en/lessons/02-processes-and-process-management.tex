@@ -59,9 +59,7 @@ identified by its address.
 \end{definition}
 
 The state in the address space is of several types, laid out as in
-\cref{fig:l02-address-space}:\margin{\texttt{cat /proc/self/maps} prints a
-live address space, one region per line with its start and end address,
-permissions and backing file (proc(5)).}
+\cref{fig:l02-address-space}:
 \begin{description}
   \item[Text and data] The \term{text segment}[テキストセグメント] holds the
     code of the program, the instructions produced by the compiler.  The
@@ -79,9 +77,13 @@ permissions and backing file (proc(5)).}
     onto the stack, and the local variables of the called procedure are
     allocated there; when the procedure returns, all of it is popped again.
     The stack starts at the high end of
-    the address space and grows toward lower addresses.\margin{Default
-    Linux main-thread stack limit: \SI{8}{\mebi\byte} (\texttt{ulimit -s});
-    deeper recursion ends in a segmentation fault (getrlimit(2)).}
+    the address space and grows toward lower addresses.\margin{\texttt{cat
+    /proc/self/maps} prints a live address space, one region per line with
+    its start and end address, permissions and backing file (proc(5)).
+    Default Linux main-thread stack limit: \SI{8}{\mebi\byte}
+    (\texttt{ulimit -s}); deeper recursion ends in a segmentation fault
+    (getrlimit(2)).}
+
 \end{description}
 
 \begin{figure}[htbp]
@@ -194,16 +196,18 @@ state of the process.
   signal mask, and CPU scheduling information.
 \end{definition}
 
-In Linux the PCB is \texttt{struct task\_struct}; among its fields are the
+In Linux the PCB is \texttt{struct task\_struct};\caution{One Linux
+\texttt{task\_struct} describes one \emph{thread} (Lesson~3).  A process is
+a thread group, the tasks that share one thread-group ID, and its
+per-process state lives in structures they share: \texttt{mm\_struct},
+\texttt{files\_struct}, \texttt{signal\_struct}.} among its fields are the
 process identifier (\texttt{pid}), the state, \texttt{mm}, which describes
 the memory mappings, and \texttt{files}, the table of open files.
 
 The fields of the PCB (\cref{fig:l02-pcb}) are maintained at different
-times:\caution{One Linux \texttt{task\_struct} describes one \emph{thread}
-(Lesson~3).  A process is a thread group, the tasks that share one
-thread-group ID, and its per-process state lives in structures they share:
-\texttt{mm\_struct}, \texttt{files\_struct}, \texttt{signal\_struct}.}
+times:
 \begin{itemize}
+
   \item The PCB is created and initialized when the process is created; for
     example, the program counter is set to the first instruction of the
     program.
@@ -266,11 +270,11 @@ Context switches are expensive, for two reasons:
   \item[Direct cost] the CPU cycles spent executing the load and store
     instructions that save the state of one process and restore the state
     of the other, and reloading the page table base register.
-  \item[Indirect cost] the effect on the processor cache.  A cache access
+  \item[Indirect cost] the effect on the processor cache.\margin{Intel
+    Skylake: L1 hit 4--5 cycles, L2 about 12, L3 about 42, DRAM some
+    \SI{50}{\nano\second} more (7-cpu.com).}  A cache access
     takes on the order of a few cycles, whereas an access to main memory
-    takes on the order of hundreds of cycles.\margin{Intel Skylake:
-    L1 hit 4--5 cycles, L2 about 12, L3 about 42, DRAM some
-    \SI{50}{\nano\second} more (7-cpu.com).}
+    takes on the order of hundreds of cycles.
 \end{description}
 
 While a process runs, much of the data it uses is present in the processor
@@ -280,11 +284,7 @@ context switch, the next process replaces much of this data with its own.
 When the first process resumes, it finds a
 \term{cold cache}[コールドキャッシュ]: its data is no longer in the cache,
 and its accesses are cache misses that must be served from main memory until
-the cache has been refilled.\margin{Li et al.\ \cite{li2007} measure
-\SI{3.8}{\micro\second} per switch between processes that touch no data,
-and up to about \SI{1.5}{\milli\second} per switch once the working set no
-longer fits in the \SI{512}{\kibi\byte} L2 and is accessed with a large
-stride (\SI{2.0}{\giga\hertz} Xeon, 2007).}  The operating system should
+the cache has been refilled.  The operating system should
 therefore limit how frequently it switches contexts.
 
 \begin{example}
@@ -294,7 +294,12 @@ therefore limit how frequently it switches contexts.
   after it resumes that were evicted from the cache while P2 ran, the first
   access to each costs $200 - 4 = 196$ extra cycles, in total
   $5\,000\times 196 = 980\,000$ cycles.  The indirect cost is almost a
-  thousand times the direct cost of the switch.
+  thousand times the direct cost of the switch.\margin{Li et al.\
+  \cite{li2007} measure \SI{3.8}{\micro\second} per switch between
+  processes that touch no data, and up to about \SI{1.5}{\milli\second}
+  per switch once the working set no longer fits in the
+  \SI{512}{\kibi\byte} L2 and is accessed with a large stride
+  (\SI{2.0}{\giga\hertz} Xeon, 2007).}
 \end{example}
 
 \begin{note}
@@ -319,10 +324,10 @@ therefore limit how frequently it switches contexts.
 Seen from the CPU, a process alternates between running and not
 running.\source{P2L1, process life cycle, process life cycle: states; OSTEP
 ch.~4.}  A running process that is interrupted and switched out becomes
-idle, that is, no longer on the CPU,\caution{Idle here means not on
-the CPU; it is not the kernel's idle task, which runs when no process is
-ready.} although it is still ready to execute, and it runs again when the scheduler
-dispatches it to the CPU.  A process can be idle for other reasons as well,
+idle, that is, no longer on the CPU, although it is still ready to
+execute, and it runs again when the scheduler dispatches it to the
+CPU.\caution{Idle here means not on the CPU; it is not the kernel's idle
+task, which runs when no process is ready.}  A process can be idle for other reasons as well,
 and the operating system distinguishes these situations by the
 \term{process state}[プロセス状態], which it records in the PCB.  A process
 is in one of the following states (\cref{fig:l02-states}):
@@ -355,10 +360,7 @@ is in one of the following states (\cref{fig:l02-states}):
     indicates success or an error; a process that causes a fault, such as
     an invalid memory access, is terminated by the operating system.
     Either way the process enters the
-    \term{terminated state}[終了状態].\caution{Linux does not separate
-    ready from running: both are \texttt{TASK\_RUNNING}, which \texttt{ps}
-    prints as R\@.  S and D are the two kinds of waiting, interruptible and
-    uninterruptible, and T is a stopped process.}
+    \term{terminated state}[終了状態].
 \end{description}
 
 \begin{figure}[htbp]
@@ -369,7 +371,11 @@ is in one of the following states (\cref{fig:l02-states}):
 \end{figure}
 
 \Cref{tab:l02-trace} traces one process through its life
-cycle.  Only one transition, the dispatch, gives the process the CPU; every other
+cycle.\caution{Linux does not separate
+    ready from running: both are \texttt{TASK\_RUNNING}, which \texttt{ps}
+    prints as R\@.  S and D are the two kinds of waiting, interruptible and
+    uninterruptible, and T is a stopped process.}  Only one
+ transition, the dispatch, gives the process the CPU; every other
 transition takes it away or leaves the process without it.
 
 \begin{table}[htbp]
@@ -431,9 +437,7 @@ Unix called \texttt{fork} and \texttt{exec}:
   \item[\texttt{fork}] With the \term[fork]{\texttt{fork}}[fork] system
     call the operating system creates a new PCB for the child, copies the
     PCB of the parent into it, and gives the child a copy of the parent's
-    address space.\caution{\texttt{fork} copies page tables, not memory:
-    a page is duplicated only when one side writes to it (copy-on-write,
-    Lesson~8).}  The child is a duplicate of the parent, with the same
+    address space.  The child is a duplicate of the parent, with the same
     program and the same program counter, so after the call both parent and
     child continue at the instruction that follows \texttt{fork}.
   \item[\texttt{exec}] With the \term[exec]{\texttt{exec}}[exec] system
@@ -442,8 +446,11 @@ Unix called \texttt{fork} and \texttt{exec}:
     program and updates the PCB to describe it: the program counter now
     points to the first instruction of the new program, while the process
     identifier and the open files are kept, except those marked
-    close-on-exec (\texttt{FD\_CLOEXEC}, \texttt{O\_CLOEXEC}).
+    close-on-exec (\texttt{FD\_CLOEXEC}, \texttt{O\_CLOEXEC}).\caution{\texttt{fork}
+    copies page tables, not memory: a page is duplicated only when one
+    side writes to it (copy-on-write, Lesson~8).}
 \end{description}
+
 
 To create a process that runs a \emph{different} program, a parent calls
 \texttt{fork}, and the child then calls \texttt{exec}
@@ -458,11 +465,10 @@ Android uses \texttt{fork} to start applications quickly.  Its application
 processes descend from \term{Zygote}[Zygote], a daemon started during boot
 whose sole purpose is to launch applications; it loads the runtime and the
 commonly used libraries once.\sidenote{Because \texttt{fork} shares the
-pages of the parent copy-on-write, the runtime and the preloaded classes
-are not copied into each application: every application process starts with
-them already mapped, and they remain in one set of physical pages for as
-long as no one writes to them.  Zygote therefore saves start-up time and
-memory at once.}
+parent's pages copy-on-write, every application process starts with the
+runtime and the preloaded classes already mapped, in one set of physical
+pages for as long as no one writes to them: Zygote saves start-up time
+and memory at once.}
 To launch an application, Zygote forks, and the child, which already
 contains everything Zygote has loaded, becomes the process of the
 application.
@@ -471,7 +477,12 @@ application.
 \begin{example}
   A program that creates a child process with \texttt{fork}, runs
   \texttt{ls -l} in it with \texttt{exec}, and waits until the child has
-  finished:
+  finished:\sidenote{A process that has exited
+  keeps its PCB until its parent reads the exit code---here with
+  \texttt{waitpid}; until then it is a \emph{zombie} (state Z\@).  A child
+  whose parent exits first is adopted and reaped by its nearest
+  \emph{subreaper} ancestor (\texttt{PR\_SET\_CHILD\_SUBREAPER}, e.g.\ a
+  systemd user manager) if there is one, otherwise by \texttt{init}.}
   \begin{lstlisting}[language=C, numbers=none]
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -489,12 +500,7 @@ int main(void) {
 }
 \end{lstlisting}
   After a successful \texttt{execlp} the child executes the code of
-  \texttt{ls}; the call never returns.\sidenote{A process that has exited
-  keeps its PCB until its parent reads the exit code---here with
-  \texttt{waitpid}; until then it is a \emph{zombie} (state Z\@).  A child
-  whose parent exits first is adopted and reaped by its nearest
-  \emph{subreaper} ancestor (\texttt{PR\_SET\_CHILD\_SUBREAPER}, e.g.\ a
-  systemd user manager) if there is one, otherwise by \texttt{init}.}
+  \texttt{ls}; the call never returns.
 \end{example}
 
 \section{The CPU scheduler}
@@ -526,12 +532,13 @@ operating system performs three operations:
 
 The CPU is the resource that the processes need, so it should spend as much
 of its time as possible running them rather than running the operating
-system.  The scheduler therefore needs efficient algorithms, efficient
+system.\margin{Linux 2.6.23 replaced the O(1) scheduler by CFS, whose
+runqueue is a red-black tree: picking the next task is O(1), insertion
+O(log n) (kernel documentation, sched-design-CFS); Lesson~7.}  The scheduler therefore needs efficient algorithms, efficient
 implementations of them, and efficient data structures to represent the
 waiting processes and their scheduling information, the ready queue in
-particular.\margin{Linux 2.6.23 replaced the O(1) scheduler by CFS, whose
-runqueue is a red-black tree: picking the next task is O(1), insertion
-O(log n) (kernel documentation, sched-design-CFS); Lesson~7.}
+particular.
+
 
 \subsection{How often to run the scheduler}
 
@@ -572,17 +579,19 @@ timeslice ten times as long, the useful fraction is $10/11 \approx
   Let $t_{\mathrm{sched}} = \SI{0.5}{\milli\second}$.  With a timeslice of
   \SI{2}{\milli\second}, \cref{eq:l02-useful} gives $2/2.5 =
   \SI{80}{\percent}$ useful work; with a timeslice of
-  \SI{20}{\milli\second}, $20/20.5 \approx \SI{97.6}{\percent}$.
+  \SI{20}{\milli\second}, $20/20.5 \approx \SI{97.6}{\percent}$.\margin{Real
+  values: Linux CFS shared a \SI{6}{\milli\second} period among the
+  runnable tasks, with a floor of \SI{0.75}{\milli\second} each; Linux~6.6
+  EEVDF uses a base slice of \SI{0.75}{\milli\second} (base values, scaled
+  up with the CPU count by default).}
 \end{example}
 
 A long timeslice is not free, however: while one process holds the CPU, the
 other ready processes wait for their turn.  Choosing a scheduler thus
 requires design decisions: what timeslice values are appropriate, and which
 metrics decide the process to run next.  Lesson~7 examines these
-questions.\margin{Real values: Linux CFS shared a \SI{6}{\milli\second}
-period among the runnable tasks, with a floor of \SI{0.75}{\milli\second}
-each; Linux~6.6 EEVDF uses a base slice of \SI{0.75}{\milli\second}
-(base values, scaled up with the CPU count by default).}
+questions.
+
 
 \subsection{Processes and I/O}
 
@@ -650,12 +659,12 @@ another.
   \term{inter-process communication}[プロセス間通信]\index{IPC|see{inter-process communication}}
   (IPC).  IPC mechanisms transfer data and information
   between address spaces, maintain the protection and isolation of the
-  processes, and give applications flexibility and good performance.
+  processes, and give applications flexibility and good
+  performance.\caution{IPC is for processes; threads of one process
+  (Lesson~3) share the address space without any of it.}
 \end{definition}
 
-There are two basic kinds of IPC (\cref{fig:l02-ipc}):\caution{IPC is for
-processes; threads of one process (Lesson~3) share the address space
-without any of it.}
+There are two basic kinds of IPC (\cref{fig:l02-ipc}):
 \begin{description}
   \item[Message passing] In \term{message passing}[メッセージパッシング]
     the operating system establishes a communication channel, such as a
@@ -692,11 +701,7 @@ without any of it.}
 \end{figure}
 
 Shared memory moves the cost of communication from the individual exchanges
-to the setup.\margin{On current x86 Linux a round trip through a pipe
-costs a few to about ten microseconds, one through a Unix-domain socket
-somewhat more, and a minimal system call about a hundred nanoseconds
-(lmbench-style measurements: \texttt{lat\_pipe}, \texttt{lat\_unix},
-\texttt{lat\_syscall}; machine-dependent).}  Once the region is
+to the setup.  Once the region is
 mapped, an exchange involves no copy and no crossing into the kernel, but
 creating the mapping is itself costly, so which of the two mechanisms is
 cheaper follows from how many exchanges the processes make.
@@ -715,7 +720,12 @@ cheaper follows from how many exchanges the processes make.
 \end{example}
 
 The IPC mechanisms of Unix-based systems and their use are the subject of
-Lesson~9.
+Lesson~9.\margin{On current x86 Linux a round trip through a pipe
+costs a few to about ten microseconds, one through a Unix-domain socket
+somewhat more, and a minimal system call about a hundred nanoseconds
+(lmbench-style measurements: \texttt{lat\_pipe}, \texttt{lat\_unix},
+\texttt{lat\_syscall}; machine-dependent).}
+
 
 \begin{keypoint}[Lesson summary]
   A process is an executing program, represented by its address

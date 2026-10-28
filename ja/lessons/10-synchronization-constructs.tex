@@ -189,16 +189,16 @@ int sem_init(sem_t *sem, int pshared,
 int sem_wait(sem_t *sem);
 int sem_post(sem_t *sem);
 \end{lstlisting}
-\texttt{sem\_init} は初期カウントを \texttt{value} に設定する．フラグ
+\texttt{sem\_init} は初期カウントを \texttt{value} に設定する．\margin{Linux 2.6（glibc の NPTL）以降，POSIX
+セマフォは futex の上に構築されている．競合のない \texttt{sem\_wait} や
+\texttt{sem\_post} はユーザ空間での1回のアトミック命令である．}フラグ
 \texttt{pshared} は，セマフォを1つのプロセスのスレッドだけが使うのか（0），
 プロセス間で共有するのか（0 以外）を表す．後者の場合，\texttt{sem\_t} 自体
 が，第9章の共有メモリセグメントのような，それらのプロセスが共有するメモリ
 上に置かれていなければならない．\texttt{sem\_wait} と \texttt{sem\_post}
 がウェイトとポストの操作である．%
 \caution{セマフォに所有者はない．ウェイトしていないスレッドも含め，どの
-スレッドもポストできる．}\margin{Linux 2.6（glibc の NPTL）以降，POSIX
-セマフォは futex の上に構築されている．競合のない \texttt{sem\_wait} や
-\texttt{sem\_post} はユーザ空間での1回のアトミック命令である．}
+スレッドもポストできる．}
 
 \Needspace{5\baselineskip}
 \begin{example}
@@ -373,16 +373,16 @@ monitor BoundedBuffer {
 サポートしている．\margin{Mesa と Java では，起こされたスレッドは
 \texttt{while} ループで条件を再検査する．}すべてのオブジェクトが内部にロックを持ち，
 \texttt{synchronized} と宣言されたメソッドは，そのロックとアンロックを
-言語ランタイムが行うエントリ手続きである．ただし通知は \texttt{notify} と
-\texttt{notifyAll} の明示的な呼び出しのままである．\margin{HotSpot では
+言語ランタイムが行うエントリ手続きである．\margin{HotSpot では
 競合のない \texttt{synchronized} ブロックはオブジェクトヘッダへの1回の
-コンペアアンドスワップであり，競合すると OS のモニタへ昇格する．}
+コンペアアンドスワップであり，競合すると OS のモニタへ昇格する．}ただし通知は \texttt{notify} と
+\texttt{notifyAll} の明示的な呼び出しのままである．
 
-\emph{モニタ}という語はプログラミングのスタイルも指す．第3章のように，
+\emph{モニタ}という語はプログラミングのスタイルも指す．\margin{第3章の条件変数と同じく，ループの中で
+待つ規律である．モニタはミューテックスを隠すだけである．}第3章のように，
 ミューテックスと条件変数から組み立てた明示的な入口コードと出口コードで
 すべてのクリティカルセクションを構成することは，言語の支援なしにモニタの
-規律を適用することである．\margin{第3章の条件変数と同じく，ループの中で
-待つ規律である．モニタはミューテックスを隠すだけである．}
+規律を適用することである．
 
 \section{その他の同期機構}
 \label{sec:l10-other}
@@ -493,8 +493,8 @@ Linux カーネルは，この章の機構の大半を独自の名前で提供�
     \texttt{mutex\_unlock}: 所有者を持つ，ブロックするロック．
   \item RCU: 上で説明したもの．
 \end{itemize}
-その下では，型 \texttt{atomic\_t} が \texttt{atomic\_inc} や
-\texttt{atomic\_cmpxchg} のようなアトミックな整数操作を提供する．これらは
+その下では，型 \texttt{atomic\_t} が \texttt{atomic\_\allowbreak inc} や
+\texttt{atomic\_\allowbreak cmpxchg} のようなアトミックな整数操作を提供する．これらは
 \cref{sec:l10-hw}のアトミック命令の上に組み立てられている．スピンする
 ロックは短い間しか保持してはならず，その保持者は眠ってはならない．
 ブロックするロックは入出力のように眠る操作をまたいで保持できるが，獲得

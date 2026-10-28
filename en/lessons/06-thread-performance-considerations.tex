@@ -399,12 +399,12 @@ wait for the disk as well.
 Lesson~3 showed that on a single CPU, switching to another thread while a
 thread waits for I/O pays off when the idle time exceeds the cost of the two
 context switches, $t_{\mathrm{idle}} > 2\, t_{\mathrm{ctx}}$.\margin{Lesson~7
-revisits the CPU scheduler whose time-slicing this lesson counts as
-context-switch overhead.}  When there is
+revisits the CPU scheduler whose time-slicing is counted here as
+context-switch overhead; Lesson~2 gives the price: about
+\SI{3.8}{\micro\second} of direct work per switch, more than
+\SI{1000}{\micro\second} once the caches have to be refilled \cite{li2007}.}  When there is
 no idle time, context switches are pure overhead: they consume CPU cycles
-that could have processed requests.\margin{Lesson~2 gives the price: about
-\SI{3.8}{\micro\second} of direct work per switch, and more than
-\SI{1000}{\micro\second} once the caches have to be refilled \cite{li2007}.}
+that could have processed requests.
 The event-driven model obtains the benefit without the cost.  It processes a
 request until the request has to wait, then processes another request, and
 no context switch is involved.
@@ -420,15 +420,15 @@ introduced below.  For a socket or a pipe an event is the readiness of its
 descriptor for input or output; for a regular file, readiness says nothing
 about whether a read must wait for the disk, a limitation to which
 \cref{sec:l06-helpers} returns.  To find out which descriptors are ready,
-the dispatcher uses one of three system calls.
-\texttt{select} and \texttt{poll} receive the whole set of descriptors of
-interest on every call; the kernel checks all of them, and the application
-scans the result, although typically only a few are ready.  Their cost
-therefore grows with the number of open connections.\caution{\texttt{select}
+the dispatcher uses one of three system calls.\caution{\texttt{select}
 is capped as well: on Linux it handles only descriptors below
 \texttt{FD\_SETSIZE} = \num{1024}.  \texttt{poll} has no such limit, and
 the limit of \texttt{epoll} is \texttt{/proc/\allowbreak sys/\allowbreak fs/\allowbreak epoll/\allowbreak max\_user\_watches}
 (select(2), epoll(7)).}
+\texttt{select} and \texttt{poll} receive the whole set of descriptors of
+interest on every call; the kernel checks all of them, and the application
+scans the result, although typically only a few are ready.  Their cost
+therefore grows with the number of open connections.
 \texttt{epoll},
 available on Linux, eliminates most of this overhead: descriptors are
 registered once, and each call returns only those that are
@@ -789,7 +789,10 @@ varied systematically.  Flash was evaluated with two traces collected at
 web servers of Rice University: the \emph{CS trace} of the computer science
 department, with a large set of files, and the \emph{Owlnet trace} of a
 server hosting the personal pages of students, with a smaller set.  A
-synthetic workload repeatedly requested a single file whose size was varied.
+synthetic workload repeatedly requested a single file whose size was varied.\margin{The server machine was a
+    \SI{333}{\mega\hertz} Pentium~II with \SI{128}{\mega\byte} of memory and
+    several \SI[per-mode=symbol]{100}{\mega\bit\per\second} interfaces,
+    running Solaris~2.6 and FreeBSD~2.2.6 \cite{pai1999}.}
 
 \subsection{Metrics}
 
@@ -867,10 +870,7 @@ large data sets.}
   \item[Single file (best case)] With the synthetic workload every request
     is for the same file, which is always cached.  The bandwidth, $n$
     requests times the file size divided by the time, was measured for file
-    sizes up to \SI{200}{\kilo\byte}.\margin{The server machine was a
-    \SI{333}{\mega\hertz} Pentium~II with \SI{128}{\mega\byte} of memory and
-    several \SI[per-mode=symbol]{100}{\mega\bit\per\second} interfaces,
-    running Solaris~2.6 and FreeBSD~2.2.6 \cite{pai1999}.}  All servers show a similar trend.
+    sizes up to \SI{200}{\kilo\byte}.  All servers show a similar trend.
     SPED performs best.  Flash comes close, but it pays for the
     \texttt{mincore} test on every request, which here is never needed.
     On FreeBSD, Zeus shows an anomaly for files of 10--\SI{100}{\kilo\byte},

@@ -29,9 +29,7 @@
 プロセスは仮想アドレス空間を持ち，その範囲は物理メモリよりはるかに大きく
 なりうる．32 ビットの仮想アドレスでは，どのプロセスも \SI{4}{\gibi\byte}
 をアドレス指定でき，すべてのプロセスのアドレス空間を合わせれば，搭載されて
-いるメモリを容易に超える．\margin{Linux の x86-64 では，ユーザ空間は 48 ビット
-空間の下半分 \SI{128}{\tebi\byte} を得て，カーネルは上半分を使う
-（Documentation/arch/x86/x86\_64/mm.rst）．}
+いるメモリを容易に超える．
 
 \begin{definition}[仮想メモリ]
   オペレーティングシステムが，プロセスの仮想アドレス空間を物理メモリから
@@ -42,7 +40,9 @@
 \end{definition}
 
 プロセスは自分の状態のすべてを同時に必要とするわけではない．どの時点でも
-アドレス空間の一部しか使わない．したがってオペレーティングシステムは，
+アドレス空間の一部しか使わない．\margin{Linux の x86-64 では，ユーザ空間は 48 ビット
+空間の下半分 \SI{128}{\tebi\byte} を得て，カーネルは上半分を使う
+（Documentation/arch/x86/x86\_64/mm.rst）．}したがってオペレーティングシステムは，
 プロセスが次に必要とする状態を速やかに利用可能にできる限り，その部分だけを
 物理メモリに保持すればよい．ここから2つの仕事が生じる．
 \begin{description}
@@ -609,11 +609,7 @@ x86-64 では，既定のほかに2つの大きなページサイズが使える
 \term[らーじぺーじ]{ラージページ}[large page]は \SI{2}{\mebi\byte} の大きさを
 持ち，そのオフセットは 21 ビットである．オフセットが 30 ビットの
 \SI{1}{\gibi\byte} のページは\term[ひゅーじぺーじ]{ヒュージページ}[huge page]と
-呼ばれる．\cref{tab:l08-page-sizes}は3つの大きさを比較したものである．\caution{用語：
-講義は \SI{2}{\mebi\byte} のページを\emph{ラージ}，\SI{1}{\gibi\byte}
-のページを\emph{ヒュージ}と呼ぶ．Linux はどちらもヒュージページと呼ぶ
-（Transparent Huge Pages，
-\texttt{/sys/kernel/mm/transparent\_hugepage/}）．}
+呼ばれる．\cref{tab:l08-page-sizes}は3つの大きさを比較したものである．
 
 \begin{table}[htbp]
   \centering
@@ -632,7 +628,11 @@ x86-64 では，既定のほかに2つの大きなページサイズが使える
   \end{tabular}
 \end{table}
 
-大きなページには2つの利点がある．必要なページテーブルエントリが少ないので
+大きなページには2つの利点がある．\caution{用語：講義の\emph{ラージ}
+（\SI{2}{\mebi\byte}）と\emph{ヒュージ}（\SI{1}{\gibi\byte}）のページを，
+Linux はどちらもヒュージページと呼ぶ（Transparent Huge Pages，
+\texttt{/sys/\allowbreak kernel/\allowbreak mm/\allowbreak
+transparent\_\allowbreak hugepage/}）．}必要なページテーブルエントリが少ないので
 ページテーブルが小さくなり，TLB のエントリ1つがより多くのメモリを覆うので
 TLB ヒットとなるアクセスが増える．欠点はメモリの無駄である．
 
@@ -680,14 +680,14 @@ Silberschatz ら ch.~9--10．}ページテーブルがその対応付けを記�
     データ---のために，メモリ領域すなわちページを割り当てる．システム内の
     空きメモリの管理も行う．
   \item[ユーザレベルのアロケータ] \texttt{malloc} や \texttt{free} のような
-    呼び出しを通じて，プロセスの動的な状態であるヒープを管理する．カーネルが
-    プロセスにメモリの領域を与え，ユーザレベルのアロケータは，再びカーネルを
-    介することなくその領域を個々の割り当てに分ける．dlmalloc，jemalloc，
-    Hoard，tcmalloc などがその例である．\margin{glibc の \texttt{malloc} は
+    呼び出しを通じて，プロセスの動的な状態であるヒープを管理する．\margin{glibc の \texttt{malloc} は
     \texttt{brk} でヒープを伸ばすが，mmap しきい値を超える要求には専用の
     \texttt{mmap} を用いる．しきい値は初め \SI{128}{\kibi\byte} であり，
     \texttt{M\_MMAP\_THRESHOLD} が設定されていなければ，glibc はこれを
-    動的に引き上げる（64 ビットでは最大 \SI{32}{\mebi\byte}）．}
+    動的に引き上げる（64 ビットでは最大 \SI{32}{\mebi\byte}）．}カーネルが
+    プロセスにメモリの領域を与え，ユーザレベルのアロケータは，再びカーネルを
+    介することなくその領域を個々の割り当てに分ける．dlmalloc，jemalloc，
+    Hoard，tcmalloc などがその例である．
 \end{description}
 
 アロケータの主要な課題は，空きメモリの断片化である．
@@ -726,10 +726,11 @@ Silberschatz ら ch.~9--10．}ページテーブルがその対応付けを記�
 \section{Linux カーネルのアロケータ}
 \label{sec:l08-linux-allocators}
 
-Linux カーネルは2つのアロケータを組み合わせる．ページフレームのための
+Linux カーネルは2つのアロケータを組み合わせる．\source{P3L2，Linux
+カーネルのアロケータ；OSTEP ch.~17；Silberschatz ら ch.~10；Bovet と
+Cesati ch.~8；Bonwick \cite{bonwick1994}．}ページフレームのための
 バディアロケータと，その上に載るカーネルオブジェクトのためのスラブアロケータ
-である．\source{P3L2，Linux カーネルのアロケータ；OSTEP ch.~17；
-Silberschatz ら ch.~10；Bovet と Cesati ch.~8；Bonwick \cite{bonwick1994}．}
+である．
 
 \subsection{バディアロケータ}
 
@@ -795,13 +796,9 @@ Silberschatz ら ch.~10；Bovet と Cesati ch.~8；Bonwick \cite{bonwick1994}．
 与えるメモリの多くを無駄にしてしまう．そこで Linux カーネルは，自分の
 オブジェクトをスラブアロケータ \cite{bonwick1994} で割り当て
 る．\sidenote{Bonwick が最初のスラブアロケータを書いたのは Solaris~2.4 のた
-めである．Linux にはこの考えの実装が3つあり---SLAB，SLUB，
-小規模システム向けの SLOB---2.6.23 以降は SLUB が既定であ
-る．\texttt{/proc/slabinfo} が各キャッシュとそのオブジェクトの大きさを列挙す
-る．SLOB は Linux~6.4 で，SLAB は 6.8 で削除され，現在の実装は SLUB だけで
-ある．}\margin{カーネルの構造体は \texttt{kmem\_cache\_create} で自分の
-キャッシュを得る．\texttt{task\_struct}（第2章の PCB）も専用のキャッシュを
-持つ（\texttt{/proc/slabinfo}）．}
+めである．Linux にはこの考えの実装が3つあった---SLAB，SLUB，
+小規模システム向けの SLOB．2.6.23 以降の既定である SLUB は，SLOB が
+Linux~6.4 で，SLAB が 6.8 で削除された現在，唯一の実装である．}
 
 \begin{definition}[スラブアロケータ]
   \term[すらぶあろけーた]{スラブアロケータ}[slab allocator]は，よく使われる
@@ -829,7 +826,11 @@ Silberschatz ら ch.~10；Bovet と Cesati ch.~8；Bonwick \cite{bonwick1994}．
 \end{figure}
 
 \begin{example}
-  あるカーネルオブジェクトが 1200 バイトを占めるとする．バディアロケータから
+  あるカーネルオブジェクトが 1200 バイトを占めるとする．\margin{カーネルの
+  構造体は \texttt{kmem\_cache\_create} で自分のキャッシュを得る．
+  \texttt{task\_struct}（第2章の PCB）も専用のキャッシュを持つ．
+  \texttt{/proc/slabinfo} が各キャッシュとそのオブジェクトの大きさを列挙
+  する．}バディアロケータから
   個別に割り当てると，各オブジェクトは少なくとも \SI{4}{\kibi\byte} の 1
   ページを受け取り，2896 バイトを無駄にする．1 ページのスラブはこのような
   オブジェクトを $\lfloor 4096/1200 \rfloor = 3$ 個保持し，
@@ -926,9 +927,9 @@ OSTEP ch.~22；Silberschatz ら ch.~10；Bovet と Cesati ch.~17．}スワップ
 ページをスワップアウトするのは
 \term[ぺーじあうとでーもん]{ページアウトデーモン}[page-out daemon]である．
 これは，メモリの使用量がしきい値である\emph{高水位}を超えたときに走るカーネル
-スレッドである．\margin{Linux のページアウトデーモンはカーネルスレッド
-\texttt{kswapd} である．水位は \texttt{/proc/zoneinfo} に，スワップデバイス
-は \texttt{/proc/swaps} に示される．}アプリケーションをできるだけ妨げないよう，CPU の使用率が
+スレッドである．\caution{用語が異なる．講義の高水位はメモリ使用量，低水位は
+CPU 使用率のしきい値である．Linux の min/low/high の水位はすべて空きメモリ
+のしきい値である（low を下回ると回収が始まり，high を上回ると止まる）．}アプリケーションをできるだけ妨げないよう，CPU の使用率が
 しきい値である\emph{低水位}を下回っている間に走ることが望ましい．
 
 理想的な犠牲ページは，将来使われないページである．将来は分からないので，オペレー
@@ -947,10 +948,9 @@ OSTEP ch.~22；Silberschatz ら ch.~10；Bovet と Cesati ch.~17．}スワップ
     ならないページは決して選ばれない．
 \end{itemize}
 Linux は，回収が始まり，また止まるタイミングを調整するパラメータを
-備え，\caution{用語が異なる．講義では高水位はメモリ使用量の
-しきい値，低水位は CPU 使用率のしきい値である．Linux の min/low/high の水位
-はいずれも空きメモリに対するしきい値である（low を下回ると回収が始まり，
-high を上回ると止まる）．}ページを回収
+備え，\margin{Linux のページアウトデーモンはカーネルスレッド
+\texttt{kswapd} である．水位は \texttt{/proc/zoneinfo} に，スワップデバイス
+は \texttt{/proc/swaps} に示される．}ページを回収
 可能なページやスワップ可能なページといった種類に分類し，ページに二度目の
 機会を与える LRU の変種を用いる．
 
@@ -1012,9 +1012,7 @@ OSTEP ch.~23；Silberschatz ら ch.~10．}その1つは，プロセスが生成�
 不要なコピーを避ける．
 
 \texttt{fork}\index{fork@\texttt{fork}} で生成されたプロセスは，親のアドレス
-空間全体のコピーを受け取る（第2章）．\margin{書き込まれる私的な領域の
-ページテーブルは，それでもコピーされる．\SI{4}{\kibi\byte} のページで \SI{1}{\gibi\byte} なら
-8 バイトのエントリ $2^{18}$ 個，\SI{2}{\mebi\byte} である．}そのページの多くは，
+空間全体のコピーを受け取る（第2章）．そのページの多くは，
 コードのように静的
 で決して変わらず，しかも子はしばしば生成の直後に \texttt{exec} を呼ぶので，
 コピーの大半は無駄になってしまう．
@@ -1030,7 +1028,9 @@ OSTEP ch.~23；Silberschatz ら ch.~10．}その1つは，プロセスが生成�
 \end{definition}
 
 両方のプロセスが共有ページを読むだけである限り，メモリも，コピーの時間も
-費やされない．どちらかがページに書き込むと，保護フォールトによってオペレー
+費やされない．\margin{書き込まれる私的な領域の
+ページテーブルは，それでもコピーされる．\SI{4}{\kibi\byte} のページで \SI{1}{\gibi\byte} なら
+8 バイトのエントリ $2^{18}$ 個，\SI{2}{\mebi\byte} である．}どちらかがページに書き込むと，保護フォールトによってオペレー
 ティングシステムはそれが COW ページであることを認識する．そしてこの1ページ
 だけを新しいページフレームへコピーし，書き込んだプロセスのページを書き込み
 許可付きでそのコピーに対応付け，書き込みをやり直させる（\cref{fig:l08-cow}）．

@@ -113,14 +113,14 @@ creator and the children that inherit them through \texttt{fork}, can use
 it.  A \term{named pipe}[名前付きパイプ], or FIFO, created with
 \texttt{mkfifo(path, mode)}, has a name in the file system, through which
 unrelated processes open it with \texttt{open} like a file; the data still
-pass through a kernel buffer and never reach the disk.\tip{\texttt{ls -l
-/proc/self/fd | cat} shows the pipe that connects the two commands as file
-descriptor~1 of \texttt{ls}: \texttt{1 -> pipe:[\ldots]}.}
+pass through a kernel buffer and never reach the disk.
 
 \begin{definition}[Message queue]
   A \term{message queue}[メッセージキュー] is a channel that carries
   discrete messages among processes: a sender submits a properly formatted
-  message, and a receiver obtains complete messages.
+  message, and a receiver obtains complete messages.\tip{\texttt{ls -l
+/proc/self/fd | cat} shows the pipe that connects the two commands as file
+descriptor~1 of \texttt{ls}: \texttt{1 -> pipe:[\ldots]}.}
 \end{definition}
 
 Because the kernel knows where messages begin and end, it can manage them,
@@ -147,6 +147,7 @@ descriptor.
     message buffer, \texttt{n} its length, \texttt{flg} the flags.}
   \label{tab:l09-mq-api}
   \small
+  \setlength{\tabcolsep}{4pt}%
   \begin{tabular}{@{}lll@{}}
     \toprule
     Operation & System~V & POSIX \\
@@ -195,6 +196,7 @@ the three forms.
   \caption{The three forms of message passing.}
   \label{tab:l09-forms}
   \small
+  \setlength{\tabcolsep}{4pt}%
   \begin{tabular}{@{}llll@{}}
     \toprule
     & Pipe & Message queue & Socket \\
@@ -218,9 +220,8 @@ processes: page-table entries of every participating process point to the
 same page frames (\cref{fig:l09-shm-mapping}).  As with any paged mapping
 (Lesson~8), the virtual addresses at which the processes see the region
 need not be the same, and the physical frames need not be
-contiguous.\margin{Mapping moves no data, only page-table entries
-(Lesson~8); one \SI{2}{\mega\byte} huge page covers 512 base pages with a
-single entry (\texttt{SHM\_HUGETLB}).}
+contiguous.\caution{A pointer that one process stores in the region is not valid in
+the other, since $\mathit{VA}_1 \neq \mathit{VA}_2$.}
 
 \begin{figure}[htbp]
   \centering
@@ -232,12 +233,11 @@ single entry (\texttt{SHM\_HUGETLB}).}
   \label{fig:l09-shm-mapping}
 \end{figure}
 
-\caution{A pointer that one process stores in the region is not valid in
-the other, since $\mathit{VA}_1 \neq \mathit{VA}_2$.}
-
 Once the mapping exists, the operating system is out of the way: reads and
 writes are ordinary memory accesses, and system calls are needed only for
-the setup.  Data copies are potentially reduced, but not eliminated.  Data
+the setup.  Data copies are potentially reduced, but not eliminated.\margin{Mapping moves no data, only page-table entries
+(Lesson~8); one \SI{2}{\mega\byte} huge page covers 512 base pages with a
+single entry (\texttt{SHM\_HUGETLB}).}  Data
 that a process creates in the shared region are immediately visible to the
 others, whereas data that already exist elsewhere in its address space must
 still be copied into the region.
@@ -250,10 +250,10 @@ available, how the space in the region is managed---is the programmer's
 responsibility (\cref{sec:l09-design}).  Unix and Linux support shared
 memory through System~V shared memory (\cref{sec:l09-sysv}), POSIX shared
 memory (\cref{sec:l09-posix}) and memory-mapped files; Android adds its own
-facility, ashmem.\sidenote{A region of ashmem can be \emph{unpinned}: its
-contents are then expendable, and under memory pressure the kernel may
-reclaim the region; a later pin reports whether it was purged.
-Android is moving these uses to \texttt{memfd\_create}.}
+facility, ashmem.\sidenote{An ashmem region can be \emph{unpinned}: under
+memory pressure the kernel may then reclaim its expendable contents, and a
+later pin reports whether they were purged.  Android is moving these uses
+to \texttt{memfd\_create}.}
 
 \section{Copy versus map}
 \label{sec:l09-copy-map}
@@ -324,11 +324,11 @@ single transfer already pays for the mapping.}
 Windows exploits this trade-off in its facility for communication between
 processes on the same machine, the
 \term{local procedure call}[ローカル手続き呼び出し]
-(LPC).\index{LPC|see{local procedure call}}\margin{Current Windows
-versions implement this as ALPC (Silberschatz et al.\ ch.~3).}  Small
+(LPC).\index{LPC|see{local procedure call}}  Small
 messages are copied through a port; for larger data, a shared memory region is
 mapped into both
-processes, and the data are exchanged through it.
+processes, and the data are exchanged through it.\margin{Current Windows
+versions implement this as ALPC (Silberschatz et al.\ ch.~3).}
 
 \begin{keypoint}
   Message passing is simple---the kernel manages the channel and
@@ -343,10 +343,10 @@ processes, and the data are exchanged through it.
 \label{sec:l09-sysv}
 
 \term[System V IPC]{System~V IPC}[System V IPC], one of the oldest Unix
-IPC interfaces,\source{P3L3, SysV shared memory, SysV shared memory API;
-Kerrisk ch.~45, 48.} comprises message queues, semaphore sets and shared
+IPC interfaces, comprises message queues, semaphore sets and shared
 memory, each object identified by a key; it organizes shared memory in
-segments.
+segments.\source{P3L3, SysV shared memory, SysV shared memory API;
+Kerrisk ch.~45, 48.}
 
 \begin{definition}[Shared memory segment]
   A \term{shared memory segment}[共有メモリセグメント] is a region of
@@ -377,7 +377,9 @@ Its life cycle consists of four operations (\cref{fig:l09-sysv-lifecycle}).
     longer valid.  The segment itself remains.
   \item[Destroy] Only an explicit request removes a segment.  Until then it
     persists, even when no process has it attached, and it may be attached
-    and detached many times.
+    and detached many times.\caution{\texttt{ipcs -m} marks a segment
+removed while still attached with status \texttt{dest}; it disappears when
+\texttt{nattch} drops to~0.}
 \end{description}
 
 \begin{figure}[htbp]
@@ -394,9 +396,7 @@ A segment therefore behaves like a file rather than like the private memory
 of a process: a process that exits is detached from its segments, but the
 segments remain until they are destroyed or the system
 reboots.\caution{A segment that no process destroys occupies memory until
-reboot (\cref{sec:l09-tools}).}\caution{\texttt{ipcs -m} marks a segment
-removed while still attached with status \texttt{dest}; it disappears when
-\texttt{nattch} drops to~0.}
+reboot (\cref{sec:l09-tools}).}
 
 \subsection{The System V API}
 
@@ -473,15 +473,15 @@ mapping files into memory.
   contents are mapped into the virtual address space of a process, so that
   the process accesses the file by reading and writing memory.  Processes
   that map the same file as shared map the same physical pages and see each
-  other's changes.
+  other's changes.\margin{The objects
+appear under \texttt{/dev/shm}, where Linux mounts this tmpfs;
+\texttt{df /dev/shm} shows its size limit, by default half the RAM
+(\texttt{shm\_overview(7)}, \texttt{tmpfs(5)}).}
 \end{definition}
 
 A memory-mapped file on an ordinary file system is itself an IPC mechanism
 whose data also persist in the file; POSIX shared memory applies the same
-mechanism to an object that exists only in memory.\margin{The objects
-appear under \texttt{/dev/shm}, where Linux mounts this tmpfs;
-\texttt{df /dev/shm} shows its size limit, by default half the RAM
-(\texttt{shm\_overview(7)}, \texttt{tmpfs(5)}).}  Its operations correspond
+mechanism to an object that exists only in memory.  Its operations correspond
 to those of System~V (\cref{tab:l09-shm-api}).
 \texttt{shm\_open(name, flags, mode)} creates or opens the shared memory
 object and returns a file descriptor for it, and \texttt{ftruncate} sets
@@ -490,12 +490,12 @@ other; on glibc before 2.34, link with \texttt{-lrt}
 (\texttt{shm\_open(3)}).}
 \texttt{mmap} with the flag \texttt{MAP\_SHARED} attaches the
 object and returns its virtual address; \texttt{munmap} detaches
-it.\caution{With \texttt{MAP\_PRIVATE} the mapping is copy-on-write instead:
-the first write gives the process a private page and nothing is shared
-(\texttt{mmap(2)}).}
+it.
 \texttt{close} releases the file descriptor without affecting an
 established mapping, and \texttt{shm\_unlink(name)} removes the name; the
-object is destroyed once no process has it open or mapped.
+object is destroyed once no process has it open or mapped.\caution{With \texttt{MAP\_PRIVATE} the mapping is copy-on-write instead:
+the first write gives the process a private page and nothing is shared
+(\texttt{mmap(2)}).}
 
 \begin{table}[htbp]
   \centering
@@ -536,9 +536,9 @@ the other to announce, as with a condition variable.
 
 The Pthreads mutexes and condition variables of Lesson~4 can synchronize
 processes under two conditions.  First, both attribute objects with which
-they are initialized, \texttt{pthread\_mutexattr\_t} and
-\texttt{pthread\_condattr\_t}, must have the \term{process-shared
-attribute}[プロセス共有属性] set to \texttt{PTHREAD\_PROCESS\_SHARED}; by
+they are initialized, \texttt{pthread\_\allowbreak mutexattr\_t} and
+\texttt{pthread\_\allowbreak condattr\_t}, must have the \term{process-shared
+attribute}[プロセス共有属性] set to \texttt{PTHREAD\_\allowbreak PROCESS\_\allowbreak SHARED}; by
 default only the threads of the creating process may use them.  Second, the
 mutex and the condition variable themselves must reside in the shared
 region, so that all processes operate on the same data structures.
@@ -671,11 +671,11 @@ by key (\texttt{ipcs(1)}, \texttt{ipcrm(1)}).}
 \label{sec:l09-design}
 
 The operating system provides shared memory and then stays out of the
-way.\source{P3L3, shared memory design considerations, how many segments,
-design considerations.}  The choice of synchronization mechanism, the format
+way.  The choice of synchronization mechanism, the format
 of the data and the protocol for passing them are left to the application.
 This flexibility makes the programmer responsible for two design decisions
-in particular.
+in particular.\source{P3L3, shared memory design considerations, how many segments,
+design considerations.}
 
 \subsection{How many segments?}
 
@@ -686,11 +686,11 @@ Processes that communicate over shared memory can organize it in two ways
     application then needs a memory manager that allocates portions of the
     segment to individual exchanges and frees them afterwards.
   \item[Many small segments] Each pair of communicating processes uses a
-    segment of its own.  Because creating segments is costly and their
-    number is limited, a pool of segments is created in advance, and the
-    identifiers of the free ones are kept in a queue.\margin{Allocating a
+    segment of its own.\margin{Allocating a
     pool in advance and handing out its entries is the argument of the
-    boss-workers thread pool of Lesson~3, applied to segments.}  A process
+    boss-workers thread pool of Lesson~3, applied to segments.}  Because creating segments is costly and their
+    number is limited, a pool of segments is created in advance, and the
+    identifiers of the free ones are kept in a queue.  A process
     takes a segment from the pool and tells its peer the identifier through
     another mechanism, such as a message queue; after the exchange the
     segment returns to the pool.\caution{A pool of segments is bounded by

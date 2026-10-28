@@ -151,19 +151,21 @@ decides how the operations are applied.
 \end{definition}
 
 Memory management shows how the three elements work together
-(\cref{tab:l01-elements}).  The abstraction is the memory page, a
-fixed-size block of memory.\margin{On x86-64 a page is \SI{4}{\kibi\byte} by
+(\cref{tab:l01-elements}).\margin{On x86-64 a page is \SI{4}{\kibi\byte} by
 default; huge pages of \SI{2}{\mebi\byte} and \SI{1}{\gibi\byte} also exist.
-Lesson~8.}  The mechanisms allocate a page and map it into
+Lesson~8.}  The abstraction is the memory page, a
+fixed-size block of memory.  The mechanisms allocate a page and map it into
 the address space of a process, so that the process can use it.  Physical
 memory (DRAM) is usually smaller than the total demand of all processes,
 so the operating system also moves some pages to disk and brings them back
 when they are accessed again.  The policy decides which pages to
-move:\tip{To tell a policy from a mechanism, ask whether it could be
-replaced without changing the code that does the work: LRU could give way
-to LFU; moving a page to disk is that code.} with
+move: with
 LRU, the pages that have not been accessed for the longest time, on the
-assumption that they are the least likely to be needed soon.
+assumption that they are the least likely to be needed soon.\tip{To tell a
+policy from a mechanism, ask whether it could be replaced without changing
+the code that does the work: LRU could give way to LFU; moving a page to
+disk is that code.}
+
 
 \begin{table}[htbp]
   \centering
@@ -253,16 +255,12 @@ Computer platforms therefore distinguish at least two modes of execution.
 
 The part of the operating system that executes in kernel mode is its
 \term{kernel}[カーネル]; applications execute in user
-mode.\margin{ARM calls its modes exception levels EL0--EL3; RISC-V has
-user, supervisor and machine modes (Arm Architecture Reference Manual;
-RISC-V Privileged Specification).}  The
+mode.  The
 distinction between the two modes is supported by the hardware.  The CPU
 contains a \term{mode bit}[モードビット] that records the current mode, and
 an instruction that directly manipulates hardware---a
 \term{privileged instruction}[特権命令]---is executed only if the mode bit
-indicates kernel mode.\margin{x86 processors provide four privilege
-levels, the protection rings of Lesson~12; operating systems use at least
-two of them.}  An attempt to execute a privileged instruction in user mode
+indicates kernel mode.  An attempt to execute a privileged instruction in user mode
 does not take effect but causes a trap.
 
 \begin{definition}[Trap]
@@ -270,20 +268,25 @@ does not take effect but causes a trap.
   application to the operating system, performed by the hardware: the
   application is interrupted, the CPU switches to kernel mode, and
   execution continues at a location in the kernel that the operating
-  system has registered in advance.
+  system has registered in advance.\margin{x86 processors provide four
+  privilege levels, the protection rings of Lesson~12, and operating
+  systems use at least two of them; ARM calls its modes exception levels
+  EL0--EL3; RISC-V has user, supervisor and machine modes (Arm
+  Architecture Reference Manual; RISC-V Privileged Specification).}
 \end{definition}
 
 A trap is synchronous: it is caused by the instruction that is
-executing.\caution{A trap is not an error: every system call is a
-deliberate trap; only an illegal instruction or memory access leads to
-termination.}  An interrupt, by contrast, is raised by a device
+executing.  An interrupt, by contrast, is raised by a device
 independently of the running instruction; both transfer control through a
 table of handler addresses that the operating system registers in advance.
 
 After a trap caused by a privileged instruction or by an access to memory
 that requires privileges, the operating system determines what caused the
 trap and whether the access should be granted; if the application attempted
-something illegal, the operating system may terminate it.  Applications
+something illegal, the operating system may terminate it.\caution{A trap
+is not an error: every system call is a deliberate trap; only an illegal
+instruction or memory access leads to termination.}  Applications
+
 and the operating system interact in three ways (\cref{fig:l01-user-kernel}):
 \begin{description}
   \item[Traps] transfer control to the operating system when an
@@ -511,7 +514,8 @@ Historically, operating systems were monolithic.  In a
 \term{monolithic operating system}[モノリシックOS] every service that any
 application may require and that any type of hardware may demand is part
 of the operating system: memory management, device drivers, file
-management, processes and threads, scheduling.  Such a system may even
+management, processes and threads, scheduling.\margin{Silberschatz et al.\
+describe Linux as a monolithic kernel with loadable modules.}  Such a system may even
 include several file systems, one specialized for sequential access and
 another optimized for random access, as used by databases.  Because all
 of this code is compiled together, the compiler can optimize across the
@@ -538,8 +542,8 @@ passed \num{40} million lines, comments and blank lines included, in
 January 2025 (Phoronix); a running kernel loads only a small part.}  The
 indirection through the module interface can cost some performance,
 although usually not much, and modules may come from entirely different
-code bases, which makes them a source of bugs.\margin{Silberschatz et al.\
-describe Linux as a monolithic kernel with loadable modules.}
+code bases, which makes them a source of bugs.
+
 
 \subsection{Microkernels}
 

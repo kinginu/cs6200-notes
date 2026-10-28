@@ -260,12 +260,12 @@ hardware was idle.\source{P4L4, cloud computing poster child: Animoto, cloud
 computing requirements; Armbrust et al.\ \cite{armbrust2009}.}  Amazon
 opened access to it through web-based APIs, so that third parties could run
 their own workloads on Amazon's hardware for a fee.  The result was Amazon
-Web Services (AWS).\caution{The story is disputed: Werner Vogels, Amazon's
-CTO, has publicly called the excess-capacity story a myth; AWS grew out of
-the shared infrastructure Amazon had built for its own teams.}  Its Elastic Compute Cloud (EC2), launched in 2006, rents
+Web Services (AWS).  Its Elastic Compute Cloud (EC2), launched in 2006, rents
 out \emph{compute instances}: virtual machines (Lesson~12) that customers
 start and stop through the API and that were paid for by the hour at the
-time (per second, with a \SI{60}{\second} minimum, since 2017).
+time (per second, with a \SI{60}{\second} minimum, since 2017).\caution{The story is disputed: Werner Vogels, Amazon's
+CTO, has publicly called the excess-capacity story a myth; AWS grew out of
+the shared infrastructure Amazon had built for its own teams.}
 
 Animoto, a service that produces videos from users' photographs, rented its
 compute instances from EC2.  In April 2008 Animoto became available to the
@@ -319,16 +319,13 @@ Ideally, the capacity of a service would instead follow its demand
 \begin{definition}[Elasticity]
   The ability of a system to acquire and release resources quickly and
   automatically as its demand rises and falls, so that its capacity follows
-  the demand, is called \term{elasticity}[伸縮性].\caution{Elasticity is not
-  scalability: a scalable system can grow; an elastic one also shrinks
-  again, automatically.}
+  the demand, is called \term{elasticity}[伸縮性].
 \end{definition}
 
 The price of this ideal is that a service no longer owns the resources on
-which it runs, and its data reside on machines that others operate.\caution{%
-Renting capacity does not remove the provisioning decision; it only shortens
-its horizon.  How many instances to run must still be decided, now every few
-minutes rather than every few years.}
+which it runs, and its data reside on machines that others operate.\caution{Elasticity is not
+scalability: a scalable system can grow; an elastic one also shrinks
+again, automatically.}
 
 \begin{example}
   The demand of a service is 20 servers during 16 hours of every day and 100
@@ -342,7 +339,10 @@ minutes rather than every few years.}
   peak it drops $53/100 = \SI{53}{\percent}$ of the requests.  With elastic
   capacity rented at a \SI{50}{\percent} higher price, $1.5c$ per
   server-hour, the service pays $1120 \times 1.5c = 1680c$ per day,
-  \SI{30}{\percent} less than with peak provisioning, and drops no requests.
+  \SI{30}{\percent} less than with peak provisioning, and drops no requests.\caution{%
+Renting capacity does not remove the provisioning decision; it only shortens
+its horizon.  How many instances to run must still be decided, now every few
+minutes rather than every few years.}
 \end{example}
 
 \section{Cloud computing}
@@ -515,9 +515,7 @@ describe who uses a cloud.
 \end{description}
 
 The \emph{service models} describe how much of the stack of hardware and
-software the provider manages (\cref{fig:l16-service-models}).\margin{NIST
-SP 800-145 \cite{mell2011} lists exactly three service models (IaaS, PaaS,
-SaaS) and four deployment models (public, private, community, hybrid).}  In an
+software the provider manages (\cref{fig:l16-service-models}).  In an
 on-premises installation the organization manages the entire stack itself,
 from the network, storage and servers through virtualization, the operating
 system, middleware and runtime to its data and applications.
@@ -547,7 +545,9 @@ deploys and runs the applications.  Google App Engine is an example.
 With
 \term{software as a service}[SaaS]\index{SaaS|see{software as a service}}
 (SaaS) the provider manages the entire stack, the application included, and
-customers merely use the application, as the users of Gmail do.
+customers merely use the application, as the users of Gmail do.\margin{NIST
+SP 800-145 \cite{mell2011} lists exactly three service models (IaaS, PaaS,
+SaaS) and four deployment models (public, private, community, hybrid).}
 
 \begin{example}
   The operator of the three-tier online shop of \cref{sec:l16-services} can

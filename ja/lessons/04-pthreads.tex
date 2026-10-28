@@ -105,7 +105,9 @@ int pthread_join(pthread_t thread, void **status);
 \end{lstlisting}
 
 \texttt{pthread\_create} は Birrell の \texttt{Fork(proc, args)} に対応
-する．生成された新しいスレッドは \texttt{start\_routine(arg)} の実行から
+する．\margin{生成とジョインの往復は，
+現在の x86-64 Linux では \SI{10}{\micro\second} 程度である．スレッド
+プール（第3章）はこれをワーカーごとに一度だけ払う．}生成された新しいスレッドは \texttt{start\_routine(arg)} の実行から
 始まり，そのスレッドの識別子は \texttt{*thread} に格納される．スタート
 ルーチンは \texttt{void~*} を受け取って \texttt{void~*} を返すので，任意の
 型のデータへのポインタをスレッドに渡せる．複数の引数は構造体にまとめ，その
@@ -121,9 +123,7 @@ Birrell の \texttt{Fork} にはなく，これについては後述する．こ
 返した値，あるいは \texttt{pthread\_exit} に渡した値は，\texttt{*status}
 に格納される．結果を必要としない呼び出し元はここに \texttt{NULL} を渡す．
 \texttt{pthread\_create} と同様に，\texttt{pthread\_join} も成功したときは
-0 を，失敗したときはエラー番号を返す．\margin{生成とジョインの往復は，
-現在の x86-64 Linux では \SI{10}{\micro\second} 程度である．スレッド
-プール（第3章）はこれをワーカーごとに一度だけ払う．}\caution{同じ
+0 を，失敗したときはエラー番号を返す．\caution{同じ
 スレッドを2回ジョインすること，およびデタッチされたスレッドをジョインする
 ことは，POSIX では単なるエラーの戻り値ではなく未定義動作である
 （POSIX.1）．}
@@ -153,16 +153,15 @@ int pthread_attr_destroy(pthread_attr_t *attr);
 int pthread_attr_setxxx(pthread_attr_t *attr, ...);
 int pthread_attr_getxxx(const pthread_attr_t *attr, ...);
 \end{lstlisting}
-\texttt{pthread\_attr\_init} はオブジェクトを既定値で埋める．この関数は，
-オブジェクトに他の関数を適用する前に呼ばなければならず，
-\texttt{pthread\_attr\_destroy} がそれを解放する．オブジェクトが参照される
-のは \texttt{pthread\_create} の実行中だけなので，スレッドが生成された後は
-すぐに破棄してよく，別のスレッドのために再利用してもよい．%
-\margin{\texttt{SCHED\_OTHER} は第7章の公平スケジューラである（CFS．
+\texttt{pthread\_attr\_init} はオブジェクトを既定値で埋める．\margin{\texttt{SCHED\_OTHER} は第7章の公平スケジューラである（CFS．
 Linux~6.6 で EEVDF に置き換えられた）．\texttt{SCHED\_FIFO} と
 \texttt{SCHED\_RR} はリアルタイムであり，優先度は 1--99 である．クォンタム
 を持つのは \texttt{SCHED\_RR} だけで，既定値は \SI{100}{\milli\second}
-である（\texttt{sched\_rr\_get\_interval(2)}）．}
+である（\texttt{sched\_rr\_get\_interval(2)}）．}この関数は，
+オブジェクトに他の関数を適用する前に呼ばなければならず，
+\texttt{pthread\_attr\_destroy} がそれを解放する．オブジェクトが参照される
+のは \texttt{pthread\_create} の実行中だけなので，スレッドが生成された後は
+すぐに破棄してよく，別のスレッドのために再利用してもよい．
 \cref{tab:l04-attributes} は，この講義で重要になる属性を挙げたものである．
 スコープ属性は，第3章のシステムスコープとプロセススコープのどちらかを選ぶ．
 \texttt{PTHREAD\_SCOPE\_SYSTEM} ではスレッドはシステム内のすべての
@@ -314,27 +313,26 @@ PThreads プログラムのコンパイル；OSTEP ch.~27．}
   \item \textbf{ヘッダ．}Pthreads を使うソースファイルはすべて
     \texttt{<pthread.h>} をインクルードする．このヘッダが型，定数，関数を
     宣言する．
-  \item \textbf{コンパイラのフラグ．}プログラムは \texttt{-pthread} または
-    \texttt{-lpthread} を付けてコンパイル・リンクする．%
-    \margin{GNU/Linux では \texttt{-pthread} は \texttt{\_REENTRANT} も
+  \item \textbf{コンパイラのフラグ．}\margin{GNU/Linux では \texttt{-pthread} は \texttt{\_REENTRANT} も
     定義する．glibc~2.34 以降，Pthreads の関数は \texttt{libc} の一部で
-    ある．}
+    ある．}プログラムは \texttt{-pthread} または
+    \texttt{-lpthread} を付けてコンパイル・リンクする．%
 \begin{lstlisting}[numbers=none]
 gcc -o main main.c -pthread
 gcc -o main main.c -lpthread
 \end{lstlisting}
-    \texttt{-lpthread} は Pthreads ライブラリをリンクするだけだが，
-    \mbox{\texttt{-pthread}} はマルチスレッドのコードのためにプラット
-    フォームが必要とするプリプロセッサ定義も設定する．より移植性が高いのは
-    後者である．\margin{後で用いる競合検出器 \texttt{-fsanitize=thread} は
+    \texttt{-lpthread} は Pthreads ライブラリをリンクするだけだが，\margin{後で用いる競合検出器 \texttt{-fsanitize=thread} は
     リンク時にも指定しなければならず，さもなければリンクが未定義の
     \texttt{\_\_tsan} シンボルで失敗する．\texttt{-g} を付けると報告に
     ソースの行が加わる．}
+    \mbox{\texttt{-pthread}} はマルチスレッドのコードのためにプラット
+    フォームが必要とするプリプロセッサ定義も設定する．より移植性が高いのは
+    後者である．
   \item \textbf{戻り値の検査．}Pthreads の関数は，\texttt{errno} ではなく
-    戻り値で失敗を報告する．\caution{Pthreads は，他の
-    \texttt{posix\_*} 関数と同様に，$-1$ を返して \texttt{errno} を設定する
-    というシステムコールの慣習から外れている．\texttt{errno} が確実に設定
-    されるわけではないので，\texttt{perror} は無関係な値を表示しうる．}成功なら 0，そうでなければエラー番号である．
+    戻り値で失敗を報告する．\caution{Pthreads は他の
+    \texttt{posix\_*} 関数と同様，システムコールの慣習（$-1$ を返し
+    \texttt{errno} を設定）に従わない．\texttt{errno} は当てにならず，
+    \texttt{perror} は無関係な値を表示しうる．}成功なら 0，そうでなければエラー番号である．
     処理を続けられない呼び出し元は，例えば \texttt{strerror} でその番号を
     報告して終了する．\texttt{pthread\_create} の結果を無視するプログラム
     は，後になって，生成されなかったスレッドを，設定されなかった識別子を
@@ -474,9 +472,9 @@ for (i = 0; i < NUM_THREADS; i++) {
 各ワーカーは今度は \texttt{t\_num} の自分の要素を読む．その値はスレッドの
 生成前に設定され，その後は決して変化しない（\cref{fig:l04-args} 右）．
 すべての番号がちょうど一度ずつ表示される．ただし行の\emph{順序}は依然として
-決まらない．それはスレッドがどうスケジュールされるかに依存し，3行のどの
-並びも起こりうる．\margin{3行の並び方は $3! = 6$ 通りあり，ある実行で順に
-表示されても残りの5通りについては何も言えない．}配列は \texttt{main} のスタックフレームにあり，
+決まらない．\margin{3行の並び方は $3! = 6$ 通りあり，ある実行で順に
+表示されても残りの5通りについては何も言えない．}それはスレッドがどうスケジュールされるかに依存し，3行のどの
+並びも起こりうる．配列は \texttt{main} のスタックフレームにあり，
 \texttt{main} はすべてのスレッドをジョインするまで return しないので，
 スレッドがそれを使っている間このメモリは有効なままである．\caution{スレッド
 がデータを読む前に return しうる関数の局所変数のアドレスを，スレッドに
@@ -558,14 +556,13 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex);
 \end{lstlisting}
 \begin{description}
   \item[\texttt{pthread\_mutex\_init}] は，最初に使う前にミューテックスを
-    初期化する．その属性オブジェクトは \texttt{pthread\_mutexattr\_t} 型で
-    あり，例えばプロセス間で共有してよいかどうか（第9章）といった
-    ミューテックスの振る舞いを指定する．\texttt{NULL} は既定値を選ぶ．%
-    \margin{型も属性である．既定の型のミューテックスを再びロックすることは
+    初期化する．\margin{型も属性である．既定の型のミューテックスを再びロックすることは
     POSIX では未定義である（glibc はこれを \texttt{NORMAL} に対応付けるので
     デッドロックする．第3章）．\texttt{PTHREAD\_MUTEX\_ERRORCHECK} は
     \texttt{EDEADLK} を返し，\texttt{PTHREAD\_MUTEX\_RECURSIVE} は回数を
-    数える．}
+    数える．}その属性オブジェクトは \texttt{pthread\_mutexattr\_t} 型で
+    あり，例えばプロセス間で共有してよいかどうか（第9章）といった
+    ミューテックスの振る舞いを指定する．\texttt{NULL} は既定値を選ぶ．%
     既定の属性を持つミューテックスは，\cref{ex:l04-safe-insert} のように，
     マクロ \texttt{PTHREAD\_MUTEX\_INITIALIZER} を使って静的に初期化する
     こともできる．
@@ -631,7 +628,9 @@ int pthread_cond_wait(pthread_cond_t *cond,
 int pthread_cond_signal(pthread_cond_t *cond);
 int pthread_cond_broadcast(pthread_cond_t *cond);
 \end{lstlisting}
-意味は第3章のとおりである．\texttt{pthread\_cond\_wait} は \texttt{mutex}
+意味は第3章のとおりである．\margin{\texttt{pthread\_cond\_timedwait} は相対的なタイムアウトではなく
+絶対時刻の期限を取る．時計は既定で \texttt{CLOCK\_REALTIME} である
+（\texttt{pthread\_condattr\_setclock}）（POSIX.1）．}\texttt{pthread\_cond\_wait} は \texttt{mutex}
 を保持した状態で呼び出す．この関数はミューテックスをアトミックに解放して
 呼び出したスレッドを \texttt{cond} の待ちキューに入れ，スレッドが起こされる
 と，戻る前にミューテックスを再獲得する．\texttt{pthread\_cond\_signal} は
@@ -639,9 +638,6 @@ int pthread_cond_broadcast(pthread_cond_t *cond);
 そのすべてを起こす．どちらも，待っているスレッドがなければ何も起こらない．%
 \caution{引数の順序は Birrell の \texttt{Wait(m, c)} と逆である．
 \texttt{pthread\_cond\_wait} は条件変数を先に取る．}%
-\margin{\texttt{pthread\_cond\_timedwait} は相対的なタイムアウトではなく
-絶対時刻の期限を取る．時計は既定で \texttt{CLOCK\_REALTIME} である
-（\texttt{pthread\_condattr\_setclock}）（POSIX.1）．}
 
 POSIX は，どのスレッドも signal していないのに
 \texttt{pthread\_cond\_wait} が戻ることを許しており，これもスプリアス

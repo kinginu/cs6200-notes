@@ -24,12 +24,12 @@ layer of software beneath the operating system.
 \section{What is virtualization?}
 \label{sec:l12-what}
 
-Virtualization is an old idea.  It originated at IBM in the 1960s, when
+Virtualization is an old idea.\source{P3L6, what is
+virtualization, defining virtualization; Popek and Goldberg
+\cite{popek1974}; OSTEP app.~B; Silberschatz et al.\ ch.~18.}  It originated at IBM in the 1960s, when
 computing was done on a small number of large and expensive mainframes, and
 the owner of such a machine wanted to use it for workloads that had been
-developed for different operating systems.\source{P3L6, what is
-virtualization, defining virtualization; Popek and Goldberg
-\cite{popek1974}; OSTEP app.~B; Silberschatz et al.\ ch.~18.}
+developed for different operating systems.
 
 \begin{definition}[Virtualization]
   Allowing several operating systems, each together with its applications,
@@ -239,12 +239,12 @@ KVM, the \term{Kernel-based Virtual Machine}[KVM]
 hosted hypervisor of Linux.  A loadable kernel module turns Linux into a
 hypervisor.  Each VM is an ordinary Linux process, whose virtual CPUs are
 threads of that process, so the Linux scheduler and memory manager serve
-VMs as they serve other processes.\tip{On a Linux host \texttt{ps} lists
-each KVM guest as one \texttt{qemu-system-*} process; its vCPUs are
-threads of that process.}  The devices of a VM are emulated within
+VMs as they serve other processes.  The devices of a VM are emulated within
 its process by \term{QEMU}[QEMU], a hardware emulator running at user
 level, while the instructions of the guest execute directly on the CPU with
-the hardware support described in \cref{sec:l12-hw}.  Because KVM is part
+the hardware support described in \cref{sec:l12-hw}.\tip{On a Linux host \texttt{ps} lists
+each KVM guest as one \texttt{qemu-system-*} process; its vCPUs are
+threads of that process.}  Because KVM is part
 of Linux, it benefits from the Linux open-source community: new features,
 bug fixes and drivers for new devices become available to it without
 separate effort.
@@ -366,11 +366,7 @@ of privileged operations that the guest performs.
 Before 2005, x86 processors had four rings but no root and non-root modes,
 so a hypervisor ran in ring~0 and deprivileged the guest OS to
 ring~1.\source{P3L6, x86 virtualization in the past; Robin and Irvine
-\cite{robin2000}.}\caution{32-bit software VMMs guard their own memory with
-segment limits.  AMD64 long mode drops those checks, and paging does not
-distinguish ring~1 from ring~0, so 64-bit paravirtualized Xen guests run
-their kernel in ring~3, and VMware's binary translation needed either the
-segment limits that later AMD processors restored or VT-x.}
+\cite{robin2000}.}
 The architecture did not satisfy the condition of trap-and-emulate: Robin
 and Irvine \cite{robin2000} identified 17 sensitive instructions that do not
 trap when executed in a less privileged ring.  Executed in ring~1, they fail
@@ -388,7 +384,11 @@ to~0, so \texttt{POPF} in ring~1 leaves IF unchanged, while \texttt{CLI}
 traps there.}  The hypervisor is not invoked, so it does
 not learn that the guest wanted to change the interrupt state and cannot
 emulate the change; the guest OS receives no error and assumes that the
-change succeeded.  \Cref{tab:l12-popf} traces the consequence.
+change succeeded.  \Cref{tab:l12-popf} traces the consequence.\caution{32-bit software VMMs guard their own memory with
+segment limits.  AMD64 long mode drops those checks, and paging does not
+distinguish ring~1 from ring~0, so 64-bit paravirtualized Xen guests run
+their kernel in ring~3, and VMware's binary translation needed either the
+segment limits that later AMD processors restored or VT-x.}
 
 \begin{table}[htbp]
   \centering
@@ -442,6 +442,8 @@ guest OS without any modification.
 \end{definition}
 
 The translation proceeds block by block (\cref{fig:l12-bt}).
+\margin{In VMware's design only guest kernel code is translated;
+applications in ring~3 run directly \cite{bugnion2012}.}
 \begin{enumerate}
   \item Inspect the block of code that is about to be executed, for
     example the instructions up to the next branch.
@@ -460,9 +462,7 @@ hardware support arrived: on the first VT-x processors the software VMM
 still won on most workloads, where exits were expensive and page tables had
 to be shadowed either way \cite{adams2006}.}
 The translation must be dynamic because which code executes, and where
-indirect branches lead, is known only at run time.%
-\margin{In VMware's design only guest kernel code is translated;
-applications in ring~3 run directly \cite{bugnion2012}.}
+indirect branches lead, is known only at run time.
 
 \begin{figure}[htbp]
   \centering
@@ -586,12 +586,12 @@ The guest OS continues to create and change its own page tables, which the
 hardware no longer uses, and the hypervisor must keep the shadow page
 tables consistent with them.
 \begin{itemize}
-  \item It write-protects the memory that holds the guest page tables.
-    When the guest OS adds or changes a mapping, the write traps; the
-    hypervisor performs the write and updates the shadow page table with
-    the corresponding machine address.\margin{Write-protecting a page in
+  \item It write-protects the memory that holds the guest page tables.\margin{Write-protecting a page in
     order to learn about a write is the mechanism of copy-on-write in
     Lesson~8, used here to observe the guest rather than to copy a page.}
+    When the guest OS adds or changes a mapping, the write traps; the
+    hypervisor performs the write and updates the shadow page table with
+    the corresponding machine address.
   \item When the guest OS switches between its processes, it loads another
     page table into the page table base register, a privileged operation
     that traps.\margin{The page table base register of Lesson~8 is CR3 on
@@ -838,13 +838,13 @@ The extensions address the problems of the preceding sections.
     runs in ring~0, where instructions such as \texttt{POPF} behave as it
     expects, and every operation that the hypervisor must control, such as
     sensitive instructions, access to control registers, I/O and
-    interrupts, can be made to cause a VM exit.  The architecture thereby
+    interrupts, can be made to cause a VM exit.\caution{``Root/non-root'' is Intel's name and
+    host/guest mode AMD's; ARM (exception level EL2) and RISC-V (the H
+    extension) provide a comparable split.}  The architecture thereby
     becomes virtualizable by trap-and-emulate.
   \item[Root and non-root modes] The modes of \cref{sec:l12-rings}, called
     host and guest mode by AMD, let the guest OS run in ring~0 while the
-    hypervisor keeps control.\caution{``Root/non-root'' is Intel's name and
-    host/guest mode AMD's; ARM (exception level EL2) and RISC-V (the H
-    extension) provide a comparable split.}
+    hypervisor keeps control.
   \item[VM control structure] A data structure per VM, more precisely per
     virtual CPU, that the hardware reads and updates.  This
     \term{VM control structure}[VM制御構造] (the VMCS of Intel, the VMCB
@@ -859,16 +859,16 @@ The extensions address the problems of the preceding sections.
     (EPT)\index{EPT|see{extended page table}}, maintained by the
     hypervisor, maps physical to machine addresses.  On a TLB miss the MMU
     walks both tables, and the TLB caches the resulting translation from
-    virtual to machine address.\tip{A walk through $g$ guest levels under
-    $n$ extended levels costs $(g+1)(n+1)-1$ references: 24 for $g=n=4$,
-    against 4 natively \cite{amd2008}.}  The guest OS
+    virtual to machine address.  The guest OS
     changes and switches its page tables without VM exits, and shadow page
     tables become unnecessary.  AMD's equivalent is called nested page tables.
   \item[Tagged TLB] A \term{tagged TLB}[タグ付きTLB] marks each entry with
     an identifier of the address space (AMD's ASID) or of the virtual
     processor (Intel's VPID).  Entries of different VMs and of the
     hypervisor coexist in the TLB, so neither a VM exit or entry nor a
-    switch between VMs requires flushing it.
+    switch between VMs requires flushing it.\tip{A walk through $g$ guest levels under
+    $n$ extended levels costs $(g+1)(n+1)-1$ references: 24 for $g=n=4$,
+    against 4 natively \cite{amd2008}.}
   \item[Multiqueue devices and interrupt routing] Devices such as network
     cards provide several logical interfaces, or queues, each of which can
     be assigned to a different VM, and interrupts are routed to the core on

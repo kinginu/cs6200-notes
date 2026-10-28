@@ -262,8 +262,7 @@ information that the kernel needs even when the process is not running,
 such as scheduling information, and it is never swapped out.  The CPU
 structure identifies the thread currently running on each
 CPU.\margin{On SPARC processors, which have spare registers, SunOS keeps
-the pointer to the current thread in a dedicated register.}%
-\margin{Linux keeps one run queue, \texttt{struct rq}, per CPU and a
+the pointer to the current thread in a dedicated register.  Linux keeps one run queue, \texttt{struct rq}, per CPU and a
 per-CPU pointer to the current task (\texttt{kernel/sched}); the SunOS CPU
 structure plays the same role.}
 
@@ -302,16 +301,16 @@ time---its \emph{concurrency level}, set with
 \texttt{pthread\_setconcurrency}---and the library asks the kernel for
 kernel-level threads through system calls, requesting more when it needs
 them; the kernel can notify the library of events that affect its threads,
-such as a kernel-level thread blocking.
+such as a kernel-level thread blocking.  (On Linux
+\texttt{pthread\_setconcurrency} has no effect: with a one-to-one library
+there is nothing to choose, and POSIX lets an implementation ignore the
+hint.)
 
 \Needspace{6\baselineskip}
 \begin{example}
   A process has six user-level threads, of which at most three need to run
   at the same time.  \Cref{tab:l05-interaction} traces how the library and
-  the kernel adjust the number of kernel-level threads.\margin{On Linux
-    \texttt{pthread\_setconcurrency} has no effect: with a one-to-one
-    library there is nothing to choose, and POSIX lets an implementation
-    ignore the hint.}\caution{Lecture vs paper: the lecture speaks of
+  the kernel adjust the number of kernel-level threads.\caution{Lecture vs paper: the lecture speaks of
     blocking I/O in general.  SunOS sends \texttt{SIGWAITING} only when
     every LWP of the process is in an indefinite wait, such as a read on a
     terminal or a socket, not a disk read, and the library catches it only
@@ -453,13 +452,13 @@ context switches; otherwise block.}
 
 Adaptive mutexes make sense only on multiprocessors---on a single CPU the
 owner cannot be running while another thread spins---and only for short
-critical sections; long critical sections are better served by blocking.
+critical sections; long critical sections are better served by blocking.\margin{OSTEP calls a lock that first spins for a while and then
+sleeps a \emph{two-phase lock}; the mutex of the Linux kernel spins only
+while the owner is running, exactly as here.}
 To decide between spinning and blocking, the lock operation must find out
 whether the owner is running, so the mutex data structure records its
 owner.  Lesson~10 returns to spinning as the basis of the
-spinlock.\margin{OSTEP calls a lock that first spins for a while and then
-sleeps a \emph{two-phase lock}; the mutex of the Linux kernel spins only
-while the owner is running, exactly as here.}
+spinlock.
 
 \subsection{Destroying threads}
 
@@ -476,10 +475,10 @@ not detached waits on a list of zombies until another thread joins it.)  A
 and frees their data structures; it runs when the library has idle LWPs or
 when the death row reaches a limit.  The stacks it frees go to a cache,
 from which the library takes the stack of a new thread, which saves the
-cost of allocating and initializing it.\caution{Lecture vs paper: the
-lecture has a new thread reuse the structure of a thread still on the
-death row, before the reaper runs.  In Stein and Shah the reuse goes
-through the cache of stacks that the reaper fills.}
+cost of allocating and initializing it.\caution{Lecture vs paper: in the
+lecture a new thread reuses the structure of a thread still on the death
+row, before the reaper runs; in Stein and Shah reuse goes through the
+reaper's stack cache.}
 
 \Needspace{11\baselineskip}
 \begin{keypoint}
@@ -798,11 +797,11 @@ mutex does the interrupt thread become a complete thread, which the
 scheduler treats like any other, and the pinned thread continues at once.
 
 A related design, which SunOS~5.0 did not adopt, divides the work of
-interrupt handling into two parts (\cref{fig:l05-top-bottom}).  Eykholt et
+interrupt handling into two parts (\cref{fig:l05-top-bottom}).\margin{Of the Linux deferral
+mechanisms, only work queues and threaded handlers may block.}  Eykholt et
 al.\ reject it because it requires restructuring the device drivers and
 always costs a full context switch, whereas an interrupt thread becomes a
-full thread only when its handler blocks.\margin{Of the Linux deferral
-mechanisms, only work queues and threaded handlers may block.}
+full thread only when its handler blocks.
 
 \begin{definition}[Top half and bottom half]
   The \term{top half}[トップハーフ] of interrupt handling runs immediately

@@ -108,7 +108,9 @@ int pthread_create(pthread_t *thread,
 int pthread_join(pthread_t thread, void **status);
 \end{lstlisting}
 
-\texttt{pthread\_create} corresponds to \texttt{Fork(proc, args)}.  The new
+\texttt{pthread\_create} corresponds to \texttt{Fork(proc, args)}.\margin{A create-and-join
+round trip costs on the order of \SI{10}{\micro\second} on current x86-64
+Linux; a thread pool (Lesson~3) pays it once per worker.}  The new
 thread starts by executing \texttt{start\_routine(arg)}, and the identifier
 of the new thread is stored in \texttt{*thread}.  The start routine takes and
 returns a \texttt{void~*}, so that a pointer to data of any type can be
@@ -124,9 +126,7 @@ routine returns or when it calls \texttt{pthread\_exit(status)}.  The value
 it returned, or passed to \texttt{pthread\_exit}, is stored in
 \texttt{*status}; a caller that does not need the result passes
 \texttt{NULL}.  Like \texttt{pthread\_create}, \texttt{pthread\_join}
-returns 0 on success and an error number on failure.\margin{A create-and-join
-round trip costs on the order of \SI{10}{\micro\second} on current x86-64
-Linux; a thread pool (Lesson~3) pays it once per worker.}\caution{Joining the same
+returns 0 on success and an error number on failure.\caution{Joining the same
 thread twice, or joining a detached thread, is undefined behaviour in POSIX,
 not merely an error return (POSIX.1).}
 
@@ -155,16 +155,16 @@ int pthread_attr_destroy(pthread_attr_t *attr);
 int pthread_attr_setxxx(pthread_attr_t *attr, ...);
 int pthread_attr_getxxx(const pthread_attr_t *attr, ...);
 \end{lstlisting}
-\texttt{pthread\_attr\_init} fills the object with the default values; it
+\texttt{pthread\_attr\_init} fills the object with the default values;\margin{\texttt{SCHED\_OTHER} is the fair scheduler of Lesson~7
+(CFS, replaced by EEVDF in Linux~6.6); \texttt{SCHED\_FIFO} and
+\texttt{SCHED\_RR} are real time, priorities 1--99; only \texttt{SCHED\_RR}
+has a quantum, \SI{100}{\milli\second} by default
+(\texttt{sched\_rr\_get\_interval(2)}).} it
 must be called before any other function is applied to the object, and
 \texttt{pthread\_attr\_destroy} releases it.  The object is consulted only
 while \texttt{pthread\_create} runs, so it can be destroyed, or reused for
 further threads, as soon as the thread
-exists.\margin{\texttt{SCHED\_OTHER} is the fair scheduler of Lesson~7
-(CFS, replaced by EEVDF in Linux~6.6); \texttt{SCHED\_FIFO} and
-\texttt{SCHED\_RR} are real time, priorities 1--99; only \texttt{SCHED\_RR}
-has a quantum, \SI{100}{\milli\second} by default
-(\texttt{sched\_rr\_get\_interval(2)}).}
+exists.
 \Cref{tab:l04-attributes} lists the attributes that matter in this course.  The scope attribute
 selects between the system scope and the process scope of Lesson~3: with
 \texttt{PTHREAD\_SCOPE\_SYSTEM} the thread competes for the CPU with all
@@ -312,26 +312,26 @@ PThreads; OSTEP ch.~27.}
   \item \textbf{The header.}  Every source file that uses Pthreads includes
     \texttt{<pthread.h>}, which declares the types, constants and
     functions.
-  \item \textbf{The compiler flag.}  The program is compiled and linked
-    with \texttt{-pthread} or \texttt{-lpthread}:\margin{On GNU/Linux
+  \item \textbf{The compiler flag.}\margin{On GNU/Linux
     \texttt{-pthread} also defines \texttt{\_REENTRANT}; since glibc~2.34
-    the Pthreads functions are part of \texttt{libc} itself.}
+    the Pthreads functions are part of \texttt{libc} itself.}  The program is compiled and linked
+    with \texttt{-pthread} or \texttt{-lpthread}:
 \begin{lstlisting}[numbers=none]
 gcc -o main main.c -pthread
 gcc -o main main.c -lpthread
 \end{lstlisting}
-    \texttt{-lpthread} only links the Pthreads library, whereas
+    \texttt{-lpthread} only links the Pthreads library,\margin{The race detector \texttt{-fsanitize=thread} used below
+    must be given at link time too, or the link fails on undefined
+    \texttt{\_\_tsan} symbols; \texttt{-g} adds source lines to its reports.} whereas
     \texttt{-pthread} also sets the preprocessor definitions that the
     platform requires for multithreaded code; it is the more portable
-    choice.\margin{The race detector \texttt{-fsanitize=thread} used below
-    must be given at link time too, or the link fails on undefined
-    \texttt{\_\_tsan} symbols; \texttt{-g} adds source lines to its reports.}
+    choice.
   \item \textbf{Checked return values.}  Pthreads functions report failure
     through their return value, 0 on success and an error number
-    otherwise, rather than through \texttt{errno}.\caution{Pthreads, like
-    the other \texttt{posix\_*} functions, departs from the system-call
-    convention of returning $-1$ and setting \texttt{errno}; \texttt{errno}
-    is not set reliably, so \texttt{perror} may report an unrelated value.}  A caller that cannot
+    otherwise, rather than through \texttt{errno}.\caution{Like the
+    other \texttt{posix\_*} functions, Pthreads does not follow the
+    system-call convention (return $-1$, set \texttt{errno}); \texttt{errno}
+    is unreliable, so \texttt{perror} may print an unrelated value.}  A caller that cannot
     continue reports the number, e.g.\ with \texttt{strerror}, and exits.
     A program that ignores the result of \texttt{pthread\_create} may later
     join a thread that was never created, using an identifier that was
@@ -470,10 +470,10 @@ for (i = 0; i < NUM_THREADS; i++) {
 Each worker now reads its own element of \texttt{t\_num}, whose value was
 set before the thread was created and never changes afterwards
 (\cref{fig:l04-args}, right).  Every index is printed exactly once.  The
-\emph{order} of the lines, however, is still not determined: it depends on
+\emph{order} of the lines, however, is still not determined:\margin{Three lines admit $3! = 6$ orders, so a run that prints them in
+order says nothing about the other five.} it depends on
 how the threads are scheduled, and any permutation of the three lines can
-occur.\margin{Three lines admit $3! = 6$ orders, so a run that prints them in
-order says nothing about the other five.}  The array lives in the stack frame
+occur.  The array lives in the stack frame
 of \texttt{main}, which does not
 return before it has joined all threads, so the memory remains valid for as
 long as the threads use it.\caution{Never pass a thread the address of a
@@ -553,13 +553,13 @@ int pthread_mutex_destroy(pthread_mutex_t *mutex);
 \end{lstlisting}
 \begin{description}
   \item[\texttt{pthread\_mutex\_init}] initializes a mutex before its first
-    use.  Its attribute object, of type \texttt{pthread\_mutexattr\_t},
-    specifies the behaviour of the mutex, for instance whether it may be
-    shared among processes (Lesson~9); \texttt{NULL} selects the
-    defaults.\margin{The type is an attribute too: relocking a default mutex is
+    use.\margin{The type is an attribute too: relocking a default mutex is
     undefined in POSIX (glibc, which maps it to \texttt{NORMAL}, deadlocks;
     Lesson~3), \texttt{PTHREAD\_MUTEX\_ERRORCHECK} returns
-    \texttt{EDEADLK}, \texttt{PTHREAD\_MUTEX\_RECURSIVE} counts.}
+    \texttt{EDEADLK}, \texttt{PTHREAD\_MUTEX\_RECURSIVE} counts.}  Its attribute object, of type \texttt{pthread\_mutexattr\_t},
+    specifies the behaviour of the mutex, for instance whether it may be
+    shared among processes (Lesson~9); \texttt{NULL} selects the
+    defaults.
     A mutex with default attributes can also be initialized statically, as
     in \cref{ex:l04-safe-insert}, with \texttt{PTHREAD\_MUTEX\_INITIALIZER}.
   \item[\texttt{pthread\_mutex\_trylock}] locks the mutex if it is free and
@@ -622,7 +622,9 @@ int pthread_cond_wait(pthread_cond_t *cond,
 int pthread_cond_signal(pthread_cond_t *cond);
 int pthread_cond_broadcast(pthread_cond_t *cond);
 \end{lstlisting}
-The semantics are those of Lesson~3.  \texttt{pthread\_cond\_wait} is called
+The semantics are those of Lesson~3.\margin{\texttt{pthread\_cond\_timedwait} takes an absolute
+deadline, on \texttt{CLOCK\_REALTIME} by default
+(\texttt{pthread\_condattr\_setclock}), not a relative timeout (POSIX.1).}  \texttt{pthread\_cond\_wait} is called
 with \texttt{mutex} held; it atomically releases the mutex and places the
 calling thread on the wait queue of \texttt{cond}, and when the thread is
 woken up, it re-acquires the mutex before it returns.
@@ -630,9 +632,7 @@ woken up, it re-acquires the mutex before it returns.
 threads, \texttt{pthread\_cond\_broadcast} all of them; both have no effect when no
 thread is waiting.\caution{The argument order is the reverse of Birrell's
 \texttt{Wait(m, c)}: \texttt{pthread\_cond\_wait} takes the condition
-variable first.}\margin{\texttt{pthread\_cond\_timedwait} takes an absolute
-deadline, on \texttt{CLOCK\_REALTIME} by default
-(\texttt{pthread\_condattr\_setclock}), not a relative timeout (POSIX.1).}
+variable first.}
 
 POSIX allows \texttt{pthread\_cond\_wait} to return even though no thread
 has signalled, and calls such a return a spurious wake-up

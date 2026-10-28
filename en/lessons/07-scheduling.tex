@@ -368,7 +368,7 @@ The timeslice of Lesson~2\index{timeslice} is the maximum amount of
 uninterrupted time given to a task; it is also called the time
 quantum.\margin{Silberschatz et al.\ ch.~5 give a typical quantum of
 10--\SI{100}{\milli\second}, far longer than a context switch of a few
-microseconds (Lesson~2).}\margin{Linux still gives its real-time round-robin class a fixed
+microseconds (Lesson~2); Linux still gives its real-time round-robin class a fixed
 quantum: \SI{100}{\milli\second} by default, set with the sysctl
 \texttt{sched\_rr\_timeslice\_ms}.}  A
 task may run for less than its timeslice.  It may block, waiting for I/O or
@@ -877,14 +877,14 @@ system may combine both architectures, with several multicore processors.
 \subsection{Cache affinity and load balancing}
 
 The performance of a task depends on the state of the caches.  While a task
-runs on a CPU, the CPU's caches fill with the task's data.  If the task
-runs on the same CPU the next time, it finds a hot cache (Lesson~2); if it
-runs on a different CPU, it starts with a cold cache and runs more slowly
-until that cache has been filled.\margin{A task that ran within the last
-\texttt{sched\_migration\_cost\_ns}, \SI{500}{\micro\second} by default,
+runs on a CPU, the CPU's caches fill with the task's data.\margin{A task that ran within the last
+\texttt{sched\_\allowbreak migration\_\allowbreak cost\_\allowbreak ns}, \SI{500}{\micro\second} by default,
 counts as cache-hot, and the load balancer leaves it where it is.  Since
 Linux~5.13 the tunable is in debugfs:
-\texttt{/sys/kernel/debug/sched/migration\_cost\_ns}.}
+\texttt{/sys/\allowbreak kernel/\allowbreak debug/\allowbreak sched/\allowbreak migration\_\allowbreak cost\_\allowbreak ns}.}  If the task
+runs on the same CPU the next time, it finds a hot cache (Lesson~2); if it
+runs on a different CPU, it starts with a cold cache and runs more slowly
+until that cache has been filled.
 
 \begin{definition}[Cache affinity]
   The benefit that a task gains from running on the CPU whose caches hold
@@ -905,9 +905,7 @@ application can restrict a thread to a set of CPUs with
 \subsection{NUMA-aware scheduling}
 
 A multiprocessor may also have several memory nodes
-(\cref{fig:l07-numa}).\margin{\texttt{numactl --hardware} shows the nodes
-and their distances; \texttt{numactl --cpunodebind=0 --membind=0}
-\emph{cmd} pins a program to one node (numactl(8)).}
+(\cref{fig:l07-numa}).
 
 \begin{definition}[NUMA]
   In a system with \term{non-uniform memory access}[NUMA]%
@@ -915,7 +913,9 @@ and their distances; \texttt{numactl --cpunodebind=0 --membind=0}
   of several memory nodes, each of which is close to a socket of one or more
   processors.  Access from a CPU to its local memory node is faster than
   access to a remote node, which passes through an interconnect between the
-  sockets, such as Intel's UPI (formerly QPI) or AMD's Infinity Fabric.
+  sockets, such as Intel's UPI (formerly QPI) or AMD's Infinity Fabric.\margin{\texttt{numactl --hardware} shows the nodes
+and their distances; \texttt{numactl --cpunodebind=0 --membind=0}
+\emph{cmd} pins a program to one node (numactl(8)).}
 \end{definition}
 
 \begin{figure}[htbp]
@@ -984,8 +984,7 @@ Designs differ in how closely the contexts share the pipeline.  The simplest
 interleave them, giving the pipeline to another context as often as every
 cycle; in simultaneous multithreading proper, such as Intel's
 Hyper-Threading, instructions of several hardware threads occupy the stages
-of the pipeline in the same cycle.\margin{The cores simulated by Fedorova et
-al.\ interleave four hardware threads cycle by cycle.}
+of the pipeline in the same cycle.
 
 Each hardware thread appears to the operating system as a separate virtual
 CPU, on which the scheduler can place a task.  The scheduler must therefore
@@ -1014,7 +1013,8 @@ al.\ \cite{fedorova2004}.}  It rests on four assumptions.
     diagram short; it is the delay of a load served by the L1 cache rather
     than the hundred or so cycles of an access that reaches memory.
   \item Switching between hardware threads is instantaneous.
-  \item The CPU has two hardware threads.
+  \item The CPU has two hardware threads.\margin{The cores simulated by Fedorova et
+al.\ interleave four hardware threads cycle by cycle.}
 \end{enumerate}
 In this model, a CPU-bound task needs the pipeline on every cycle.  A
 \term{memory-bound task}[メモリバウンドタスク] is one whose progress is
@@ -1119,12 +1119,12 @@ architecture, based on well-understood characteristics of workloads.
 
 Fedorova et al.\ proposed to distinguish the tasks by a single
 counter-derived metric, the CPI.\source{P3L1, CPI experiment, CPI
-experiment results; Fedorova et al.}\caution{A high CPI can also come from
-branch mispredictions or pipeline contention, so a high CPI does not by
-itself prove a memory-bound thread.}  The idea is attractive: a
+experiment results; Fedorova et al.}  The idea is attractive: a
 memory-bound task spends many cycles waiting for memory and has a high CPI,
 while a CPU-bound task has a low one: 1 in a model that executes one
-instruction per cycle, and below 1 on a superscalar processor.  A scheduler could then mix
+instruction per cycle, and below 1 on a superscalar processor.\caution{A high CPI can also come from
+branch mispredictions or pipeline contention, so a high CPI does not by
+itself prove a memory-bound thread.}  A scheduler could then mix
 tasks with different CPIs on the hardware threads of each core.
 
 To test the idea, they simulated a chip multithreading processor with four

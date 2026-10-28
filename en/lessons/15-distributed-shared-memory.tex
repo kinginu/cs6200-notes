@@ -115,15 +115,15 @@ Like every peer distributed application, each node of a DSM system
 
 DSM permits applications to scale beyond the memory limits of a single
 machine: an application that needs more memory than one machine holds
-obtains it from other machines.  It also provides shared memory at a lower
+obtains it from other machines.\margin{Local memory takes some
+\SI{100}{\nano\second}, a round trip over datacenter Ethernet tens of
+microseconds, a one-sided RDMA read (a round trip) on
+\SI{400}{\giga\bit\per\second} NDR InfiniBand about
+\SI{2}{\micro\second} (perftest \texttt{ib\_read\_lat}); vendors quote
+sub-microsecond one-way latency.}  It also provides shared memory at a lower
 cost, because a single machine with a very large memory is
 disproportionately more expensive than several commodity machines with
-moderate memories.  The price is latency.\margin{An access to local memory
-takes some \SI{100}{\nano\second} and a round trip over datacenter Ethernet
-tens of microseconds, whereas a one-sided RDMA read (a round trip) on a
-\SI{400}{\giga\bit\per\second} NDR InfiniBand link takes about
-\SI{2}{\micro\second} (perftest \texttt{ib\_read\_lat}); vendors quote
-sub-microsecond one-way latency.}  An access
+moderate memories.  The price is latency.  An access
 to memory that resides on another node crosses the network, which is orders
 of magnitude slower than an access to local memory.  Commodity
 interconnects reduce this cost by supporting remote direct memory access.
@@ -208,11 +208,7 @@ expensive.  The candidates are:
 
 A coarser granularity amortizes the cost of a transfer or of an act of
 coordination over more data, but it also places unrelated data in the same
-unit.\caution{False sharing also occurs on a single machine, when two
-variables share a cache line and the coherence protocol (Lesson~10) moves
-the line back and forth.  A \SI{4}{\kibi\byte} page holds 64 lines of
-\SI{64}{\byte}, and each move of it is a network transfer rather than a
-cache miss.}
+unit.
 
 \begin{definition}[False sharing]
   The situation in which data that are not shared---each accessed by
@@ -240,7 +236,11 @@ cache miss.}
   of $p$ on the other node, so $p$ is transferred every
   \SI{5}{\milli\second}, 200 times per second, which amounts to
   $200\times\SI{4}{\kibi\byte} = \SI{800}{\kibi\byte}$ of network traffic
-  per second.  If a transfer takes \SI{0.5}{\milli\second}, each process
+  per second.\caution{False sharing also occurs on a single machine, when two
+variables share a cache line and the coherence protocol (Lesson~10) moves
+the line back and forth.  A \SI{4}{\kibi\byte} page holds 64 lines of
+\SI{64}{\byte}, and each move of it is a network transfer rather than a
+cache miss.}  If a transfer takes \SI{0.5}{\milli\second}, each process
   waits \SI{0.5}{\milli\second} of every \SI{10}{\milli\second},
   \SI{5}{\percent} of its time.  With \texttt{x} and \texttt{y} on
   different pages (\cref{fig:l15-false-sharing}b), no page is transferred

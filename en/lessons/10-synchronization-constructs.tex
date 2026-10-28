@@ -195,16 +195,16 @@ int sem_init(sem_t *sem, int pshared,
 int sem_wait(sem_t *sem);
 int sem_post(sem_t *sem);
 \end{lstlisting}
-\texttt{sem\_init} sets the initial count to \texttt{value}.  The flag
+\texttt{sem\_init} sets the initial count to \texttt{value}.\margin{Since Linux 2.6 (glibc NPTL) POSIX semaphores are
+built on futexes: an uncontended \texttt{sem\_wait} or \texttt{sem\_post}
+is a single atomic instruction in user space.}  The flag
 \texttt{pshared} states whether the semaphore is used only by the threads of
 one process (zero) or shared among processes (non-zero); in the latter case
 the \texttt{sem\_t} itself must reside in memory that those processes share,
 such as a shared memory segment of Lesson~9.  \texttt{sem\_wait} and
 \texttt{sem\_post} are the wait and post operations.%
 \caution{A semaphore has no owner: any thread may post, even one that
-never waited.}\margin{Since Linux 2.6 (glibc NPTL) POSIX semaphores are
-built on futexes: an uncontended \texttt{sem\_wait} or \texttt{sem\_post}
-is a single atomic instruction in user space.}
+never waited.}
 
 \Needspace{5\baselineskip}
 \begin{example}
@@ -382,18 +382,18 @@ Monitors were part of the Mesa language developed at Xerox PARC
 \cite{lampson1980}.\margin{Mesa and Java: a woken thread re-tests its
 condition in a \texttt{while} loop.}  Java supports them today: every object has an
 internal lock, and a method declared \texttt{synchronized} is an entry
-procedure whose locking and unlocking the language runtime performs.
-Notifications, however, remain explicit calls to \texttt{notify} and
-\texttt{notifyAll}.\margin{In HotSpot an uncontended \texttt{synchronized}
+procedure whose locking and unlocking the language runtime performs.\margin{In HotSpot an uncontended \texttt{synchronized}
 block is one compare-and-swap on the object header; contention inflates
 it.}
+Notifications, however, remain explicit calls to \texttt{notify} and
+\texttt{notifyAll}.
 
-The term \emph{monitor} also denotes a programming style.  Structuring
+The term \emph{monitor} also denotes a programming style.\margin{Same wait-in-a-loop
+discipline as the condition variables of Lesson~3; the monitor only hides
+the mutex.}  Structuring
 every critical section with explicit enter and exit code built from a mutex
 and condition variables, as in Lesson~3, applies the discipline of a
-monitor without support from the language.\margin{Same wait-in-a-loop
-discipline as the condition variables of Lesson~3; the monitor only hides
-the mutex.}
+monitor without support from the language.
 
 \section{Other synchronization constructs}
 \label{sec:l10-other}
@@ -506,7 +506,7 @@ documentation.}
   \item RCU, as described above.
 \end{itemize}
 Beneath them, the type \texttt{atomic\_t} provides atomic integer
-operations such as \texttt{atomic\_inc} and \texttt{atomic\_cmpxchg}, built
+operations such as \texttt{atomic\_\allowbreak inc} and \texttt{atomic\_\allowbreak cmpxchg}, built
 on the atomic instructions of \cref{sec:l10-hw}.  A spinning lock may be
 held only briefly, and its holder must not sleep.  A blocking lock may be
 held across operations that sleep, such as I/O, but it can be taken only

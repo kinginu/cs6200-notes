@@ -216,11 +216,11 @@ or one reads while another modifies it, the data can become inconsistent.
   A \term{race condition}[競合状態] exists when the result of a computation
   depends on the relative timing of threads that access shared data, at
   least one of them modifying it.  Two unsynchronized concurrent accesses to
-  the same data, at least one of them a write, form a \emph{data race};
-  data races are a common cause of race conditions.\caution{A data race is
-  undefined behaviour in C11 and C++11 (C11 \S\,5.1.2.4): the compiler may
-  reorder or cache the accesses, so there are no \enquote{benign} races at
-  the language level.}
+  the same data, at least one of them a write, form a \emph{data
+  race};\caution{A data race is undefined behaviour in C11 and C++11 (C11
+  \S\,5.1.2.4): the compiler may reorder or cache the accesses, so there
+  are no \enquote{benign} races at the language level.} data races are a
+  common cause of race conditions.
 \end{definition}
 
 The mechanisms that threads use to coordinate their access to shared data
@@ -249,10 +249,7 @@ starts the new thread executing \texttt{proc(args)}.  The creating thread
 continues with the statement after \texttt{Fork}, so from this point on both
 threads run concurrently.  Despite its name, \texttt{Fork} creates a
 thread inside the same process; it is unrelated to the Unix \texttt{fork}
-of Lesson~2, which creates a new process.\margin{Drepper and Molnar
-\cite{drepper2005} report that starting and stopping \num{100000} threads,
-which once took 15 minutes on Linux, takes 2 seconds with NPTL and the
-reworked kernel thread exit.}
+of Lesson~2, which creates a new process.
 
 When the child thread finishes, its result must reach the parent.  Either the
 child stores it in a well-defined location of the shared address space, or
@@ -261,7 +258,10 @@ the parent obtains it with the \term{join}[ジョイン] operation:
 completed and returns its result; at that point the resources allocated to
 the child are freed.  Apart from this, parent and child are equals: both can
 access all resources of the process, and they differ only in their
-execution contexts.
+execution contexts.\margin{Drepper and Molnar
+\cite{drepper2005} report that starting and stopping \num{100000} threads,
+which once took 15 minutes on Linux, takes 2 seconds with NPTL and the
+reworked kernel thread exit.}
 
 \Needspace{9\baselineskip}
 \begin{example}
@@ -331,12 +331,12 @@ A mutex is represented by a data structure that records at least whether it
 is locked, which thread owns it, and the list of threads blocked on it.  The
 code executed while a mutex is held is the \term{critical section}[クリティカルセクション]: the
 part of the program that performs an operation which only one thread at a
-time may perform, typically an update of shared state.\tip{In C++
-\texttt{std::lock\_guard} releases the mutex when its scope ends,
-reproducing Birrell's block notation below: every path unlocks.}
+time may perform, typically an update of shared state.
 
 \Needspace{6\baselineskip}
-Birrell's notation makes the critical section a block:
+Birrell's notation makes the critical section a block:\tip{In C++
+\texttt{std::lock\_guard} releases the mutex when its scope ends,
+reproducing Birrell's block notation below: every path unlocks.}
 \begin{lstlisting}[language=C, numbers=none]
 Lock(m) {
   // critical section
@@ -722,13 +722,14 @@ broadcast is issued inside the critical section.  The woken readers leave the
 wait queue of \texttt{read\_phase}, but they cannot return from
 \texttt{Wait} before re-acquiring \texttt{counter\_mutex}, which the writer
 still holds; they are simply moved to the wait queue of the mutex
-(\cref{fig:l03-cv-queues}).\margin{POSIX also calls a return from wait
-without any signal a spurious wake-up; the \texttt{while} loop handles
-both.}
+(\cref{fig:l03-cv-queues}).
 
 \Needspace{9\baselineskip}
 When the notifications do not depend on the shared state, the fix is to
-move them after the unlock:
+move them after the unlock:\margin{POSIX also calls a return from wait
+without any signal a spurious wake-up; the \texttt{while} loop handles
+both.}
+
 \begin{lstlisting}[language=C, numbers=none]
 // writer exit, notifications outside the mutex
 Lock(counter_mutex) {
@@ -744,7 +745,7 @@ holding the mutex, so the \texttt{Signal} cannot simply be moved after the
 unlock; it can be moved only by recording the decision in a local variable
 inside the critical section and signalling afterwards, which is Birrell's
 own fix with a local variable \texttt{doSignal}.\margin{Linux offers
-\texttt{FUTEX\_CMP\_REQUEUE} for the same purpose: instead of waking the
+\texttt{FUTEX\_CMP\_\allowbreak REQUEUE} for the same purpose: instead of waking the
 threads waiting on a condition variable it moves them to the wait queue of
 the mutex, which \texttt{futex(2)} describes as avoiding a
 \enquote{thundering herd}.}  Spurious wake-ups
