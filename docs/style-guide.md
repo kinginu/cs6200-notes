@@ -78,6 +78,8 @@ and how it connects to the previous lesson.>
 | `\margin{}` / `\sidenote{}` | short supporting remark (≤ 3 lines) |
 | `marginfigure` / `widefigure` / `widetable` | small figure in the margin / figure or table spanning body + margin |
 
+- The English edition sets `gloss=false` (`en/main.tex`) and prints no margin
+  glosses (the word and the index entry stay); write the Japanese gloss anyway.
 - The optional first argument of `\term` is the **index sort key** and the last
   one is the **margin gloss**: `\term{Amdahl's law}[Amdahl の法則]` — never
   put `key@display` into the gloss.
@@ -107,6 +109,13 @@ and how it connects to the previous lesson.>
   checked by `tools/chapter-lint.py <slug>`.
 - Margin density: at most ~3 margin items within a short paragraph run; the
   checker reports "margin notes moved down" — keep it at 0–2.
+- Copyfitting is automatic: the class aligns a margin note's first line
+  with the baseline of its anchor line, lifts a note that would run below
+  the text block into free space above it (a note never hangs below the
+  block), and as a last resort carries it to the top of the next page with
+  a "Marginpar on page N carried over to the next page" warning in the log.
+  So "moved down" means notes pushed below their anchors by crowding; a
+  "carried over" warning means the page's margin is full.
 
 ### 3.1 What goes in the margin column
 
@@ -178,6 +187,8 @@ single line of argument; everything that supports it goes to the margin.
   the existing chapters.  Keep established English acronyms (CPI, BTB, TLB,
   RPC).  Use `glossary.tsv` for every technical term.
 - `\term[よみ]{語}[English term]` — reading in hiragana, English gloss.
+  The Japanese edition (`index=dual`) also carries an English index built
+  from the glosses, so give every defining `\term` its gloss.
 - `\lessoninfo` keywords separated by `，`; `video={Lesson 4，動画 1--48}` /
   `video={P2L1}`; key point summary title `[章のまとめ]`.
 - Numbers, units, math identical to the English edition.
