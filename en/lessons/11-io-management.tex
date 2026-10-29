@@ -886,9 +886,13 @@ at roughly 100 per second, amount to a few hundred kilobytes per second
   memory.  Reads are served from the cache when possible and writes update
   the cache; modified data are written to disk periodically, or when a
   process requests it with \texttt{fsync}.\margin{The cache has no fixed
-  size: on Linux it is the page cache\index{page cache}, which keeps
-  whatever memory the replacement policy of Lesson~8 leaves to it.}
+  size: it keeps whatever memory the replacement policy of Lesson~8 leaves
+  to it.}
 \end{definition}
+
+The kernel keeps file data in the \term{page cache}[ページキャッシュ], so
+repeated reads and delayed writes avoid the device; Linux unifies the
+buffer cache and the page cache.
 
 A process that must make an update durable follows the write with
 \texttt{fsync}:
@@ -907,7 +911,9 @@ the device.
 Ordering the pending disk requests so as to reduce the movement of the disk
 head is called \term{I/O scheduling}[I/Oスケジューリング]: requests are
 served in an order that maximizes sequential access and minimizes random
-access.
+access.  Sorting the requests by block address and serving them in one sweep
+of the head is the \term{elevator algorithm}[エレベータアルゴリズム], which
+the Linux I/O schedulers refine.
 
 \begin{example}
   The head is positioned at block 10, and writes to blocks 90, 12, 91, 13
@@ -915,10 +921,9 @@ access.
   positions on the disk, serving the requests in arrival order moves the
   head across $80+78+79+78+37 = 352$ blocks.  Serving them in the order 12,
   13, 50, 90, 91 moves it across only $2+1+37+40+1 = 81$ blocks, and the
-  pairs 12, 13 and 90, 91 become sequential writes.\margin{Ordering by block
-  number is the elevator (SCAN) algorithm\index{elevator algorithm}; Linux ships
-  \texttt{mq-deadline}, BFQ and Kyber, and usually runs NVMe with
-  \texttt{none}.}
+  pairs 12, 13 and 90, 91 become sequential writes.\margin{The elevator
+  algorithm is also called SCAN.  Linux ships \texttt{mq-deadline}, BFQ and
+  Kyber, and usually runs NVMe with \texttt{none}.}
 \end{example}
 
 \Needspace{5\baselineskip}
