@@ -13,8 +13,11 @@ textbook-style summary of what the lectures cover.  Built with
 - Print editions: compact two-sided books scaled from the A4 layout
   (class option `print=`, no chapter changes): `make docker-print-a5`
   (also `b6`, `shinsho` = 新書判, `b5`) → `dist/notes-<lang>-<size>.pdf`.
-  Body font 7 pt (A5), 6.5 pt (B6, 新書判).  CI builds and publishes the A4
-  editions only.
+  Body font 7 pt (A5), 6.5 pt (B6, 新書判).  CI builds the A4 and A5
+  editions (repository variable `PRINT_VARIANTS`), each also as a grayscale
+  PDF, and lists them on the Pages index as a size × language × colour table.
+  The English edition prints no margin glosses (`gloss=false`); the Japanese
+  edition adds an English index built from the glosses (`index=dual`).
 - `en/` English edition, `ja/` Japanese edition — same chapter files under
   `lessons/`, one chapter per lesson; `figures/` and `references.bib` shared.
 
@@ -61,6 +64,8 @@ See [`docs/style-guide.md`](docs/style-guide.md).  In short:
 
 ## License
 
-`format/` and the build files come from the template (MIT).  The notes
+`format/` and the build files come from the template (MIT), except
+`format/lnmarginfix.sty`, a modified copy of `marginfix` under the LPPL
+1.3c.  The notes
 themselves (`en/`, `ja/`, `figures/`) are © kinginu and released under
 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
