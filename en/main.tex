@@ -1,8 +1,10 @@
 % !TEX program = lualatex
 % English edition.  Keep the structure identical to ja/main.tex.
 % Class options: en|ja, lesson ("Lesson 3", default) | chapter ("Chapter 3"),
-% norule.  Keep the options identical in ja/main.tex (except the language).
-\documentclass[en]{lnotes}
+% norule.  Keep the options identical in ja/main.tex (except the language,
+% gloss=false here and index=dual there).
+% gloss=false: no Japanese margin glosses in this edition.
+\documentclass[en, gloss=false]{lnotes}
 \input{book-preamble}  % this book's own definitions
 
 \addbibresource{\subfix{../references.bib}}

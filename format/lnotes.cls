@@ -2,13 +2,22 @@
 %%
 %% Layout: single-column body on the left, a narrow margin column on the
 %% right (Tufte-style sidenotes) separated by a thin vertical rule.
+%% The title page, contents, bibliography and index span the full width.
+%% An empty page follows the title page in every edition, so the contents
+%% start on page 3 (two-sided: on a recto); two-sided, the body also starts
+%% on a recto.
 %% Engine:  LuaLaTeX only (luatexja for Japanese).
+%% Files:   format/lnmarginfix.sty lays out the \marginpar notes (a fork of
+%%          marginfix; LPPL 1.3c, unlike the MIT class); format/lnotes-en.ist,
+%%          format/lnotes-ja.ist are the upmendex styles.
 %%
 %% Class options (key=value)
 %%   en | ja        document language (default: en)
 %%   lesson|chapter English chapter label "Lesson 3" (default) or "Chapter 3";
 %%                  the Japanese edition always prints 第3章
 %%   norule         do not draw the vertical rule between body and margin
+%%   gloss=false    \term prints no margin gloss (default true)
+%%   index=dual     a second index of the glosses, after the first (default single)
 %%   print=<size>   a4 (default: screen edition, one-sided) or a compact
 %%                  two-sided print edition: a5, b5, b6, shinsho (新書判)
 %%   scale=<factor> print editions: override the size's scale factor
@@ -37,15 +46,26 @@
 \newif\ifln@ja
 \newif\ifln@rule \ln@ruletrue
 \newif\ifln@print
+\newif\ifln@gloss \ln@glosstrue
 \def\ln@unitname{Lesson}
 \def\ln@print{a4}
 \def\ln@scale{}
 \def\ln@fontsize{}
 \def\ln@twoside{}
+\newif\ifln@dualindex
+\def\ln@str@single{single}
+\def\ln@str@dual{dual}
+\def\ln@setindex#1{\def\ln@tmp{#1}%
+  \ifx\ln@tmp\ln@str@dual \ln@dualindextrue
+  \else\ifx\ln@tmp\ln@str@single \ln@dualindexfalse
+  \else\ClassError{lnotes}{Unknown value index=#1}{Use index=single or index=dual.}%
+  \fi\fi}
 \DeclareKeys[lnotes]{
   en       .code     = \ln@jafalse,
   ja       .code     = \ln@jatrue,
   norule   .code     = \ln@rulefalse,
+  gloss    .if       = ln@gloss,
+  index    .code     = \ln@setindex{#1},
   lesson   .code     = \def\ln@unitname{Lesson},
   chapter  .code     = \def\ln@unitname{Chapter},
   print    .store    = \ln@print,
@@ -63,7 +83,7 @@
 %%   {top}{bottom}{scale}
 %% The scale shrinks the A4 design (fonts, skips, figures) to the page; the
 %% body font is 10pt x scale.  \@namedef, not \def: a digit ends a csname.
-\@namedef{ln@sz@a5}{{148}{210}{15}{86}{3.5}{35}{13}{14}{0.7}}
+\@namedef{ln@sz@a5}{{148}{210}{15}{93}{3.5}{30}{13}{14}{0.7}}
 \@namedef{ln@sz@b5}{{182}{257}{18}{106}{4.5}{43.5}{16}{18}{0.85}}
 \@namedef{ln@sz@b6}{{128}{182}{13}{73}{3}{32}{12}{13}{0.65}}
 \@namedef{ln@sz@shinsho}{{113}{176}{13}{63}{3}{27}{12}{13}{0.65}}
@@ -164,6 +184,9 @@
 %% The margin column is ~24% of the page width.
 %% Print editions take the page from the size table; the margin column is on
 %% the outer side (geometry follows the class's twoside setting).
+%% \ln@geomfull: the layout of the front and back matter (title page,
+%% contents, bibliography, index), which has no margin column: the text
+%% block spans body + gap + margin column (see "Full-width matter" below).
 \ifln@print
 \edef\ln@hsep{\ln@sdim{6}{mm}}
 \edef\ln@fskip{\ln@sdim{10}{mm}}
@@ -173,6 +196,10 @@
   marginparsep=\ln@sep, marginparwidth=\ln@mpw,
   headsep=\ln@hsep, footskip=\ln@fskip,
 ]{geometry}
+\edef\ln@geomfull{%
+  inner=\ln@in, textwidth=\the\dimexpr\ln@tw+\ln@sep+\ln@mpw\relax,
+  top=\ln@top, bottom=\ln@bot, marginparsep=0pt, marginparwidth=0pt,
+  headsep=\ln@hsep, footskip=\ln@fskip}
 \edef\ln@tmp{\ln@sdim{4}{pt}}
 \setlength{\marginparpush}{\ln@tmp}
 \else
@@ -187,6 +214,9 @@
   headsep=6mm,
   footskip=12mm,
 ]{geometry}
+\def\ln@geomfull{%
+  left=20mm, top=25mm, bottom=25mm, textwidth=178mm,
+  marginparsep=0pt, marginparwidth=0pt, headsep=6mm, footskip=12mm}
 \setlength{\marginparpush}{4pt}
 \fi
 %% Full width (body + gap + margin column) for wide floats
@@ -195,7 +225,8 @@
 
 %% ---------------------------------------------------------- vertical rule
 \RequirePackage{eso-pic}
-%% Pages shipped out inside the titlepage environment get no rule.
+%% Pages shipped out inside the titlepage environment or in full-width
+%% matter (\ifln@fullwidth, below) get no rule.
 %% Two-sided (print): the rule is on the outer side, left of the body on
 %% even pages.
 \newcommand*{\ln@rulepos}{\dimexpr\textwidth+0.5\marginparsep\relax}
@@ -205,14 +236,15 @@
     \else-0.5\marginparsep\fi}
 \fi
 \newif\ifln@rulehere \ln@ruleheretrue
+\newif\ifln@fullwidth
 \ifln@rule
   \AddToShipoutPictureBG{%
-    \ifln@rulehere
+    \ifln@rulehere\ifln@fullwidth\else
     \AtTextLowerLeft{%
       \makebox[0pt][l]{%
         \hspace*{\ln@rulepos}%
         \color{ln-rule}\rule[-6pt]{0.4pt}{\dimexpr\textheight+12pt\relax}}}%
-    \fi}
+    \fi\fi}
   \AddToHook{env/titlepage/begin}{\global\ln@ruleherefalse}
   \AddToHook{env/titlepage/after}{\global\ln@ruleheretrue}
 \fi
@@ -237,6 +269,27 @@
     \ifx\ln@marka\ln@markb\else\rightmark\fi
   \endgroup}
 \ofoot*{\small\sffamily\pagemark}
+
+%% ------------------------------------------------------ full-width matter
+%% The title page, contents, bibliography and index have no margin column:
+%% \ln@fullwidthmatter switches to \ln@geomfull at a page boundary (the text
+%% block then spans body + gap + margin column, on the outer side in the
+%% two-sided print editions), \ln@bodymatter switches back.  Both are
+%% no-ops when already in that state.  The header and foot widths are
+%% stored lengths, so they are set again for each layout; the vertical rule
+%% is not drawn while \ifln@fullwidth.  The commands are wrapped at
+%% \begin{document} (end of the class).
+\newcommand*{\ln@hfwidths}{\KOMAoptions{headwidth=textwithmarginpar, footwidth=text}}
+\newcommand*{\ln@fullwidthmatter}{%
+  \ifln@fullwidth\else
+    \expandafter\newgeometry\expandafter{\ln@geomfull}% \clearpage first
+    \ln@hfwidths\global\ln@fullwidthtrue
+  \fi}
+\newcommand*{\ln@bodymatter}{%
+  \ifln@fullwidth
+    \restoregeometry% \clearpage first: the last page still has no rule
+    \ln@hfwidths\global\ln@fullwidthfalse
+  \fi}
 \setkomafont{disposition}{\sffamily\bfseries\color{ln-accent}}
 \setkomafont{chapterprefix}{\normalfont\sffamily\normalsize\color{ln-muted}}
 \setkomafont{chapter}{\sffamily\bfseries\LARGE\color{ln-accent}}
@@ -280,6 +333,7 @@
   \newcommand*{\sourcesname}{資料}
   \newcommand*{\textbookname}{教科書}
   \newcommand*{\keywordsname}{キーワード}
+  \newcommand*{\secondindexname}{English index}% index=dual: of the glosses
 \else
   \AtBeginDocument{\renewcommand*{\chaptername}{\ln@unitname}}
   \newcommand*{\definitionname}{Definition}
@@ -293,17 +347,22 @@
   \newcommand*{\sourcesname}{Sources}
   \newcommand*{\textbookname}{Textbook}
   \newcommand*{\keywordsname}{Keywords}
+  \newcommand*{\secondindexname}{日本語索引}% index=dual: of the glosses
 \fi
 
 %% ------------------------------------------------------------- margin core
 \RequirePackage{marginnote}
 \RequirePackage{ragged2e}
-%% Two-sided: LaTeX decides the side of a \marginpar from the page counter
-%% when the note is processed, so a note on the first line of a page can land
-%% on the previous page's side; mparhack fixes this through the .aux.
-\if@twoside
-  \RequirePackage{mparhack}
-\fi
+%% \marginpar notes are laid out per page by lnmarginfix (format/, a fork of
+%% marginfix, LuaTeX only): a note that would run below the text block is
+%% moved up into free space above it, and what still does not fit is carried
+%% to the top of the next page, as is a note whose anchor line the page
+%% builder moved to the next page.  A note's first baseline sits on its
+%% anchor's baseline.  The side (outer column when two-sided) is picked when
+%% the page is built, so mparhack is not needed.  Load it after any package
+%% that patches \marginpar or \@addmarginpar.  \marginnote (in boxes,
+%% below) is placed where it is called, as before, and is not moved.
+\RequirePackage{lnmarginfix}
 %% Print: 0.75 of the body font (A4 \footnotesize is 0.8), against crowding.
 \ifln@print
   \edef\ln@mfs{\ln@sdim{7.5}{pt}}
@@ -353,6 +412,14 @@
 %% .latexmkrc, because latexmk -- not imakeidx -- runs the index processor.
 \RequirePackage{imakeidx}
 \makeindex[intoc,columns=2]
+%% index=dual: a second index of the glosses (\term's last argument), named
+%% <jobname>-second so the print jobs sharing build/ keep their own files
+%% (main-second.idx, main-a5-second.idx).  The glosses are in the other
+%% edition's language; .latexmkrc sorts this index with that edition's style.
+\ifln@dualindex
+  \edef\ln@secondidx{\jobname-second}
+  \makeindex[name=\ln@secondidx,title=\secondindexname,intoc,columns=2]
+\fi
 \indexsetup{headers={{\indexname}{\indexname}}}% imakeidx uppercases by default
 %% Cross-references inside the index: \index{BTB|see{branch target buffer}}
 \ifln@ja
@@ -408,14 +475,17 @@
 %% \term[<sort key>]{<word>}[<margin gloss>]
 %%   - typesets <word> with \termformat
 %%   - adds an index entry (sorted by <sort key> when given)
-%%   - shows <margin gloss> (e.g. the English term) in the margin
-%% \term* does the same without the index entry (for repeated mentions).
+%%   - shows <margin gloss> (e.g. the English term) in the margin, unless
+%%     the class option gloss=false is set
+%%   - index=dual: also indexes <margin gloss> in the second index
+%% \term* does the same without the index entries (for repeated mentions).
 \NewDocumentCommand{\term}{s o m o}{%
   \termformat{#3}%
   \IfBooleanF{#1}{%
     \IfValueTF{#2}{\index{#2@#3}}{\index{#3}}%
+    \ifln@dualindex\IfValueT{#4}{\index[\ln@secondidx]{#4}}\fi
   }%
-  \IfValueT{#4}{\ln@margin{\textcolor{ln-accent}{$\triangleright$}\,\ln@gloss{#4}}}%
+  \ifln@gloss\IfValueT{#4}{\ln@margin{\textcolor{ln-accent}{$\triangleright$}\,\ln@gloss{#4}}}\fi
 }
 
 %% ------------------------------------------------------------- theorem envs
@@ -451,6 +521,13 @@
 %% video = lecture recording(s); sources = other primary material
 %% (documentation, tutorial, paper, talk).  Empty keys are not printed.
 %% Keys are parsed with the LaTeX kernel key system (\DeclareKeys/\SetKeys).
+%% The frame is a 0.4pt stroke along the middle of the boxrule, with no
+%% interior fill (the page is white).  The skin's default draws it as a gray
+%% rectangle with the white interior filled over it, leaving 0.4pt strips:
+%% a renderer without anti-aliasing (Ghostscript at 110 dpi, the page
+%% renders) rounds a sub-pixel strip away and the edge disappears, and at
+%% higher resolution the edges come out 1 or 2 px wide.  A stroke is always
+%% drawn at least one device pixel wide.
 \RequirePackage{enumitem}
 \DeclareKeys[lessoninfo]{
   video    .store = \ln@li@video,
@@ -466,8 +543,11 @@
            and test {\ifdefempty{\ln@li@sources}}
            and test {\ifdefempty{\ln@li@textbook}}
            and test {\ifdefempty{\ln@li@keywords}} }{}{%
-    \begin{tcolorbox}[enhanced, sharp corners, colback=white,
-        colframe=ln-rule, boxrule=0.4pt, left=\ln@sdim{6}{pt},
+    \begin{tcolorbox}[enhanced, sharp corners, boxrule=0.4pt,
+        frame code={\draw[ln-rule, line width=0.4pt]
+          ([shift={(0.2pt,0.2pt)}]frame.south west) rectangle
+          ([shift={(-0.2pt,-0.2pt)}]frame.north east);},
+        interior code={}, left=\ln@sdim{6}{pt},
         right=\ln@sdim{6}{pt}, top=\ln@sdim{4}{pt}, bottom=\ln@sdim{4}{pt},
         fontupper=\small\sffamily]
       \begin{description}[nosep, leftmargin=7em, labelwidth=6em, font=\bfseries\color{ln-muted}]
@@ -592,6 +672,7 @@
 \newcount\ln@picdepth
 \newcount\ln@tabdepth
 \newif\ifln@tabboxed
+\newif\ifln@nofit
 \ifln@print
   \newsavebox{\ln@picbox}
   \newsavebox{\ln@tabbox}
@@ -608,12 +689,21 @@
   \newcommand*{\ln@fitlog}[2]{% kind, box
     \typeout{lnotes-fit: \CurrentFile:\the\inputlineno\space #1
       \the\wd#2\space -> \the\linewidth}}
+  %% tcolorbox (keypoint, \lessoninfo) draws its frame as a tikzpicture
+  %% around the box it has already typeset at the body size and \linewidth:
+  %% that picture must not be scaled (it set the boxes at scale x width and
+  %% scale x font size).  \ifln@nofit is local to the drawing.
   \AddToHook{env/tikzpicture/before}{%
+    \ifln@nofit\else
     \ifnum\ln@picdepth=0 \begin{lrbox}{\ln@picbox}\ln@designsizes\fi
-    \global\advance\ln@picdepth 1 }
+    \global\advance\ln@picdepth 1 \fi}
   \AddToHook{env/tikzpicture/after}{%
+    \ifln@nofit\else
     \global\advance\ln@picdepth -1
-    \ifnum\ln@picdepth=0 \end{lrbox}\ln@fitpic\fi}
+    \ifnum\ln@picdepth=0 \end{lrbox}\ln@fitpic\fi\fi}
+  \AddToHook{env/tcb@drawing/begin}{\ln@nofittrue}
+  \pretocmd{\tcb@draw@pseudo@segmentation}{\ln@nofittrue}{}%
+    {\ClassWarningNoLine{lnotes}{tcolorbox segmentation not patched}}
   \newcommand*{\ln@fitpic}{%
     \sbox{\ln@picbox}{\scalebox{\ln@scale}{\usebox{\ln@picbox}}}%
     \ifdim\wd\ln@picbox>\linewidth
@@ -729,5 +819,45 @@
   \setlength{\parindent}{1\zw}
 \fi
 \setlist{nosep}
+
+%% Full-width matter (see above): the title page, contents, bibliography and
+%% index.  Wrapped at \begin{document}, after every package has defined them.
+\newcommand*{\ln@emptyafter@title}{%
+  \clearpage
+  \if@twoside
+    \cleardoubleoddpageusingstyle{empty}%
+  \else
+    \thispagestyle{empty}\null\clearpage
+  \fi}
+\AtBeginDocument{%
+  \NewCommandCopy\ln@orig@maketitle\maketitle
+  %% An empty page follows the title in every edition (no head, foot or
+  %% rule: still full-width matter, page style empty), so the contents start
+  %% on page 3; two-sided, the empty page is the verso and the contents
+  %% start on a recto whatever the length of the title.
+  \RenewDocumentCommand\maketitle{o}{%
+    \ln@fullwidthmatter
+    \IfValueTF{#1}{\ln@orig@maketitle[#1]}{\ln@orig@maketitle}%
+    \ln@emptyafter@title
+    \ln@bodymatter}%
+  \NewCommandCopy\ln@orig@tableofcontents\tableofcontents
+  %% Two-sided: the body starts on a recto (\mainmatter would add the blank
+  %% verso after the switch, with the rule).
+  \renewcommand*\tableofcontents{%
+    \ln@fullwidthmatter\ln@orig@tableofcontents
+    \if@twoside\cleardoubleoddpage\fi\ln@bodymatter}%
+  \NewCommandCopy\ln@orig@printbibliography\printbibliography
+  \RenewDocumentCommand\printbibliography{o}{%
+    \ln@fullwidthmatter
+    \IfValueTF{#1}{\ln@orig@printbibliography[#1]}{\ln@orig@printbibliography}%
+    \ln@bodymatter}%
+  %% index=dual: \printindex without an argument prints both indexes.
+  \NewCommandCopy\ln@orig@printindex\printindex
+  \RenewDocumentCommand\printindex{o}{%
+    \ln@fullwidthmatter
+    \IfValueTF{#1}{\ln@orig@printindex[#1]}{%
+      \ln@orig@printindex
+      \ifln@dualindex\ln@orig@printindex[\ln@secondidx]\fi}%
+    \ln@bodymatter}}
 
 \endinput
