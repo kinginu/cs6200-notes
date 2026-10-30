@@ -5,7 +5,7 @@
 \lessoninfo{
   video={P2L3},
   textbook={OSTEP \cite{ostep} ch.~27，30；Silberschatz ら \cite{silberschatz2018} ch.~4，7；Kerrisk \cite{kerrisk2010} ch.~29--30},
-  keywords={POSIX，POSIXスレッド，スレッド生成，スレッド属性，ジョイン可能スレッド，デタッチスレッド，スレッドへの引数，ミューテックス，trylock，条件変数，安全な使い方，生産者・消費者問題，有界バッファ},
+  keywords={POSIX，POSIX スレッド，スレッド生成，スレッド属性，ジョイン可能スレッド，デタッチスレッド，スレッドへの引数，ミューテックス，trylock，条件変数，安全な使い方，生産者・消費者問題，有界バッファ},
 }
 
 第3章では，スレッドと，スレッドが協調するための機構を Birrell
@@ -33,11 +33,11 @@ OSTEP ch.~27．}システムコールとライブラリ関数の名前，引数�
 IEEE と The Open Group が共同で保守しており，Single UNIX Specification の
 中核をなす．本章は 2017 年版 \cite{posix2017} を引用する．}
 
-\begin{definition}[POSIXスレッド]
+\begin{definition}[POSIX スレッド]
   POSIX のうち，スレッドを生成・管理するためのインタフェースと，スレッドが
   協調するための同期構成要素---ミューテックスと条件変数---を規定する部分を
-  \term[POSIXすれっど]{POSIXスレッド}[POSIX threads]%
-  \index{Pthreads|see{POSIXスレッド}}，または \emph{Pthreads} と呼ぶ．
+  \term[POSIX すれっど]{POSIX スレッド}[POSIX threads]%
+  \index{Pthreads|see{POSIX スレッド}}，または \emph{Pthreads} と呼ぶ．
 \end{definition}
 
 Pthreads は POSIX.1 基本標準の一部である．POSIX の他の部分と同様に，

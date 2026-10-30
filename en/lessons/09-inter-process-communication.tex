@@ -4,7 +4,7 @@
 \chapter{Inter-Process Communication}
 \lessoninfo{
   video={P3L3},
-  textbook={Silberschatz et al.\ \cite{silberschatz2018} ch.~3 (\S\S3.4--3.8); Kerrisk \cite{kerrisk2010} ch.~43--54, 56--57},
+  textbook={Silberschatz et al.\ \cite{silberschatz2018} ch.~3 (§§3.4--3.8); Kerrisk \cite{kerrisk2010} ch.~43--54, 56--57},
   keywords={inter-process communication, message passing, port, pipe, message queue, socket, shared memory, copy versus map, local procedure call, shared memory segment, System V IPC, POSIX shared memory, memory-mapped file, process-shared mutex},
 }
 
@@ -186,7 +186,7 @@ data.  With \texttt{AF\_INET}, the channel connects the process through the
 TCP/IP protocol stack to a network device; even between processes on the
 same machine, through the loopback address \texttt{127.0.0.1}, the data
 traverse the whole stack, and only the network device is skipped.
-\term{Unix-domain socket}[Unixドメインソケット]s (\texttt{AF\_UNIX}), named
+\term{Unix-domain socket}[Unix ドメインソケット]s (\texttt{AF\_UNIX}), named
 by a path in the file system, connect processes on the same machine and
 bypass the network protocol stack entirely.  \Cref{tab:l09-forms} compares
 the three forms.
@@ -459,7 +459,7 @@ shmctl(id, IPC_RMID, NULL);        /* destroy       */
 \label{sec:l09-posix}
 
 POSIX standardizes a second shared memory interface,
-\term{POSIX shared memory}[POSIX共有メモリ], which is not as widely
+\term{POSIX shared memory}[POSIX 共有メモリ], which is not as widely
 supported as System~V; Linux, for instance, has supported it since kernel
 2.4.\source{P3L3, POSIX shared memory API; Kerrisk ch.~49, 54.}  Instead
 of segments identified by keys it uses \term{shared memory

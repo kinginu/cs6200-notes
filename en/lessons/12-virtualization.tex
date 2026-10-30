@@ -69,7 +69,7 @@ the physical ones (\cref{fig:l12-vmm}).
 \index{hypervisor|see{virtual machine monitor}}
 
 The operating system that runs inside a VM is called a
-\term{guest operating system}[ゲストOS] (guest OS), and a VM as a whole is
+\term{guest operating system}[ゲスト OS] (guest OS), and a VM as a whole is
 also called a \emph{guest domain}.
 
 Popek and Goldberg \cite{popek1974} gave the classic definition: a virtual
@@ -184,7 +184,7 @@ Silberschatz et al.\ ch.~18.}
 Such a hypervisor must also control the devices.  Devices are diverse, and
 supporting all of them would put a large body of device drivers into the
 hypervisor.  Bare-metal designs therefore often run a privileged
-\term{service VM}[サービスVM] next to the guest VMs
+\term{service VM}[サービス VM] next to the guest VMs
 (\cref{fig:l12-models}a).  The
 service VM runs a standard operating system with the device drivers, has
 direct access to the devices, and performs configuration and management
@@ -223,7 +223,7 @@ control core.
 \begin{definition}[Hosted hypervisor]
   A \term{hosted hypervisor}[ホスト型ハイパーバイザ], or \emph{type~2} VMM,
   runs on top of a conventional operating system, the
-  \term{host operating system}[ホストOS] (host OS), which owns all the
+  \term{host operating system}[ホスト OS] (host OS), which owns all the
   hardware.  A special VMM module in the host OS provides the hardware
   interfaces to the VMs and handles the switches between VMs.
 \end{definition}
@@ -847,7 +847,7 @@ The extensions address the problems of the preceding sections.
     hypervisor keeps control.
   \item[VM control structure] A data structure per VM, more precisely per
     virtual CPU, that the hardware reads and updates.  This
-    \term{VM control structure}[VM制御構造] (the VMCS of Intel, the VMCB
+    \term{VM control structure}[VM 制御構造] (the VMCS of Intel, the VMCB
     of AMD)\index{VMCS|see{VM control structure}} holds the state
     of the virtual CPU, saved on a VM exit and restored on a VM entry, and
     it specifies which instructions and events cause VM exits, so the
@@ -862,7 +862,7 @@ The extensions address the problems of the preceding sections.
     virtual to machine address.  The guest OS
     changes and switches its page tables without VM exits, and shadow page
     tables become unnecessary.  AMD's equivalent is called nested page tables.
-  \item[Tagged TLB] A \term{tagged TLB}[タグ付きTLB] marks each entry with
+  \item[Tagged TLB] A \term{tagged TLB}[タグ付き TLB] marks each entry with
     an identifier of the address space (AMD's ASID) or of the virtual
     processor (Intel's VPID).  Entries of different VMs and of the
     hypervisor coexist in the TLB, so neither a VM exit or entry nor a

@@ -10,18 +10,18 @@ mechanism	機構	きこう	1
 policy	方針	ほうしん	1	
 separation of mechanism and policy	機構と方針の分離	きこうとほうしんのぶんり	1	
 optimize for the common case	頻繁に起こる場合の最適化	ひんぱんにおこるばあいのさいてきか	1	OS design principle
-kernel mode	カーネルモード	かーねるもーど	1	privileged mode
-user mode	ユーザモード	ゆーざもーど	1	unprivileged mode
+kernel mode	カーネルモード	かーねるもーど	1	also: privileged mode
+user mode	ユーザモード	ゆーざもーど	1	also: unprivileged mode
 mode bit	モードビット	もーどびっと	1	CPU bit selecting privileged execution
 privileged instruction	特権命令	とっけんめいれい	1	
 trap	トラップ	とらっぷ	1	
 system call	システムコール	しすてむこーる	1	
 signal	シグナル	しぐなる	1	notification from the OS to a process
-monolithic operating system	モノリシックOS	ものりしっくOS	1	monolithic kernel
-modular operating system	モジュール型OS	もじゅーるがたOS	1	
-kernel module	カーネルモジュール	かーねるもじゅーる	1	loadable module
+monolithic operating system	モノリシック OS	ものりしっく OS	1	also: monolithic kernel
+modular operating system	モジュール型 OS	もじゅーるがた OS	1	
+kernel module	カーネルモジュール	かーねるもじゅーる	1	also: loadable module
 microkernel	マイクロカーネル	まいくろかーねる	1	
-process	プロセス	ぷろせす	2	also called task
+process	プロセス	ぷろせす	2	also: task
 address space	アドレス空間	あどれすくうかん	2	
 text segment	テキストセグメント	てきすとせぐめんと	2	code of the program
 data segment	データセグメント	でーたせぐめんと	2	
@@ -42,7 +42,7 @@ process state	プロセス状態	ぷろせすじょうたい	2
 new state	新規状態	しんきじょうたい	2	process state
 ready state	実行可能状態	じっこうかのうじょうたい	2	process state
 running state	実行状態	じっこうじょうたい	2	process state
-waiting state	待ち状態	まちじょうたい	2	process state; blocked
+waiting state	待ち状態	まちじょうたい	2	process state; also: blocked
 terminated state	終了状態	しゅうりょうじょうたい	2	process state
 fork	fork	fork	2	Unix process-creation system call
 exec	exec	exec	2	Unix system call replacing the program image
@@ -50,31 +50,31 @@ parent process	親プロセス	おやぷろせす	2
 child process	子プロセス	こぷろせす	2	
 init	init	init	2	root of the Unix process tree
 Zygote	Zygote	Zygote	2	Android parent process of applications
-CPU scheduler	CPUスケジューラ	CPUすけじゅーら	2	
+CPU scheduler	CPU スケジューラ	CPU すけじゅーら	2	
 ready queue	レディキュー	れでぃきゅー	2	cf. runqueue
 preemption	プリエンプション	ぷりえんぷしょん	2	
 dispatch	ディスパッチ	でぃすぱっち	2	
-timeslice	タイムスライス	たいむすらいす	2	time quantum
+timeslice	タイムスライス	たいむすらいす	2	also: time quantum
 inter-process communication	プロセス間通信	ぷろせすかんつうしん	2	
 IPC	IPC	IPC	2	see: inter-process communication
-message passing	メッセージパッシング	めっせーじぱっしんぐ	2	message-passing IPC
-shared memory	共有メモリ	きょうゆうめもり	2	shared-memory IPC
+message passing	メッセージパッシング	めっせーじぱっしんぐ	2	also: message-passing IPC
+shared memory	共有メモリ	きょうゆうめもり	2	also: shared-memory IPC
 thread	スレッド	すれっど	3	
 multithreading	マルチスレッド	まるちすれっど	3	multithreaded process
 parallelization	並列化	へいれつか	3	
 specialization	特化	とっか	3	dedicating threads to specific tasks
 concurrency	並行性	へいこうせい	3	
 synchronization	同期	どうき	3	
-race condition	競合状態	きょうごうじょうたい	3	data race
+race condition	競合状態	きょうごうじょうたい	3	cf. data race
 thread creation	スレッド生成	すれっどせいせい	3	Birrell: Fork(proc, args)
 join	ジョイン	じょいん	3	Birrell: Join(thread); cf. pthread_join
 mutual exclusion	相互排除	そうごはいじょ	3	
-mutex	ミューテックス	みゅーてっくす	3	mutual exclusion lock
+mutex	ミューテックス	みゅーてっくす	3	also: mutual exclusion lock
 critical section	クリティカルセクション	くりてぃかるせくしょん	3	
 condition variable	条件変数	じょうけんへんすう	3	
-wait operation	wait操作	waitそうさ	3	condition variable: Wait(mutex, cond)
-signal operation	signal操作	signalそうさ	3	condition variable: Signal(cond); distinct from Unix signal
-broadcast operation	broadcast操作	broadcastそうさ	3	condition variable: Broadcast(cond)
+wait operation	wait 操作	wait そうさ	3	condition variable: Wait(mutex, cond)
+signal operation	signal 操作	signal そうさ	3	condition variable: Signal(cond); distinct from Unix signal
+broadcast operation	broadcast 操作	broadcast そうさ	3	condition variable: Broadcast(cond)
 producer-consumer problem	生産者・消費者問題	せいさんしゃしょうひしゃもんだい	3	
 readers-writers problem	リーダ・ライタ問題	りーだらいたもんだい	3	
 proxy variable	代理変数	だいりへんすう	3	variable encoding a resource's state for critical-section structure
@@ -99,7 +99,7 @@ pipeline pattern	パイプラインパターン	ぱいぷらいんぱたーん	3
 layered pattern	階層化パターン	かいそうかぱたーん	3	
 Portable Operating System Interface	POSIX	POSIX	4	
 POSIX	POSIX	POSIX	4	see: Portable Operating System Interface
-POSIX threads	POSIXスレッド	POSIXすれっど	4	
+POSIX threads	POSIX スレッド	POSIX すれっど	4	
 Pthreads	Pthreads	Pthreads	4	see: POSIX threads
 thread attribute	スレッド属性	すれっどぞくせい	4	pthread_attr_t
 joinable thread	ジョイン可能スレッド	じょいんかのうすれっど	4	
@@ -129,13 +129,13 @@ task	タスク	たすく	5	Linux kernel execution context (task_struct)
 clone	clone	clone	5	Linux system call creating a task
 Native POSIX Thread Library	NPTL	NPTL	5	
 NPTL	NPTL	NPTL	5	see: Native POSIX Thread Library
-execution time	実行時間	じっこうじかん	6	completion time
+execution time	実行時間	じっこうじかん	6	also: completion time
 performance metric	性能指標	せいのうしひょう	6	
 testbed	テストベッド	てすとべっど	6	experimental environment
 throughput	スループット	するーぷっと	6	
 response time	応答時間	おうとうじかん	6	
 wait time	待ち時間	まちじかん	6	
-CPU utilization	CPU使用率	CPUしようりつ	6	
+CPU utilization	CPU 使用率	CPU しようりつ	6	
 service level agreement	SLA	SLA	6	
 SLA	SLA	SLA	6	see: service level agreement
 multi-process model	マルチプロセスモデル	まるちぷろせすもでる	6	MP web server
@@ -145,7 +145,7 @@ event dispatcher	イベントディスパッチャ	いべんとでぃすぱっ�
 event handler	イベントハンドラ	いべんとはんどら	6	
 single-process event-driven model	単一プロセスイベント駆動モデル	たんいつぷろせすいべんとくどうもでる	6	
 SPED	SPED	SPED	6	see: single-process event-driven model
-asynchronous I/O	非同期I/O	ひどうきIO	6	
+asynchronous I/O	非同期 I/O	ひどうき IO	6	
 helper	ヘルパ	へるぱ	6	helper thread or process for blocking operations
 asymmetric multi-process event-driven model	非対称マルチプロセスイベント駆動モデル	ひたいしょうまるちぷろせすいべんとくどうもでる	6	
 AMPED	AMPED	AMPED	6	see: asymmetric multi-process event-driven model
@@ -159,7 +159,7 @@ synthetic workload	合成ワークロード	ごうせいわーくろーど	6
 benchmark	ベンチマーク	べんちまーく	6	
 baseline	ベースライン	べーすらいん	6	reference system in an experiment
 runqueue	ランキュー	らんきゅー	7	cf. ready queue
-run-to-completion scheduling	実行完了型スケジューリング	じっこうかんりょうがたすけじゅーりんぐ	7	non-preemptive
+run-to-completion scheduling	実行完了型スケジューリング	じっこうかんりょうがたすけじゅーりんぐ	7	also: non-preemptive
 first-come first-served scheduling	先着順スケジューリング	せんちゃくじゅんすけじゅーりんぐ	7	
 FCFS	FCFS	FCFS	7	see: first-come first-served scheduling
 shortest job first	最短ジョブ優先	さいたんじょぶゆうせん	7	
@@ -167,32 +167,32 @@ SJF	SJF	SJF	7	see: shortest job first
 preemptive scheduling	プリエンプティブスケジューリング	ぷりえんぷてぃぶすけじゅーりんぐ	7	
 priority	優先度	ゆうせんど	7	
 priority scheduling	優先度スケジューリング	ゆうせんどすけじゅーりんぐ	7	
-starvation	スタベーション	すたべーしょん	7	飢餓
+starvation	スタベーション	すたべーしょん	7	also: 飢餓
 priority aging	エージング	えーじんぐ	7	
 priority inversion	優先度逆転	ゆうせんどぎゃくてん	7	
 priority inheritance	優先度継承	ゆうせんどけいしょう	7	temporary priority boost of the lock owner
 round robin scheduling	ラウンドロビンスケジューリング	らうんどろびんすけじゅーりんぐ	7	
 timesharing	タイムシェアリング	たいむしぇありんぐ	7	
-CPU-bound task	CPUバウンドタスク	CPUばうんどたすく	7	
-I/O-bound task	I/Oバウンドタスク	IOばうんどたすく	7	
+CPU-bound task	CPU バウンドタスク	CPU ばうんどたすく	7	
+I/O-bound task	I/O バウンドタスク	IO ばうんどたすく	7	
 multi-level feedback queue	多段フィードバックキュー	ただんふぃーどばっくきゅー	7	
 MLFQ	MLFQ	MLFQ	7	see: multi-level feedback queue
 O(1) scheduler	O(1)スケジューラ	O1すけじゅーら	7	Linux
 active array	アクティブ配列	あくてぃぶはいれつ	7	O(1) scheduler
 expired array	期限切れ配列	きげんぎれはいれつ	7	O(1) scheduler
-nice value	nice値	niceち	7	
+nice value	nice 値	nice ち	7	
 Completely Fair Scheduler	CFS	CFS	7	Linux
 CFS	CFS	CFS	7	see: Completely Fair Scheduler
 red-black tree	赤黒木	あかくろぎ	7	
-virtual runtime	仮想実行時間	かそうじっこうじかん	7	vruntime
+virtual runtime	仮想実行時間	かそうじっこうじかん	7	also: vruntime
 shared memory multiprocessor	共有メモリ型マルチプロセッサ	きょうゆうめもりがたまるちぷろせっさ	7	
 multicore processor	マルチコアプロセッサ	まるちこあぷろせっさ	7	
 cache affinity	キャッシュアフィニティ	きゃっしゅあふぃにてぃ	7	
 load balancing	負荷分散	ふかぶんさん	7	
 non-uniform memory access	NUMA	NUMA	7	
 NUMA	NUMA	NUMA	7	see: non-uniform memory access
-NUMA-aware scheduling	NUMA対応スケジューリング	NUMAたいおうすけじゅーりんぐ	7	
-simultaneous multithreading	同時マルチスレッディング	どうじまるちすれっでぃんぐ	7	hyperthreading, hardware multithreading
+NUMA-aware scheduling	NUMA 対応スケジューリング	NUMA たいおうすけじゅーりんぐ	7	
+simultaneous multithreading	同時マルチスレッディング	どうじまるちすれっでぃんぐ	7	also: hyperthreading, hardware multithreading
 SMT	SMT	SMT	7	see: simultaneous multithreading
 memory-bound task	メモリバウンドタスク	めもりばうんどたすく	7	
 hardware performance counter	ハードウェア性能カウンタ	はーどうぇあせいのうかうんた	7	
@@ -220,12 +220,12 @@ PFN	PFN	PFN	8	see: physical frame number
 offset	オフセット	おふせっと	8	
 allocation on first touch	初回アクセス時の割り当て	しょかいあくせすじのわりあて	8	
 page table base register	ページテーブルベースレジスタ	ぺーじてーぶるべーすれじすた	8	CR3 on x86
-valid bit	有効ビット	ゆうこうびっと	8	present bit
+valid bit	有効ビット	ゆうこうびっと	8	also: present bit
 dirty bit	ダーティビット	だーてぃびっと	8	
-access bit	アクセスビット	あくせすびっと	8	referenced bit
+access bit	アクセスビット	あくせすびっと	8	also: referenced bit
 protection bits	保護ビット	ほごびっと	8	read/write/execute permissions
 page fault	ページフォールト	ぺーじふぉーると	8	
-multi-level page table	多段ページテーブル	ただんぺーじてーぶる	8	hierarchical page table
+multi-level page table	多段ページテーブル	ただんぺーじてーぶる	8	also: hierarchical page table
 page directory	ページディレクトリ	ぺーじでぃれくとり	8	
 inverted page table	逆ページテーブル	ぎゃくぺーじてーぶる	8	
 hashed page table	ハッシュページテーブル	はっしゅぺーじてーぶる	8	
@@ -234,11 +234,11 @@ huge page	ヒュージページ	ひゅーじぺーじ	8
 internal fragmentation	内部断片化	ないぶだんぺんか	8	
 memory allocator	メモリアロケータ	めもりあろけーた	8	
 external fragmentation	外部断片化	がいぶだんぺんか	8	
-buddy allocator	バディアロケータ	ばでぃあろけーた	8	buddy system
+buddy allocator	バディアロケータ	ばでぃあろけーた	8	also: buddy system
 slab allocator	スラブアロケータ	すらぶあろけーた	8	
 demand paging	デマンドページング	でまんどぺーじんぐ	8	
 swapping	スワッピング	すわっぴんぐ	8	
-swap partition	スワップ領域	すわっぷりょういき	8	swap space
+swap partition	スワップ領域	すわっぷりょういき	8	also: swap space
 pinned page	ピン留めページ	ぴんどめぺーじ	8	page excluded from swapping
 page replacement	ページ置換	ぺーじちかん	8	
 page-out daemon	ページアウトデーモン	ぺーじあうとでーもん	8	
@@ -289,54 +289,54 @@ block device	ブロックデバイス	ぶろっくでばいす	11
 character device	キャラクタデバイス	きゃらくたでばいす	11	
 network device	ネットワークデバイス	ねっとわーくでばいす	11	
 pseudo device	疑似デバイス	ぎじでばいす	11	
-device file	デバイスファイル	でばいすふぁいる	11	special file
+device file	デバイスファイル	でばいすふぁいる	11	also: special file
 polling	ポーリング	ぽーりんぐ	11	
-memory-mapped I/O	メモリマップドI/O	めもりまっぷどIO	11	
-I/O port	I/Oポート	IOぽーと	11	
-programmed I/O	プログラム制御I/O	ぷろぐらむせいぎょIO	11	
+memory-mapped I/O	メモリマップド I/O	めもりまっぷど IO	11	
+I/O port	I/O ポート	IO ぽーと	11	
+programmed I/O	プログラム制御 I/O	ぷろぐらむせいぎょ IO	11	
 PIO	PIO	PIO	11	see: programmed I/O
 direct memory access	DMA	DMA	11	
 DMA	DMA	DMA	11	see: direct memory access
-operating system bypass	OSバイパス	OSばいぱす	11	
-synchronous I/O	同期I/O	どうきIO	11	
+operating system bypass	OS バイパス	OS ばいぱす	11	
+synchronous I/O	同期 I/O	どうき IO	11	
 generic block layer	汎用ブロック層	はんようぶろっくそう	11	
 ioctl	ioctl	ioctl	11	
 file system	ファイルシステム	ふぁいるしすてむ	11	
 virtual file system	仮想ファイルシステム	かそうふぁいるしすてむ	11	
 VFS	VFS	VFS	11	see: virtual file system
 file descriptor	ファイルディスクリプタ	ふぁいるでぃすくりぷた	11	
-inode	iノード	iのーど	11	
+inode	i ノード	i のーど	11	
 directory entry	ディレクトリエントリ	でぃれくとりえんとり	11	
 dentry	dentry	dentry	11	see: directory entry
 superblock	スーパーブロック	すーぱーぶろっく	11	
-ext2	ext2	ext2	11	second extended file system
+ext2	ext2	ext2	11	also: second extended file system
 block group	ブロックグループ	ぶろっくぐるーぷ	11	
 direct pointer	直接ポインタ	ちょくせつぽいんた	11	
 indirect pointer	間接ポインタ	かんせつぽいんた	11	
 double indirect pointer	二重間接ポインタ	にじゅうかんせつぽいんた	11	
 buffer cache	バッファキャッシュ	ばっふぁきゃっしゅ	11	
-I/O scheduling	I/Oスケジューリング	IOすけじゅーりんぐ	11	
-prefetching	プリフェッチ	ぷりふぇっち	11	read-ahead
+I/O scheduling	I/O スケジューリング	IO すけじゅーりんぐ	11	
+prefetching	プリフェッチ	ぷりふぇっち	11	also: read-ahead
 journaling	ジャーナリング	じゃーなりんぐ	11	
 virtualization	仮想化	かそうか	12	
 virtual machine	仮想マシン	かそうましん	12	
 VM	VM	VM	12	see: virtual machine
-virtual machine monitor	仮想マシンモニタ	かそうましんもにた	12	hypervisor
+virtual machine monitor	仮想マシンモニタ	かそうましんもにた	12	also: hypervisor
 VMM	VMM	VMM	12	see: virtual machine monitor
-guest operating system	ゲストOS	げすとOS	12	
+guest operating system	ゲスト OS	げすと OS	12	
 fidelity	忠実性	ちゅうじつせい	12	Popek-Goldberg equivalence requirement
 consolidation	サーバ統合	さーばとうごう	12	
-bare-metal hypervisor	ベアメタル型ハイパーバイザ	べあめたるがたはいぱーばいざ	12	type 1
+bare-metal hypervisor	ベアメタル型ハイパーバイザ	べあめたるがたはいぱーばいざ	12	also: type 1
 dom0	dom0	dom0	12	Xen privileged service VM
 Xen	Xen	Xen	12	
-hosted hypervisor	ホスト型ハイパーバイザ	ほすとがたはいぱーばいざ	12	type 2
-host operating system	ホストOS	ほすとOS	12	
+hosted hypervisor	ホスト型ハイパーバイザ	ほすとがたはいぱーばいざ	12	also: type 2
+host operating system	ホスト OS	ほすと OS	12	
 Kernel-based Virtual Machine	KVM	KVM	12	
 KVM	KVM	KVM	12	see: Kernel-based Virtual Machine
 QEMU	QEMU	QEMU	12	
 protection ring	保護リング	ほごりんぐ	12	
 trap-and-emulate	トラップアンドエミュレート	とらっぷあんどえみゅれーと	12	
-binary translation	バイナリ変換	ばいなりへんかん	12	dynamic binary translation
+binary translation	バイナリ変換	ばいなりへんかん	12	also: dynamic binary translation
 full virtualization	完全仮想化	かんぜんかそうか	12	
 paravirtualization	準仮想化	じゅんかそうか	12	
 hypercall	ハイパーコール	はいぱーこーる	12	
@@ -353,21 +353,21 @@ non-root mode	非ルートモード	ひるーともーど	12
 VM exit	VM exit	VM exit	12	
 extended page table	拡張ページテーブル	かくちょうぺーじてーぶる	12	
 EPT	EPT	EPT	12	see: extended page table
-tagged TLB	タグ付きTLB	たぐつきTLB	12	
+tagged TLB	タグ付き TLB	たぐつき TLB	12	
 remote procedure call	遠隔手続き呼び出し	えんかくてつづきよびだし	13	
 RPC	RPC	RPC	13	see: remote procedure call
 stub	スタブ	すたぶ	13	client stub, server stub
-RPC runtime	RPCランタイム	RPCらんたいむ	13	
+RPC runtime	RPC ランタイム	RPC らんたいむ	13	
 binding	バインディング	ばいんでぃんぐ	13	
-marshalling	マーシャリング	まーしゃりんぐ	13	serialization
+marshalling	マーシャリング	まーしゃりんぐ	13	also: serialization
 unmarshalling	アンマーシャリング	あんまーしゃりんぐ	13	
 interface definition language	インタフェース定義言語	いんたふぇーすていぎげんご	13	
 IDL	IDL	IDL	13	see: interface definition language
 registry	レジストリ	れじすとり	13	
 partial failure	部分障害	ぶぶんしょうがい	13	
-Sun RPC	Sun RPC	Sun RPC	13	ONC RPC
+Sun RPC	Sun RPC	Sun RPC	13	also: ONC RPC
 rpcgen	rpcgen	rpcgen	13	
-rpcbind	rpcbind	rpcbind	13	portmapper
+rpcbind	rpcbind	rpcbind	13	also: portmapper
 external data representation	外部データ表現	がいぶでーたひょうげん	13	
 XDR	XDR	XDR	13	see: external data representation
 big-endian	ビッグエンディアン	びっぐえんでぃあん	13	
@@ -380,10 +380,10 @@ replication	レプリケーション	れぷりけーしょん	14
 partitioning	パーティショニング	ぱーてぃしょにんぐ	14	
 peer-to-peer	ピアツーピア	ぴあつーぴあ	14	
 upload/download model	アップロード・ダウンロードモデル	あっぷろーどだうんろーどもでる	14	
-remote access model	遠隔アクセスモデル	えんかくあくせすもでる	14	true remote file access
+remote access model	遠隔アクセスモデル	えんかくあくせすもでる	14	also: true remote file access
 stateless server	ステートレスサーバ	すてーとれすさーば	14	
 stateful server	ステートフルサーバ	すてーとふるさーば	14	
-UNIX semantics	UNIXセマンティクス	UNIXせまんてぃくす	14	file sharing semantics
+UNIX semantics	UNIX セマンティクス	UNIX せまんてぃくす	14	file sharing semantics
 session semantics	セッションセマンティクス	せっしょんせまんてぃくす	14	file sharing semantics
 lease	リース	りーす	14	
 immutable file	不変ファイル	ふへんふぁいる	14	
@@ -392,7 +392,7 @@ NFS	NFS	NFS	14	see: Network File System
 mount	マウント	まうんと	14	
 file handle	ファイルハンドル	ふぁいるはんどる	14	
 Sprite	Sprite	Sprite	14	distributed file system (Nelson et al.)
-delayed write	遅延書き込み	ちえんかきこみ	14	delayed write-back
+delayed write	遅延書き込み	ちえんかきこみ	14	also: delayed write-back
 sequential write sharing	逐次書き込み共有	ちくじかきこみきょうゆう	14	
 concurrent write sharing	並行書き込み共有	へいこうかきこみきょうゆう	14	
 distributed shared memory	分散共有メモリ	ぶんさんきょうゆうめもり	15	
@@ -417,7 +417,7 @@ multi-tier architecture	多層アーキテクチャ	たそうあーきてくち�
 homogeneous architecture	ホモジニアス構成	ほもじにあすこうせい	16	functionally identical nodes
 heterogeneous architecture	ヘテロジニアス構成	へてろじにあすこうせい	16	functionally specialized nodes
 scale-out	スケールアウト	すけーるあうと	16	
-load balancer	ロードバランサ	ろーどばらんさ	16	front-end dispatcher
+load balancer	ロードバランサ	ろーどばらんさ	16	also: front-end dispatcher
 cloud computing	クラウドコンピューティング	くらうどこんぴゅーてぃんぐ	16	
 elasticity	伸縮性	しんしゅくせい	16	
 law of large numbers	大数の法則	たいすうのほうそく	16	
@@ -441,25 +441,25 @@ big data	ビッグデータ	びっぐでーた	16
 MapReduce	MapReduce	MapReduce	16	
 bounded buffer	有界バッファ	ゆうかいばっふぁ	4	
 hyperthreading	ハイパースレッディング	はいぱーすれっでぃんぐ	7	see: simultaneous multithreading
-service VM	サービスVM	さーびすVM	12	
+service VM	サービス VM	さーびす VM	12	
 VM entry	VM entry	VM entry	12	
-VM control structure	VM制御構造	VMせいぎょこうぞう	12	VMCS (Intel), VMCB (AMD)
+VM control structure	VM 制御構造	VM せいぎょこうぞう	12	VMCS (Intel), VMCB (AMD)
 user-level driver	ユーザレベルドライバ	ゆーざれべるどらいば	11	
 dentry cache	dentry キャッシュ	dentryきゃっしゅ	11	
 journal	ジャーナル	じゃーなる	11	
 page cache	ページキャッシュ	ぺーじきゃっしゅ	11	
-elevator algorithm	エレベータアルゴリズム	えれべーたあるごりずむ	11	SCAN
+elevator algorithm	エレベータアルゴリズム	えれべーたあるごりずむ	11	also: SCAN
 delegation	デリゲーション	でりげーしょん	14	NFSv4
 close-to-open consistency	close-to-open 一貫性	くろーずとぅおーぷんいっかんせい	14	NFS
 stale file handle	失効したファイルハンドル	しっこうしたふぁいるはんどる	14	NFS error ESTALE
 generation number	世代番号	せだいばんごう	14	NFS file handle
 System V IPC	System V IPC	System V IPC	9	message queues, semaphore sets, shared memory
-named pipe	名前付きパイプ	なまえつきぱいぷ	9	FIFO; mkfifo
+named pipe	名前付きパイプ	なまえつきぱいぷ	9	also: FIFO; mkfifo
 stream socket	ストリームソケット	すとりーむそけっと	9	TCP
 datagram socket	データグラムソケット	でーたぐらむそけっと	9	UDP
-Unix-domain socket	Unixドメインソケット	Unixどめいんそけっと	9	AF_UNIX
+Unix-domain socket	Unix ドメインソケット	Unix どめいんそけっと	9	AF_UNIX
 attach	アタッチ	あたっち	9	shared memory segment
 detach	デタッチ	でたっち	9	shared memory segment
-POSIX shared memory	POSIX共有メモリ	POSIXきょうゆうめもり	9	shm_open
+POSIX shared memory	POSIX 共有メモリ	POSIX きょうゆうめもり	9	shm_open
 shared memory object	共有メモリオブジェクト	きょうゆうめもりおぶじぇくと	9	POSIX shared memory
 process-shared attribute	プロセス共有属性	ぷろせすきょうゆうぞくせい	9	PTHREAD_PROCESS_SHARED

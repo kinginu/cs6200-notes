@@ -169,7 +169,7 @@ The most common metrics are the following.
   \item[Wait time] The \term{wait time}[待ち時間] of a task is the time from
     its submission until it starts to execute.  It matters when users care
     about when their jobs start rather than when they finish.
-  \item[CPU utilization] The \term{CPU utilization}[CPU使用率] is the
+  \item[CPU utilization] The \term{CPU utilization}[CPU 使用率] is the
     fraction of time during which the CPU is busy; utilization
     metrics for other resources are defined in the same way.
 \end{description}
@@ -489,7 +489,7 @@ report a regular file as ready, even when reading it must wait for the
 disk, and \texttt{epoll} does not accept regular files at all.
 
 \begin{definition}[Asynchronous I/O]
-  With \term{asynchronous I/O}[非同期I/O] a system call that starts an I/O
+  With \term{asynchronous I/O}[非同期 I/O] a system call that starts an I/O
   operation returns before the operation has completed, and the calling
   thread continues to execute.  The kernel obtains from the call all the
   information it needs to carry out the operation, and either learns where
@@ -522,14 +522,14 @@ pipes and sockets are file descriptors, the dispatcher waits for these reports
 with \texttt{select} or \texttt{poll} like for any other event.  The helper
 blocks; the dispatcher, and with it all other requests, does not.  An
 event-driven process combined with helper processes forms the
-\term{asymmetric multi-process event-driven model}[非対称マルチプロセス\allowbreak イベント駆動モデル]%
+\term{asymmetric multi-process event-driven model}[非対称マルチプロセスイベント駆動モデル]%
 \index{AMPED|see{asymmetric multi-process event-driven model}} (AMPED).
 The model is \emph{asymmetric} because the helpers perform only particular
 operations, unlike the equivalent processes or threads of the MP and MT
 models.  Pai et al.\ used helper processes because, at the time, not every
 operating system supported kernel-level threads.  With helper threads
 instead of processes, the server follows the
-\term{asymmetric multithreaded event-driven model}[非対称マルチスレッド\allowbreak イベント駆動モデル]%
+\term{asymmetric multithreaded event-driven model}[非対称マルチスレッドイベント駆動モデル]%
 \index{AMTED|see{asymmetric multithreaded event-driven model}} (AMTED).
 
 Helpers resolve the portability problem of the basic event-driven model:

@@ -438,7 +438,7 @@ tasks that mostly wait for I/O.
 \subsection{CPU-bound tasks}
 
 A task that spends most of its time computing and rarely blocks is a
-\term{CPU-bound task}[CPUバウンドタスク].
+\term{CPU-bound task}[CPU バウンドタスク].
 
 \begin{example}
   \label{ex:l07-cpu-bound}
@@ -486,7 +486,7 @@ run to completion, is best for them.
 \subsection{I/O-bound tasks}
 
 A task that frequently blocks for I/O and computes only briefly between its
-I/O operations is an \term{I/O-bound task}[I/Oバウンドタスク].  If all tasks
+I/O operations is an \term{I/O-bound task}[I/O バウンドタスク].  If all tasks
 are I/O-bound, the length of the timeslice hardly matters, as long as it
 exceeds their short bursts of computation: each task then blocks for I/O
 before its timeslice expires and leaves the CPU of its own accord.  The length matters when I/O-bound tasks share the CPU with
@@ -665,7 +665,7 @@ smaller number means a higher priority.  Levels 0 to 99 are for real-time
 tasks, and levels 100 to 139 for timesharing tasks.
 
 A user process has the default priority 120.  It can be adjusted through
-the process's \term{nice value}[nice値], which ranges from $-20$ to 19 and
+the process's \term{nice value}[nice 値], which ranges from $-20$ to 19 and
 is added to the default, so that the priorities of timesharing tasks range
 from 100 to 139.  A process can lower its own priority, for example with
 the \texttt{nice} system call; raising it requires privileges.\tip{\texttt{nice
@@ -928,7 +928,7 @@ and their distances; \texttt{numactl --cpunodebind=0 --membind=0}
   \label{fig:l07-numa}
 \end{figure}
 
-With \term{NUMA-aware scheduling}[NUMA対応スケジューリング] the scheduler
+With \term{NUMA-aware scheduling}[NUMA 対応スケジューリング] the scheduler
 keeps a task on a CPU close to the memory node that holds the task's state,
 so that its memory accesses remain local.  Load balancing must take this into account: moving a
 task to a CPU on another node may balance the runqueues but slows down

@@ -4,7 +4,7 @@
 \chapter{プロセス間通信}
 \lessoninfo{
   video={P3L3},
-  textbook={Silberschatz ら \cite{silberschatz2018} ch.~3（\S\S3.4--3.8）；Kerrisk \cite{kerrisk2010} ch.~43--54，56--57},
+  textbook={Silberschatz ら \cite{silberschatz2018} ch.~3（§§3.4--3.8）；Kerrisk \cite{kerrisk2010} ch.~43--54，56--57},
   keywords={プロセス間通信，メッセージパッシング，ポート，パイプ，メッセージキュー，ソケット，共有メモリ，コピーとマップ，ローカル手続き呼び出し，共有メモリセグメント，System V IPC，POSIX 共有メモリ，メモリマップドファイル，プロセス共有ミューテックス},
 }
 
@@ -181,7 +181,7 @@ socket]（UDP）は離散的なメッセージを配送する．2つのストリ
 プロセスをネットワークデバイスに接続する．同じマシン上のプロセスの間でも，
 ループバックアドレス \texttt{127.0.0.1} を通るデータはスタック全体を通過し，
 省かれるのはネットワークデバイスだけである．ファイルシステム内のパスで
-名前付けされる \term[Unixどめいんそけっと]{Unixドメインソケット}[Unix-domain
+名前付けされる \term[Unix どめいんそけっと]{Unix ドメインソケット}[Unix-domain
 socket]（\texttt{AF\_UNIX}）は，同じマシン上のプロセスを接続し，ネットワーク
 プロトコルスタックを完全に迂回する．\cref{tab:l09-forms} に3つの形態を
 比較する．
@@ -445,7 +445,7 @@ shmctl(id, IPC_RMID, NULL);        /* 破棄する */
 \label{sec:l09-posix}
 
 POSIX は第2の共有メモリインタフェースである
-\term[POSIXきょうゆうめもり]{POSIX共有メモリ}[POSIX shared memory]を標準化
+\term[POSIX きょうゆうめもり]{POSIX 共有メモリ}[POSIX shared memory]を標準化
 しているが，これは System~V ほど広くサポートされてはいない．例えば Linux では，
 カーネル 2.4 以降でサポートされている．\source{P3L3，POSIX 共有メモリ API；
 Kerrisk ch.~49，54．}キーで識別されるセグメントの代わりに，名前で識別され

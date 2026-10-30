@@ -435,7 +435,7 @@ pthread_mutex_init(&m, &attr);
 \subsection{CPU バウンドのタスク}
 
 ほとんどの時間を計算に費やし，めったにブロックしないタスクを
-\term[CPUばうんどたすく]{CPUバウンドタスク}[CPU-bound task]という．
+\term[CPU ばうんどたすく]{CPU バウンドタスク}[CPU-bound task]という．
 
 \begin{example}
   \label{ex:l07-cpu-bound}
@@ -488,7 +488,7 @@ CPU バウンドのタスクにとっては，タイムスライスが長いほ�
 \subsection{I/O バウンドのタスク}
 
 頻繁に I/O でブロックし，I/O 操作の間にわずかしか計算しないタスクを
-\term[IOばうんどたすく]{I/Oバウンドタスク}[I/O-bound task]という．すべて
+\term[IO ばうんどたすく]{I/O バウンドタスク}[I/O-bound task]という．すべて
 のタスクが I/O バウンドであれば，タイムスライスの長さは，それらの短い
 計算の区間を超えてさえいれば，ほとんど問題にならない．どのタスクもタイム
 スライスが満了する前に I/O でブロックし，自ら CPU を離れるからである．
@@ -672,7 +672,7 @@ Linux の \term[O1すけじゅーら]{$O(1)$ スケジューラ}[O(1) scheduler]
 100 から 139 までの水準はタイムシェアリングのタスク用である．
 
 ユーザプロセスの既定の優先度は 120 である．これはプロセスの
-\term[niceち]{nice値}[nice value]によって調整でき，nice 値は $-20$ から
+\term[nice ち]{nice 値}[nice value]によって調整でき，nice 値は $-20$ から
 19 の範囲を取り，既定値に加算されるので，タイムシェアリングのタスクの
 優先度は 100 から 139 の範囲となる．プロセスは，例えば \texttt{nice}
 システムコールによって自分の優先度を下げられるが，上げるには権限が必要で
@@ -933,7 +933,7 @@ debugfs の \texttt{/sys/\allowbreak kernel/\allowbreak debug/\allowbreak sched/
   \label{fig:l07-numa}
 \end{figure}
 
-\term[NUMAたいおうすけじゅーりんぐ]{NUMA対応スケジューリング}%
+\term[NUMA たいおうすけじゅーりんぐ]{NUMA 対応スケジューリング}%
 [NUMA-aware scheduling]では，スケジューラはタスクを，その状態を保持する
 メモリノードに近い CPU 上に保ち，メモリアクセスがローカルなままであるよう
 にする．負荷分散はこれを考慮しなければならない．タスクを別のノードの CPU

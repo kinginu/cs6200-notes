@@ -216,7 +216,7 @@ CPU device interactions; OSTEP ch.~36; Silberschatz et al.\ ch.~12.}  There
 are two ways to address the registers.
 
 \begin{definition}[Memory-mapped I/O]
-  With \term{memory-mapped I/O}[メモリマップドI/O] the device registers
+  With \term{memory-mapped I/O}[メモリマップド I/O] the device registers
   appear to the CPU as memory locations at specific physical addresses.  A
   part of the physical address space is dedicated to device interactions,
   and the CPU accesses a register with an ordinary load or store instruction
@@ -234,7 +234,7 @@ in its configuration space set the size and location of its region; they
 are configured during boot.
 
 The second way uses dedicated CPU instructions, such as \texttt{in} and
-\texttt{out} on x86.  An \term{I/O port}[I/Oポート] is an address, separate
+\texttt{out} on x86.  An \term{I/O port}[I/O ポート] is an address, separate
 from the memory addresses, that designates a device register; the
 instruction specifies the target port and the value to be written to the
 register, or receives the value read from it.\margin{The x86 port space is
@@ -311,7 +311,7 @@ DMA; OSTEP ch.~36.}  Both ways use the device registers of
 \cref{sec:l11-devices} to issue commands.
 
 \begin{definition}[Programmed I/O]
-  With \term{programmed I/O}[プログラム制御I/O]%
+  With \term{programmed I/O}[プログラム制御 I/O]%
   \index{PIO|see{programmed I/O}} (PIO) the CPU performs every step of the
   interaction through the device registers: it writes the command register
   to request an operation, and it moves the data by writing or reading the
@@ -420,7 +420,7 @@ Going through the kernel is not strictly necessary.
 \begin{definition}[Operating system bypass]
   A method of device access in which the registers and memory of a device
   are made directly accessible to a user process is called
-  \term{operating system bypass}[OSバイパス].  The operating system
+  \term{operating system bypass}[OS バイパス].  The operating system
   configures the access and then stays out of the way, so that the process
   performs device operations without executing kernel code
   (\cref{fig:l11-access}b).
@@ -457,7 +457,7 @@ Silberschatz et al.\ ch.~12.} the thread that issued it can either wait or
 continue.
 
 \begin{definition}[Synchronous I/O]
-  With \term{synchronous I/O}[同期I/O] a thread that issues an I/O request
+  With \term{synchronous I/O}[同期 I/O] a thread that issues an I/O request
   is blocked until the request completes.  The operating system places the
   thread on the wait queue associated with the device, the I/O queue of
   Lesson~2, and makes it runnable again when the device reports completion.
@@ -635,7 +635,7 @@ The properties of the file itself, and the locations of its data blocks,
 are recorded in its inode.
 
 \begin{definition}[Inode]
-  An \term{inode}[iノード] is the persistent representation of a file: an
+  An \term{inode}[i ノード] is the persistent representation of a file: an
   index that lists all the data blocks of the file, together with metadata
   such as the device, the permissions and the size of the file.%
   \caution{Several names can share one inode (a hard link); removing a name
@@ -909,7 +909,7 @@ the device.
 \subsection{I/O scheduling}
 
 Ordering the pending disk requests so as to reduce the movement of the disk
-head is called \term{I/O scheduling}[I/Oスケジューリング]: requests are
+head is called \term{I/O scheduling}[I/O スケジューリング]: requests are
 served in an order that maximizes sequential access and minimizes random
 access.  Sorting the requests by block address and serving them in one sweep
 of the head is the \term{elevator algorithm}[エレベータアルゴリズム], which

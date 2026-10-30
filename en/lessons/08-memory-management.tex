@@ -231,7 +231,7 @@ register that holds the address of that page table; on x86 it is the
 register CR3.  On a context switch, the operating system loads the address
 of the page table of the next process into this register.\margin{Writing
 CR3 flushes all non-global TLB entries unless process-context identifiers
-(PCID) are in use (Intel SDM vol.~3A, \S\,4.10).}
+(PCID) are in use (Intel SDM vol.~3A, §4.10).}
 
 \section{Page table entries}
 \label{sec:l08-pte}
@@ -271,7 +271,7 @@ no-execute bit exists only in the 64-bit entries of PAE and x86-64.  PWT and PCD
 (write-through, cache disabled), and bits 9--11 are unused by the hardware
 and available to the operating system.\margin{On x86-64 a PTE is 8 bytes:
 bit 63 is NX (no execute), bits 12--51 hold the PFN (Intel SDM vol.~3A,
-\S\,4.5).}
+§4.5).}
 
 \begin{figure}[htbp]
   \centering
@@ -869,7 +869,7 @@ saved to and restored from secondary storage.
 \end{definition}
 
 When a process accesses a page that is not in memory, the following steps
-take place\caution{Silberschatz et al.\ (\S\,9.5) use \emph{swapping} for
+take place\caution{Silberschatz et al.\ (§9.5) use \emph{swapping} for
 whole processes and \emph{paging} for single pages; the lecture and Linux
 say swap for pages.} (\cref{fig:l08-page-fault}):
 \begin{enumerate}

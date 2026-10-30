@@ -5,7 +5,7 @@
 \lessoninfo{
   video={P4L1},
   textbook={OSTEP \cite{ostep} ch.~48；Silberschatz ら \cite{silberschatz2018} ch.~3；Birrell と Nelson \cite{birrell1984}；RFC 5531 \cite{rfc5531}，RFC 4506 \cite{rfc4506}，RFC 1833 \cite{rfc1833}},
-  keywords={遠隔手続き呼び出し，スタブ，RPCランタイム，インタフェース定義言語，マーシャリング，アンマーシャリング，バインディング，レジストリ，部分障害，Sun RPC，XDR，rpcgen，rpcbind，Java RMI},
+  keywords={遠隔手続き呼び出し，スタブ，RPC ランタイム，インタフェース定義言語，マーシャリング，アンマーシャリング，バインディング，レジストリ，部分障害，Sun RPC，XDR，rpcgen，rpcbind，Java RMI},
 }
 
 これまでの章が扱ってきたのは，1つのオペレーティングシステムが管理する単一の
@@ -146,7 +146,7 @@ RPC の手順；Birrell と Nelson \cite{birrell1984}；OSTEP ch.~48．}RPC で�
 \end{definition}
 
 \begin{definition}[RPC ランタイム]
-  \term[RPCらんたいむ]{RPCランタイム}[RPC runtime]とは，両側に存在し，
+  \term[RPC らんたいむ]{RPC ランタイム}[RPC runtime]とは，両側に存在し，
   クライアントとサーバの間でメッセージを転送するライブラリである．接続を管理
   し，メッセージを送受信し，失われたメッセージを再送し，受信した各メッセージ
   を適切なスタブへ渡す．

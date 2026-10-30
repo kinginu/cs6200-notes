@@ -5,7 +5,7 @@
 \lessoninfo{
   video={P1L2},
   textbook={OSTEP \cite{ostep} ch.~2，6；Silberschatz ら \cite{silberschatz2018} ch.~1--2},
-  keywords={オペレーティングシステム，抽象化，調停，機構，方針，カーネルモード，ユーザモード，トラップ，システムコール，シグナル，モノリシックOS，モジュール型OS，マイクロカーネル},
+  keywords={オペレーティングシステム，抽象化，調停，機構，方針，カーネルモード，ユーザモード，トラップ，システムコール，シグナル，モノリシック OS，モジュール型 OS，マイクロカーネル},
 }
 
 あらゆるアプリケーションは，実行されるマシンの CPU，メモリ，デバイスを
@@ -488,7 +488,7 @@ Silberschatz ら ch.~2．}最も基本的なレベルでは，サービスはハ
 \label{sec:l01-organization}
 
 オペレーティングシステムは，そのサービスをどう構成するかによって異なる．
-\source{P1L2，モノリシックOS，モジュール型OS，マイクロカーネル；
+\source{P1L2，モノリシック OS，モジュール型 OS，マイクロカーネル；
 Silberschatz ら ch.~2．}\cref{fig:l01-structures} は3つの基本的な構成を
 示し，\cref{tab:l01-organization} はそれらの利点と欠点をまとめたもので
 ある．
@@ -504,10 +504,10 @@ Silberschatz ら ch.~2．}\cref{fig:l01-structures} は3つの基本的な構成
   \label{fig:l01-structures}
 \end{figure}
 
-\subsection{モノリシックOS}
+\subsection{モノリシック OS}
 
 歴史的には，オペレーティングシステムはモノリシックであった．
-\term[ものりしっくOS]{モノリシックOS}[monolithic operating system]では，
+\term[ものりしっく OS]{モノリシック OS}[monolithic operating system]では，
 どのアプリケーションが必要としうるサービスも，どの種類のハードウェアが
 要求しうるサービスも，すべてオペレーティングシステムの一部である．
 メモリ管理，デバイスドライバ，ファイル管理，プロセスとスレッド，
@@ -522,9 +522,9 @@ Silberschatz ら ch.~2．}\cref{fig:l01-structures} は3つの基本的な構成
 残されるメモリを減らし，その性能を低下させうる大きなメモリフットプリント
 である．
 
-\subsection{モジュール型OS}
+\subsection{モジュール型 OS}
 
-Linux を標準的な例とする\term[もじゅーるがたOS]{モジュール型OS}[modular operating system]%
+Linux を標準的な例とする\term[もじゅーるがた OS]{モジュール型 OS}[modular operating system]%
 は，基本的なサービスと API の集合を備え，それ以外のものは
 \term[かーねるもじゅーる]{カーネルモジュール}[kernel module]として追加
 できる．\tip{Linux では，\texttt{lsmod} はロードされているモジュールを

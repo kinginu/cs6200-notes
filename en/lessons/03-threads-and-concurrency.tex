@@ -218,7 +218,7 @@ or one reads while another modifies it, the data can become inconsistent.
   least one of them modifying it.  Two unsynchronized concurrent accesses to
   the same data, at least one of them a write, form a \emph{data
   race};\caution{A data race is undefined behaviour in C11 and C++11 (C11
-  \S\,5.1.2.4): the compiler may reorder or cache the accesses, so there
+  §5.1.2.4): the compiler may reorder or cache the accesses, so there
   are no \enquote{benign} races at the language level.} data races are a
   common cause of race conditions.
 \end{definition}
@@ -436,15 +436,15 @@ Lock(m) {
 Birrell's interface has three operations on a condition variable
 \texttt{cond}.
 \begin{description}
-  \item[\texttt{Wait(mutex, cond)}] The \term{wait operation}[wait操作] is
+  \item[\texttt{Wait(mutex, cond)}] The \term{wait operation}[wait 操作] is
     called with \texttt{mutex} held.  It releases the mutex and suspends the
     thread on the wait queue of \texttt{cond}; when the thread is woken up,
     the operation re-acquires the mutex before it returns.
-  \item[\texttt{Signal(cond)}] The \term{signal operation}[signal操作] wakes
+  \item[\texttt{Signal(cond)}] The \term{signal operation}[signal 操作] wakes
     up at least one (normally one) thread waiting on \texttt{cond}, if
     there is one.
   \item[\texttt{Broadcast(cond)}] The
-    \term{broadcast operation}[broadcast操作] wakes up all threads waiting
+    \term{broadcast operation}[broadcast 操作] wakes up all threads waiting
     on \texttt{cond}.
 \end{description}
 

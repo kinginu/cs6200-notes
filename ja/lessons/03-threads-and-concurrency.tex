@@ -218,7 +218,7 @@ ch.~26．}
   相対的なタイミングに依存する状況である．同じデータに対する，
   同期されていない2つの並行アクセスで，少なくとも一方が書き込みである
   ものを\emph{データ競合}と呼ぶ．%
-  \caution{データ競合は C11 と C++11 では未定義動作である（C11 \S\,5.1.2.4）．
+  \caution{データ競合は C11 と C++11 では未定義動作である（C11 §5.1.2.4）．
   コンパイラはアクセスの順序を入れ替えたりキャッシュしたりしてよいので，
   言語のレベルでは「無害な」競合は存在しない．}データ競合は競合状態の
   よくある原因である．
@@ -435,15 +435,15 @@ Lock(m) {
 Birrell のインタフェースには，条件変数 \texttt{cond} に対する3つの操作が
 ある．
 \begin{description}
-  \item[\texttt{Wait(mutex, cond)}] \term[waitそうさ]{wait操作}[wait operation]%
+  \item[\texttt{Wait(mutex, cond)}] \term[wait そうさ]{wait 操作}[wait operation]%
     は \texttt{mutex} を保持した状態で呼び出す．この操作はミューテックスを
     解放し，スレッドを \texttt{cond} の待ちキューで停止させる．スレッドが
     起こされると，操作は戻る前にミューテックスを再獲得する．
-  \item[\texttt{Signal(cond)}] \term[signalそうさ]{signal操作}[signal operation]%
+  \item[\texttt{Signal(cond)}] \term[signal そうさ]{signal 操作}[signal operation]%
     は，\texttt{cond} で待っているスレッドがあれば，少なくとも1つ（通常は
     1つ）を起こす．
   \item[\texttt{Broadcast(cond)}]
-    \term[broadcastそうさ]{broadcast操作}[broadcast operation]は，
+    \term[broadcast そうさ]{broadcast 操作}[broadcast operation]は，
     \texttt{cond} で待っているすべてのスレッドを起こす．
 \end{description}
 

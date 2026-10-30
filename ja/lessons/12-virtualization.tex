@@ -66,7 +66,7 @@
 \index{はいぱーばいざ@ハイパーバイザ|see{仮想マシンモニタ}}
 
 VM の中で動作するオペレーティングシステムを
-\term[げすとOS]{ゲストOS}[guest operating system]と呼び，VM 全体は
+\term[げすと OS]{ゲスト OS}[guest operating system]と呼び，VM 全体は
 \emph{ゲストドメイン}とも呼ばれる．
 
 Popek と Goldberg \cite{popek1974} は古典的な定義を与えた．仮想マシンとは
@@ -175,7 +175,7 @@ Kivity ら \cite{kivity2007}；Silberschatz ら ch.~18．}
 このようなハイパーバイザはデバイスも制御しなければならない．デバイスは多種
 多様であり，そのすべてをサポートすれば大量のデバイスドライバがハイパーバイザ
 に入り込む．そこでベアメタル型の設計では，ゲスト VM の隣に特権的な
-\term[さーびすVM]{サービスVM}[service VM]を動かすことが多い（\cref{fig:l12-models}a）．
+\term[さーびす VM]{サービス VM}[service VM]を動かすことが多い（\cref{fig:l12-models}a）．
 サービス VM は，デバイスドライバを備えた標準的なオペレーティングシステムを動かし，
 デバイスに直接アクセスでき，構成と管理の作業を担う．こうしてハイパーバイザ
 自体は小さく保たれる．\caution{タイプ 1 とタイプ 2 という呼び分けは，きれいに
@@ -212,7 +212,7 @@ Kivity ら \cite{kivity2007}；Silberschatz ら ch.~18．}
   \term[ほすとがたはいぱーばいざ]{ホスト型ハイパーバイザ}[hosted hypervisor]，
   すなわち\emph{タイプ 2} VMM は，従来型のオペレーティングシステムの上で動作
   する．このオペレーティングシステムを
-  \term[ほすとOS]{ホストOS}[host operating system]と呼び，ホスト OS が
+  \term[ほすと OS]{ホスト OS}[host operating system]と呼び，ホスト OS が
   ハードウェアのすべてを所有する．ホスト OS 内の特別な VMM モジュールが，VM に
   ハードウェアインタフェースを提供し，VM 間の切り替えを扱う．
 \end{definition}
@@ -687,7 +687,7 @@ CPU とメモリの多様性は小さい．命令セットアーキテクチャ�
 
 VM はデバイスへの排他的なアクセスを得て，そのデバイス操作は物理マシン上と同じ
 経路をたどる．この \emph{VMM バイパス}は，第11章の OS
-バイパス\index{OSばいぱす@OSバイパス}に対応するもので，最良の性能を与える．
+バイパス\index{OS ばいぱす@OS バイパス}に対応するもので，最良の性能を与える．
 このモデルには3つの欠点がある．
 \begin{itemize}
   \item デバイスの共有が難しい．ある VM から別の VM へ割り当て直さなければ
@@ -818,8 +818,8 @@ Pacifica というコード名の技術，現在の AMD-V であり，Intel は 
     ゲスト OS をリング 0 で動作させる．
   \item[VM 制御構造] VM ごと，より正確には仮想 CPU ごとに1つのデータ構造で，
     ハードウェアがそれを読み書きする．この
-    \term[VMせいぎょこうぞう]{VM制御構造}[VM control structure]（Intel の
-    VMCS，AMD の VMCB）\index{VMCS|see{VM制御構造}}は，仮想 CPU の状態を
+    \term[VM せいぎょこうぞう]{VM 制御構造}[VM control structure]（Intel の
+    VMCS，AMD の VMCB）\index{VMCS|see{VM 制御構造}}は，仮想 CPU の状態を
     保持し，VM exit で保存
     され VM entry で復元される．また，どの命令とイベントが VM exit を起こすかを
     指定するので，ハイパーバイザは VM ごとに何をトラップするかを決められる．
@@ -834,7 +834,7 @@ Pacifica というコード名の技術，現在の AMD-V であり，Intel は 
     ようになり，
     シャドウページテーブルは不要になる．AMD における同等のものは，ネステッド
     ページテーブルと呼ばれる．
-  \item[タグ付き TLB] \term[たぐつきTLB]{タグ付きTLB}[tagged TLB]は，各
+  \item[タグ付き TLB] \term[たぐつき TLB]{タグ付き TLB}[tagged TLB]は，各
     エントリに，アドレス空間（AMD の ASID）または仮想プロセッサ（Intel の
     VPID）の識別子を付ける．異なる VM とハイパーバイザのエントリが TLB の中に
     共存できるので，VM exit や VM entry でも VM の切り替えでも，それをフラッ
