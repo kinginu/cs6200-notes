@@ -1,32 +1,6 @@
 {
  "course": "CS 6200 Graduate Introduction to Operating Systems",
  "source": "Lesson structure of the Georgia Tech / Udacity course (ud923, P1L2-P4L4). Video-level titles are not recorded here; P1L1 (course overview) is logistics and has no chapter.",
- "parts": [
-  {
-   "part": 1,
-   "title": "Introduction",
-   "title_ja": "導入",
-   "first": 1
-  },
-  {
-   "part": 2,
-   "title": "Processes and Threads",
-   "title_ja": "プロセスとスレッド",
-   "first": 2
-  },
-  {
-   "part": 3,
-   "title": "Resource Management and Synchronization",
-   "title_ja": "資源管理と同期",
-   "first": 7
-  },
-  {
-   "part": 4,
-   "title": "Distributed Systems",
-   "title_ja": "分散システム",
-   "first": 13
-  }
- ],
  "lessons": [
   {
    "number": 1,
