@@ -29,7 +29,10 @@ What each chapter summarizes, in the order the chapters follow.
 - **Textbook / reference**: Arpaci-Dusseau & Arpaci-Dusseau, *Operating
   Systems: Three Easy Pieces* (bib key `ostep`; cite as "OSTEP ch.~4");
   Silberschatz, Galvin & Gagne, *Operating System Concepts*, 10th ed.
-  (`silberschatz2018`; "Silberschatz et al.\ ch.~3").
+  (`silberschatz2018`; "Silberschatz et al.\ ch.~3", a section as
+  "Silberschatz et al.\ §3.4"; JA 「Silberschatz ら」).  Man pages are cited
+  inline as `(sched(7))`, the Intel manual as `(Intel SDM vol.~3A, §4.10)`
+  (style guide §2).
 - **Papers the source discusses**: listed per chapter in `bib/<slug>.bib`
   (e.g. `birrell1984` for RPC, `nelson1988` for Sprite, `li1989` for DSM).
 
